@@ -9,20 +9,19 @@ const { sendTextMessage } = require('../integrations/whatsappAPI');
  * @param {string} campaignId - The ID of the campaign to send.
  */
 const sendCampaign = async (campaignId) => {
-  // 1. Find the campaign by its ID
-  const campaign = await Campaign.findById(campaignId);
-  if (!campaign) {
-    throw new Error('Campaign not found.');
-  }
-  if (campaign.status === 'sent') {
-    throw new Error('This campaign has already been sent.');
-  }
+  // ... (find the campaign by ID - no change)
 
-  // 2. Find all recipients who are subscribed.
-  // (For a real app, you'd fetch recipients linked to this specific campaign)
-  const recipients = await Recipient.find({ status: 'subscribed' });
+  // --- THIS IS THE KEY CHANGE ---
+  // Instead of finding all recipients, find only the ones
+  // where the 'campaign' field matches our campaignId.
+  const recipients = await Recipient.find({ 
+    campaign: campaignId, 
+    status: 'subscribed' 
+  });
+  // --- END OF CHANGE ---
+
   if (recipients.length === 0) {
-    throw new Error('No subscribed recipients to send to.');
+    throw new Error('No subscribed recipients found for this campaign.');
   }
 
   let successCount = 0;

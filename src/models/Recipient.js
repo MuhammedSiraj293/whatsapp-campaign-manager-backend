@@ -19,14 +19,11 @@ const RecipientSchema = new mongoose.Schema({
     default: 'subscribed',
   },
   // This creates a relationship between a recipient and the campaigns they are part of.
-  campaigns: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Campaign',
-    },
-  ],
-}, {
-  timestamps: true // Automatically adds createdAt and updatedAt fields
-});
+campaign: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Campaign',
+    required: true,
+  },
+}, { timestamps: true });
 
 module.exports = mongoose.model('Recipient', RecipientSchema);
