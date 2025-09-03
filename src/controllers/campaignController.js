@@ -29,7 +29,12 @@ const getMessageTemplates = async (req, res) => { // <-- ADD NEW FUNCTION
   }
 };
 
+// backend/src/controllers/campaignController.js
+
 module.exports = {
-  // ... (existing exports)
-  getMessageTemplates, // <-- EXPORT NEW FUNCTION
+  getCampaigns, // <-- ADD THIS BACK
+  createCampaign,
+  executeCampaign,
+  testSendMessage,
+  getMessageTemplates,
 };
