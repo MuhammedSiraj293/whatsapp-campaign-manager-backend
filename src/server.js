@@ -6,7 +6,8 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const campaignRoutes = require('./routes/campaignRoutes');
 const recipientRoutes = require('./routes/recipientRoutes');
-const webhookRoutes = require('./routes/webhookRoutes'); // <-- IMPORT NEW ROUTES
+const webhookRoutes = require('./routes/webhookRoutes');
+const replyRoutes = require('./routes/replyRoutes'); // <-- IMPORT NEW ROUTES
 
 dotenv.config();
 connectDB();
@@ -25,7 +26,8 @@ app.get('/', (req, res) => {
 // Mount The Routes
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/recipients', recipientRoutes);
-app.use('/api/webhook', webhookRoutes); // <-- USE THE NEW ROUTES
+app.use('/api/webhook', webhookRoutes);
+app.use('/api/replies', replyRoutes); // <-- USE THE NEW ROUTES
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
