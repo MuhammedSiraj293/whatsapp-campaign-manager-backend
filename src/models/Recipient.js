@@ -6,7 +6,6 @@ const RecipientSchema = new mongoose.Schema({
   phoneNumber: {
     type: String,
     required: [true, 'Phone number is required.'],
-    unique: true, // Prevents duplicate phone numbers in the database
     trim: true,
   },
   name: {
@@ -18,12 +17,18 @@ const RecipientSchema = new mongoose.Schema({
     enum: ['subscribed', 'unsubscribed'],
     default: 'subscribed',
   },
-  // This creates a relationship between a recipient and the campaigns they are part of.
-campaign: {
+  // This field creates a direct link to the one campaign this recipient belongs to.
+  campaign: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Campaign',
     required: true,
   },
-}, { timestamps: true });
+}, {
+  timestamps: true // Automatically adds createdAt and updatedAt fields
+});
+
+// To allow uploading the same phone number for different campaigns, 
+// we create a compound index.
+RecipientSchema.index({ phoneNumber: 1, campaign: 1 }, { unique: true });
 
 module.exports = mongoose.model('Recipient', RecipientSchema);

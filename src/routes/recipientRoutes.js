@@ -15,6 +15,6 @@ const router = express.Router();
 // - 'upload.single('file')' is the middleware. It looks for a single file in the
 //   form data under a field named 'file'. It processes the file and then...
 // - ...it calls our 'uploadRecipients' controller function.
-router.post('/upload/:campaignId', upload.single('file'), uploadRecipients); // <-- CHANGE ROUTE
+router.post('/upload/:campaignId', upload.single('file'), uploadRecipients);
 
 module.exports = router;
