@@ -6,7 +6,8 @@ const {
   createCampaign,
   testSendMessage,
   executeCampaign,
-  getMessageTemplates, // <-- IMPORT
+  getMessageTemplates,
+  getRecipientCount, // <-- IMPORT
 } = require('../controllers/campaignController');
 
 const router = express.Router(); // <-- THIS LINE WAS MISSING
@@ -15,5 +16,6 @@ router.route('/').get(getCampaigns).post(createCampaign);
 router.post('/test-send', testSendMessage);
 router.get('/templates', getMessageTemplates); // <-- ADD NEW ROUTE
 router.post('/:id/send', executeCampaign);
+router.get('/:id/recipients/count', getRecipientCount);
 
 module.exports = router;

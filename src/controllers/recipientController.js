@@ -25,7 +25,16 @@ const uploadRecipients = async (req, res) => {
       // ... (the rest of the function is the same)
     });
 };
+const getRecipientCount = async (req, res) => {
+  try {
+    const count = await Recipient.countDocuments({ campaign: req.params.id });
+    res.status(200).json({ success: true, count });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Server Error' });
+  }
+};
 
 module.exports = {
   uploadRecipients,
+  getRecipientCount,
 };
