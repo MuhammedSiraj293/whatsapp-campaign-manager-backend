@@ -8,17 +8,23 @@ const campaignRoutes = require('./routes/campaignRoutes');
 const recipientRoutes = require('./routes/recipientRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const replyRoutes = require('./routes/replyRoutes');
-const authRoutes = require('./routes/authRoutes'); // <-- IMPORT NEW ROUTES
+const authRoutes = require('./routes/authRoutes');
 
 dotenv.config();
 connectDB();
 
 const app = express();
 
-app.use(cors());
+// --- THIS IS THE CHANGE ---
+// Explicitly allow requests from your local frontend
+app.use(cors({
+  origin: 'http://localhost:3000' 
+}));
+// --- END OF CHANGE ---
+
 app.use(express.json());
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 10000; // Render uses port 10000
 
 app.get('/', (req, res) => {
   res.send('✅ Backend server is live and connected to MongoDB!');
@@ -29,7 +35,7 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/recipients', recipientRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/replies', replyRoutes);
-app.use('/api/auth', authRoutes); // <-- USE THE NEW ROUTES
+app.use('/api/auth', authRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
