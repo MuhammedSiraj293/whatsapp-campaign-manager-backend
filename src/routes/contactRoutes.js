@@ -6,7 +6,6 @@ const {
   createContactList,
   getAllContactLists,
   uploadContacts,
-  getContactProfile, // <-- IMPORT THE FUNCTION
 } = require('../controllers/contactController');
 
 // Configure Multer for file uploads
@@ -20,8 +19,5 @@ router.route('/lists')
 
 // Route for uploading contacts to a specific list
 router.post('/lists/:listId/upload', upload.single('file'), uploadContacts);
-
-// --- THIS IS THE MISSING ROUTE ---
-router.get('/:phoneNumber/profile', getContactProfile);
 
 module.exports = router;

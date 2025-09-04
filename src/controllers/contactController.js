@@ -3,8 +3,6 @@
 const fs = require('fs');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
-const axios = require('axios');
-const wabaConfig = require('../config/wabaConfig');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
@@ -66,23 +64,6 @@ const uploadContacts = async (req, res) => {
   }
 };
 
-// @desc    Get a contact's profile picture URL from Meta
-const getContactProfile = async (req, res) => {
-  const { phoneNumber } = req.params;
-  const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${phoneNumber}?fields=profile_picture_url`;
-  const headers = {
-    'Authorization': `Bearer ${wabaConfig.accessToken}`,
-  };
-
-  try {
-    const response = await axios.get(url, { headers });
-    res.status(200).json({ success: true, url: response.data.profile_picture_url });
-  } catch (error) {
-    console.error(`Could not fetch profile for ${phoneNumber}:`, error.response ? error.response.data : error.message);
-    res.status(200).json({ success: true, url: null });
-  }
-};
-
 // Helper function to process the parsed data
 async function processContactUpload(results, res, filePath) {
   try {
@@ -110,5 +91,4 @@ module.exports = {
   createContactList,
   getAllContactLists,
   uploadContacts,
-  getContactProfile, // <-- This was missing from the exports
 };
