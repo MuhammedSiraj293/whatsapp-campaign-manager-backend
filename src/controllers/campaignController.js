@@ -1,13 +1,13 @@
 // backend/src/controllers/campaignController.js
 
 const Campaign = require('../models/Campaign');
+const Recipient = require('../models/Recipient'); // Make sure this is imported
 const { sendTextMessage } = require('../integrations/whatsappAPI');
 const { sendCampaign } = require('../services/campaignService');
 const axios = require('axios');
 const wabaConfig = require('../config/wabaConfig');
 
 // @desc    Get all campaigns
-// @route   GET /api/campaigns
 const getCampaigns = async (req, res) => {
   try {
     const campaigns = await Campaign.find();
@@ -17,8 +17,17 @@ const getCampaigns = async (req, res) => {
   }
 };
 
+// @desc    Get the count of recipients for a specific campaign
+const getRecipientCount = async (req, res) => {
+  try {
+    const count = await Recipient.countDocuments({ campaign: req.params.id });
+    res.status(200).json({ success: true, count });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Server Error' });
+  }
+};
+
 // @desc    Create a new campaign
-// @route   POST /api/campaigns
 const createCampaign = async (req, res) => {
   try {
     const { name, message } = req.body;
@@ -30,7 +39,6 @@ const createCampaign = async (req, res) => {
 };
 
 // @desc    Execute and send a campaign
-// @route   POST /api/campaigns/:id/send
 const executeCampaign = async (req, res) => {
   try {
     const campaignId = req.params.id;
@@ -42,7 +50,6 @@ const executeCampaign = async (req, res) => {
 };
 
 // @desc    Send a test WhatsApp message
-// @route   POST /api/campaigns/test-send
 const testSendMessage = async (req, res) => {
   try {
     const recipient = process.env.TEST_RECIPIENT_NUMBER;
@@ -58,7 +65,6 @@ const testSendMessage = async (req, res) => {
 };
 
 // @desc    Get message templates from Meta
-// @route   GET /api/campaigns/templates
 const getMessageTemplates = async (req, res) => {
   const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.businessAccountId}/message_templates`;
   const headers = {
@@ -67,7 +73,6 @@ const getMessageTemplates = async (req, res) => {
 
   try {
     const response = await axios.get(url, { headers });
-    // Filter for approved templates with message bodies
     const approvedTemplates = response.data.data.filter(template =>
       template.status === 'APPROVED' &&
       template.components.some(c => c.type === 'BODY')
@@ -81,6 +86,7 @@ const getMessageTemplates = async (req, res) => {
 
 module.exports = {
   getCampaigns,
+  getRecipientCount,
   createCampaign,
   executeCampaign,
   testSendMessage,

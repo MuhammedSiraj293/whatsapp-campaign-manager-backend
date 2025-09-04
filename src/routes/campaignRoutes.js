@@ -10,12 +10,12 @@ const {
   getRecipientCount, // <-- IMPORT
 } = require('../controllers/campaignController');
 
-const router = express.Router(); // <-- THIS LINE WAS MISSING
+const router = express.Router();
 
 router.route('/').get(getCampaigns).post(createCampaign);
 router.post('/test-send', testSendMessage);
-router.get('/templates', getMessageTemplates); // <-- ADD NEW ROUTE
+router.get('/templates', getMessageTemplates);
+router.get('/:id/recipients/count', getRecipientCount); // <-- ADD NEW ROUTE
 router.post('/:id/send', executeCampaign);
-router.get('/:id/recipients/count', getRecipientCount);
 
 module.exports = router;
