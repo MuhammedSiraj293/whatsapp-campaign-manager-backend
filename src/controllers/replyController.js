@@ -9,27 +9,31 @@ const getConversations = async (req, res) => {
       { $sort: { timestamp: -1 } },
       {
         $group: {
-          _id: '$from',
+          _id: '$from', // Group by the phone number
           lastMessage: { $first: '$body' },
           lastMessageTimestamp: { $first: '$timestamp' },
+          // -- NEW: Count unread messages for each group --
+          unreadCount: {
+            $sum: {
+              $cond: [{ $and: [{ $eq: ['$read', false] }, { $eq: ['$direction', 'incoming'] }] }, 1, 0]
+            }
+          }
         },
       },
-      // --- NEW: Join with the 'contacts' collection ---
       {
         $lookup: {
-          from: 'contacts', // The collection to join with
-          localField: '_id', // The field from the replies collection (the phone number)
-          foreignField: 'phoneNumber', // The field from the contacts collection
-          as: 'contactInfo', // The name of the new array field to add
+          from: 'contacts',
+          localField: '_id',
+          foreignField: 'phoneNumber',
+          as: 'contactInfo',
         },
       },
-      // --- NEW: Reshape the data ---
       {
         $project: {
           _id: 1,
           lastMessage: 1,
           lastMessageTimestamp: 1,
-          // Get the first item from the 'contactInfo' array and get its 'name' field
+          unreadCount: 1, // Include the unread count in the final output
           name: { $arrayElemAt: ['$contactInfo.name', 0] },
         },
       },
@@ -43,7 +47,6 @@ const getConversations = async (req, res) => {
   }
 };
 
-// This function gets all messages for a specific phone number
 const getMessagesByNumber = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
@@ -55,7 +58,21 @@ const getMessagesByNumber = async (req, res) => {
   }
 };
 
-// --- THIS FUNCTION IS NOW UPDATED ---
+// --- NEW FUNCTION TO MARK MESSAGES AS READ ---
+const markAsRead = async (req, res) => {
+    try {
+        const { phoneNumber } = req.params;
+        await Reply.updateMany(
+            { from: phoneNumber, read: false, direction: 'incoming' },
+            { $set: { read: true } }
+        );
+        res.status(200).json({ success: true, message: 'Messages marked as read.' });
+    } catch (error) {
+        console.error(`Error marking messages as read for ${req.params.phoneNumber}:`, error);
+        res.status(500).json({ success: false, error: 'Server Error' });
+    }
+};
+
 const sendReply = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
@@ -65,17 +82,16 @@ const sendReply = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Message body is required.' });
     }
 
-    // 1. Send the message using our WhatsApp service
     const result = await sendTextMessage(phoneNumber, message);
 
-    // 2. If sending was successful, save the outgoing message to our database
     if (result && result.messages && result.messages[0].id) {
       const newReply = new Reply({
         messageId: result.messages[0].id,
-        from: phoneNumber, // The recipient's number
+        from: phoneNumber,
         body: message,
         timestamp: new Date(),
-        direction: 'outgoing', // Set the direction
+        direction: 'outgoing',
+        read: true, // Outgoing messages are always "read" by us
       });
       await newReply.save();
     }
@@ -86,9 +102,9 @@ const sendReply = async (req, res) => {
   }
 };
 
-
 module.exports = {
   getConversations,
   getMessagesByNumber,
+  markAsRead, // <-- EXPORT NEW FUNCTION
   sendReply,
 };
