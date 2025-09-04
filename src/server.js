@@ -16,15 +16,19 @@ connectDB();
 const app = express();
 
 // --- THIS IS THE CHANGE ---
-// Explicitly allow requests from your local frontend
-app.use(cors({
-  origin: 'http://localhost:3000' 
-}));
+// A more robust CORS configuration
+const corsOptions = {
+  origin: 'http://localhost:3000', // Allow your frontend origin
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE", // Allow all common methods
+  credentials: true, // Allow cookies to be sent
+  optionsSuccessStatus: 204
+};
+app.use(cors(corsOptions));
 // --- END OF CHANGE ---
 
 app.use(express.json());
 
-const PORT = process.env.PORT || 10000; // Render uses port 10000
+const PORT = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
   res.send('✅ Backend server is live and connected to MongoDB!');
