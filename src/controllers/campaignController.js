@@ -34,13 +34,16 @@ const getRecipientCount = async (req, res) => {
 // @desc    Create a new campaign
 const createCampaign = async (req, res) => {
   try {
+    // --- THIS IS THE KEY CHANGE ---
+    // We now accept 'contactList' from the request body
     const {
       name,
       message,
       templateName,
       templateLanguage,
       headerImageUrl,
-      bodyVariables
+      bodyVariables,
+      contactList // <-- NEW
     } = req.body;
 
     const campaign = await Campaign.create({
@@ -49,7 +52,8 @@ const createCampaign = async (req, res) => {
       templateName,
       templateLanguage,
       headerImageUrl,
-      bodyVariables
+      bodyVariables,
+      contactList // <-- NEW
     });
     res.status(201).json({ success: true, data: campaign });
   } catch (error) {
@@ -65,21 +69,6 @@ const executeCampaign = async (req, res) => {
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// @desc    Send a test WhatsApp message
-const testSendMessage = async (req, res) => {
-  try {
-    const recipient = process.env.TEST_RECIPIENT_NUMBER;
-    if (!recipient) {
-      return res.status(400).json({ success: false, error: 'TEST_RECIPIENT_NUMBER is not set in .env file.' });
-    }
-    const message = 'Hello from your Campaign Manager! 👋 This is a successful test.';
-    const result = await sendTextMessage(recipient, message);
-    res.status(200).json({ success: true, message: 'Test message sent successfully.', data: result });
-  } catch (error) {
-    res.status(500).json({ success: false, error: 'Failed to send test message.' });
   }
 };
 
@@ -103,11 +92,26 @@ const getMessageTemplates = async (req, res) => {
   }
 };
 
+// @desc    Send a test WhatsApp message
+const testSendMessage = async (req, res) => {
+  try {
+    const recipient = process.env.TEST_RECIPIENT_NUMBER;
+    if (!recipient) {
+      return res.status(400).json({ success: false, error: 'TEST_RECIPIENT_NUMBER is not set in .env file.' });
+    }
+    const message = 'Hello from your Campaign Manager! 👋 This is a successful test.';
+    const result = await sendTextMessage(recipient, message);
+    res.status(200).json({ success: true, message: 'Test message sent successfully.', data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to send test message.' });
+  }
+};
+
 module.exports = {
   getCampaigns,
   getRecipientCount,
   createCampaign,
   executeCampaign,
-  testSendMessage, // <-- This was missing from the exports
+  testSendMessage,
   getMessageTemplates,
 };
