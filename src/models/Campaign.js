@@ -24,6 +24,22 @@ const CampaignSchema = new mongoose.Schema({
     required: true,
   },
   // -- END OF NEW FIELDS --
+
+  // --- NEW FIELDS ---
+  // A place to store the URL for the header image
+  headerImageUrl: {
+    type: String,
+    trim: true,
+  },
+  // A place to store the values for variables like {{1}}, {{2}}
+  bodyVariables: [
+    {
+      type: String,
+      trim: true,
+    }
+  ],
+  // --- END OF NEW FIELDS ---
+  
   status: {
     type: String,
     enum: ['draft', 'scheduled', 'sent', 'failed'],

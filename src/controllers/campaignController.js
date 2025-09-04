@@ -30,15 +30,24 @@ const getRecipientCount = async (req, res) => {
 // @desc    Create a new campaign
 const createCampaign = async (req, res) => {
   try {
-    // Get the new template fields from the request body
-    const { name, message, templateName, templateLanguage } = req.body;
+    // Get the new dynamic fields from the request body
+    const { 
+      name, 
+      message, 
+      templateName, 
+      templateLanguage,
+      headerImageUrl,
+      bodyVariables 
+    } = req.body;
 
-    // Create user in the database with the new fields
+    // Create campaign in the database with the new fields
     const campaign = await Campaign.create({
       name,
       message,
       templateName,
       templateLanguage,
+      headerImageUrl,
+      bodyVariables
     });
     res.status(201).json({ success: true, data: campaign });
   } catch (error) {

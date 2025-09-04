@@ -2,7 +2,6 @@
 
 const Campaign = require('../models/Campaign');
 const Recipient = require('../models/Recipient');
-// Import the new template sending function
 const { sendTemplateMessage } = require('../integrations/whatsappAPI');
 
 /**
@@ -36,11 +35,16 @@ const sendCampaign = async (campaignId) => {
   for (const recipient of recipients) {
     try {
       // --- THIS IS THE KEY CHANGE ---
-      // We now call sendTemplateMessage with the template info from the campaign
+      // We now pass the dynamic data from the campaign document
+      // to the sending function.
       await sendTemplateMessage(
         recipient.phoneNumber,
         campaign.templateName,
-        campaign.templateLanguage
+        campaign.templateLanguage,
+        {
+          headerImageUrl: campaign.headerImageUrl,
+          bodyVariables: campaign.bodyVariables,
+        }
       );
       successCount++;
     } catch (error) {

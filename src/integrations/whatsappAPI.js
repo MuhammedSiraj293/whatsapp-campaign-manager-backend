@@ -3,25 +3,15 @@
 const axios = require('axios');
 const wabaConfig = require('../config/wabaConfig');
 
-/**
- * Sends a simple text message (for replies within the 24-hour window).
- * @param {string} to - The recipient's phone number.
- * @param {string} text - The content of the message.
- * @returns {Promise<object>} The response data from the API.
- */
+// This function remains unchanged.
 const sendTextMessage = async (to, text) => {
   const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.phoneNumberId}/messages`;
-
   const data = {
     messaging_product: 'whatsapp',
     to: to,
     type: 'text',
-    text: {
-      preview_url: false,
-      body: text,
-    },
+    text: { preview_url: false, body: text },
   };
-
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${wabaConfig.accessToken}`,
@@ -38,17 +28,50 @@ const sendTextMessage = async (to, text) => {
   }
 };
 
+
 /**
- * Sends an approved template message.
+ * Sends an approved template message with dynamic components.
  * @param {string} to - The recipient's phone number.
  * @param {string} templateName - The name of the approved template.
- * @param {string} languageCode - The language code of the template (e.g., 'en' or 'en_US').
+ * @param {string} languageCode - The language code of the template.
+ * @param {object} options - An object containing dynamic data.
+ * @param {string} [options.headerImageUrl] - URL for the header image.
+ * @param {string[]} [options.bodyVariables] - Array of strings for body variables.
  * @returns {Promise<object>} The response data from the API.
  */
-const sendTemplateMessage = async (to, templateName, languageCode) => {
+const sendTemplateMessage = async (to, templateName, languageCode, options = {}) => {
   const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.phoneNumberId}/messages`;
+  
+  const components = [];
 
-  // This is the specific data structure for a template message
+  // --- NEW: Dynamically build the components array ---
+
+  // Add header component if an image URL is provided
+  if (options.headerImageUrl) {
+    components.push({
+      type: 'header',
+      parameters: [
+        {
+          type: 'image',
+          image: {
+            link: options.headerImageUrl,
+          },
+        },
+      ],
+    });
+  }
+
+  // Add body component if variables are provided
+  if (options.bodyVariables && options.bodyVariables.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: options.bodyVariables.map(variable => ({
+        type: 'text',
+        text: variable,
+      })),
+    });
+  }
+
   const data = {
     messaging_product: 'whatsapp',
     to: to,
@@ -58,6 +81,8 @@ const sendTemplateMessage = async (to, templateName, languageCode) => {
       language: {
         code: languageCode,
       },
+      // Add the components array to the payload
+      components: components,
     },
   };
 
@@ -78,7 +103,6 @@ const sendTemplateMessage = async (to, templateName, languageCode) => {
 };
 
 
-// Export both functions
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
