@@ -1,7 +1,7 @@
 // backend/src/controllers/replyController.js
 
 const Reply = require('../models/Reply');
-const { sendTextMessage } = require('../integrations/whatsappAPI'); // <-- IMPORT
+const { sendTextMessage } = require('../integrations/whatsappAPI');
 
 // This function gets a list of unique conversations
 const getConversations = async (req, res) => {
@@ -36,9 +36,7 @@ const getMessagesByNumber = async (req, res) => {
   }
 };
 
-// --- NEW FUNCTION TO SEND A REPLY ---
-// @desc    Send a text message reply to a specific number
-// @route   POST /api/replies/conversations/:phoneNumber
+// --- THIS FUNCTION IS NOW UPDATED ---
 const sendReply = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
@@ -48,11 +46,20 @@ const sendReply = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Message body is required.' });
     }
 
-    // Use our existing WhatsApp service to send the message
+    // 1. Send the message using our WhatsApp service
     const result = await sendTextMessage(phoneNumber, message);
 
-    // Note: We are not saving the outgoing message to our database in this version.
-    // In a full application, you would save this message with a direction of 'outgoing'.
+    // 2. If sending was successful, save the outgoing message to our database
+    if (result && result.messages && result.messages[0].id) {
+      const newReply = new Reply({
+        messageId: result.messages[0].id,
+        from: phoneNumber, // The recipient's number
+        body: message,
+        timestamp: new Date(),
+        direction: 'outgoing', // Set the direction
+      });
+      await newReply.save();
+    }
 
     res.status(200).json({ success: true, data: result });
   } catch (error) {
@@ -64,5 +71,5 @@ const sendReply = async (req, res) => {
 module.exports = {
   getConversations,
   getMessagesByNumber,
-  sendReply, // <-- EXPORT NEW FUNCTION
+  sendReply,
 };
