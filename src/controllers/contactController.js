@@ -3,17 +3,17 @@
 const fs = require('fs');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
+const axios = require('axios');
+const wabaConfig = require('../config/wabaConfig');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
 // @desc    Create a new contact list (segment)
-// @route   POST /api/contacts/lists
 const createContactList = async (req, res) => {
   const { name } = req.body;
   if (!name) {
     return res.status(400).json({ success: false, error: 'Please provide a list name.' });
   }
-
   try {
     const contactList = await ContactList.create({ name });
     res.status(201).json({ success: true, data: contactList });
@@ -23,7 +23,6 @@ const createContactList = async (req, res) => {
 };
 
 // @desc    Get all contact lists
-// @route   GET /api/contacts/lists
 const getAllContactLists = async (req, res) => {
   try {
     const contactLists = await ContactList.find().sort({ createdAt: -1 });
@@ -33,9 +32,7 @@ const getAllContactLists = async (req, res) => {
   }
 };
 
-
 // @desc    Upload contacts to a specific list
-// @route   POST /api/contacts/lists/:listId/upload
 const uploadContacts = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, error: 'No file uploaded.' });
@@ -69,6 +66,23 @@ const uploadContacts = async (req, res) => {
   }
 };
 
+// @desc    Get a contact's profile picture URL from Meta
+const getContactProfile = async (req, res) => {
+  const { phoneNumber } = req.params;
+  const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${phoneNumber}?fields=profile_picture_url`;
+  const headers = {
+    'Authorization': `Bearer ${wabaConfig.accessToken}`,
+  };
+
+  try {
+    const response = await axios.get(url, { headers });
+    res.status(200).json({ success: true, url: response.data.profile_picture_url });
+  } catch (error) {
+    console.error(`Could not fetch profile for ${phoneNumber}:`, error.response ? error.response.data : error.message);
+    res.status(200).json({ success: true, url: null });
+  }
+};
+
 // Helper function to process the parsed data
 async function processContactUpload(results, res, filePath) {
   try {
@@ -96,4 +110,5 @@ module.exports = {
   createContactList,
   getAllContactLists,
   uploadContacts,
+  getContactProfile, // <-- This was missing from the exports
 };
