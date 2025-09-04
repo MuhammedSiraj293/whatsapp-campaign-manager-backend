@@ -1,7 +1,7 @@
 // backend/src/controllers/campaignController.js
 
 const Campaign = require('../models/Campaign');
-const Recipient = require('../models/Recipient');
+const Contact = require('../models/Contact');
 const { sendTextMessage } = require('../integrations/whatsappAPI');
 const { sendCampaign } = require('../services/campaignService');
 const axios = require('axios');
@@ -17,10 +17,14 @@ const getCampaigns = async (req, res) => {
   }
 };
 
-// @desc    Get the count of recipients for a specific campaign
+// @desc    Get the count of contacts for a specific campaign's list
 const getRecipientCount = async (req, res) => {
   try {
-    const count = await Recipient.countDocuments({ campaign: req.params.id });
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign || !campaign.contactList) {
+        return res.status(200).json({ success: true, count: 0 });
+    }
+    const count = await Contact.countDocuments({ contactList: campaign.contactList });
     res.status(200).json({ success: true, count });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Server Error' });
@@ -30,17 +34,15 @@ const getRecipientCount = async (req, res) => {
 // @desc    Create a new campaign
 const createCampaign = async (req, res) => {
   try {
-    // Get the new dynamic fields from the request body
-    const { 
-      name, 
-      message, 
-      templateName, 
+    const {
+      name,
+      message,
+      templateName,
       templateLanguage,
       headerImageUrl,
-      bodyVariables 
+      bodyVariables
     } = req.body;
 
-    // Create campaign in the database with the new fields
     const campaign = await Campaign.create({
       name,
       message,
@@ -106,6 +108,6 @@ module.exports = {
   getRecipientCount,
   createCampaign,
   executeCampaign,
-  testSendMessage,
+  testSendMessage, // <-- This was missing from the exports
   getMessageTemplates,
 };
