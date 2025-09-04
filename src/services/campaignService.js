@@ -1,44 +1,37 @@
 // backend/src/services/campaignService.js
 
 const Campaign = require('../models/Campaign');
-const Recipient = require('../models/Recipient');
+const Contact = require('../models/Contact'); // <-- Use Contact model
 const { sendTemplateMessage } = require('../integrations/whatsappAPI');
 
-/**
- * Fetches a campaign and sends its message to its associated recipients.
- * @param {string} campaignId - The ID of the campaign to send.
- */
 const sendCampaign = async (campaignId) => {
-  // 1. Find the campaign by its ID
+  // 1. Find the campaign
   const campaign = await Campaign.findById(campaignId);
   if (!campaign) {
     throw new Error('Campaign not found.');
+  }
+  if (!campaign.contactList) {
+    throw new Error('No contact list is assigned to this campaign.');
   }
   if (campaign.status === 'sent') {
     throw new Error('This campaign has already been sent.');
   }
 
-  // 2. Find only the recipients linked to this specific campaign
-  const recipients = await Recipient.find({ 
-    campaign: campaignId, 
-    status: 'subscribed' 
-  });
+  // 2. Find all contacts from the associated contact list
+  const contacts = await Contact.find({ contactList: campaign.contactList });
 
-  if (recipients.length === 0) {
-    throw new Error('No subscribed recipients found for this campaign.');
+  if (contacts.length === 0) {
+    throw new Error('The assigned contact list is empty.');
   }
 
   let successCount = 0;
   let failureCount = 0;
 
-  // 3. Loop through each recipient and send the template message
-  for (const recipient of recipients) {
+  // 3. Loop through each contact and send the template message
+  for (const contact of contacts) {
     try {
-      // --- THIS IS THE KEY CHANGE ---
-      // We now pass the dynamic data from the campaign document
-      // to the sending function.
       await sendTemplateMessage(
-        recipient.phoneNumber,
+        contact.phoneNumber,
         campaign.templateName,
         campaign.templateLanguage,
         {
@@ -48,19 +41,19 @@ const sendCampaign = async (campaignId) => {
       );
       successCount++;
     } catch (error) {
-      console.error(`Failed to send message to ${recipient.phoneNumber}:`, error);
+      console.error(`Failed to send message to ${contact.phoneNumber}:`, error);
       failureCount++;
     }
   }
 
-  // 4. After sending, update the campaign's status
+  // 4. Update the campaign's status
   campaign.status = 'sent';
   await campaign.save();
 
-  // 5. Return a summary of the operation
+  // 5. Return a summary
   return {
     message: `Campaign "${campaign.name}" sent.`,
-    totalRecipients: recipients.length,
+    totalRecipients: contacts.length,
     successCount,
     failureCount,
   };
