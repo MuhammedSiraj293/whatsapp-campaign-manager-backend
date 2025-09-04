@@ -1,7 +1,7 @@
 // backend/src/controllers/campaignController.js
 
 const Campaign = require('../models/Campaign');
-const Recipient = require('../models/Recipient'); // Make sure this is imported
+const Recipient = require('../models/Recipient');
 const { sendTextMessage } = require('../integrations/whatsappAPI');
 const { sendCampaign } = require('../services/campaignService');
 const axios = require('axios');
@@ -10,7 +10,7 @@ const wabaConfig = require('../config/wabaConfig');
 // @desc    Get all campaigns
 const getCampaigns = async (req, res) => {
   try {
-    const campaigns = await Campaign.find();
+    const campaigns = await Campaign.find().sort({ createdAt: -1 });
     res.status(200).json({ success: true, count: campaigns.length, data: campaigns });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Server Error' });
@@ -30,8 +30,16 @@ const getRecipientCount = async (req, res) => {
 // @desc    Create a new campaign
 const createCampaign = async (req, res) => {
   try {
-    const { name, message } = req.body;
-    const campaign = await Campaign.create({ name, message });
+    // Get the new template fields from the request body
+    const { name, message, templateName, templateLanguage } = req.body;
+
+    // Create user in the database with the new fields
+    const campaign = await Campaign.create({
+      name,
+      message,
+      templateName,
+      templateLanguage,
+    });
     res.status(201).json({ success: true, data: campaign });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });

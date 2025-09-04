@@ -2,7 +2,8 @@
 
 const Campaign = require('../models/Campaign');
 const Recipient = require('../models/Recipient');
-const { sendTextMessage } = require('../integrations/whatsappAPI');
+// Import the new template sending function
+const { sendTemplateMessage } = require('../integrations/whatsappAPI');
 
 /**
  * Fetches a campaign and sends its message to its associated recipients.
@@ -31,10 +32,16 @@ const sendCampaign = async (campaignId) => {
   let successCount = 0;
   let failureCount = 0;
 
-  // 3. Loop through each associated recipient and send the message
+  // 3. Loop through each recipient and send the template message
   for (const recipient of recipients) {
     try {
-      await sendTextMessage(recipient.phoneNumber, campaign.message);
+      // --- THIS IS THE KEY CHANGE ---
+      // We now call sendTemplateMessage with the template info from the campaign
+      await sendTemplateMessage(
+        recipient.phoneNumber,
+        campaign.templateName,
+        campaign.templateLanguage
+      );
       successCount++;
     } catch (error) {
       console.error(`Failed to send message to ${recipient.phoneNumber}:`, error);

@@ -2,28 +2,35 @@
 
 const mongoose = require('mongoose');
 
-// This is the blueprint for our campaign data
 const CampaignSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, 'Please provide a campaign name'],
-    trim: true, // Removes any extra whitespace
+    trim: true,
   },
+  // We still save the message body for display purposes in the UI
   message: {
     type: String,
-    required: [true, 'Please provide a message'],
+    required: true,
   },
+  // -- NEW FIELDS --
+  // We now store the official template name and language code
+  templateName: {
+    type: String,
+    required: true,
+  },
+  templateLanguage: {
+    type: String,
+    required: true,
+  },
+  // -- END OF NEW FIELDS --
   status: {
     type: String,
-    enum: ['draft', 'scheduled', 'sent', 'failed'], // The status must be one of these values
-    default: 'draft', // The default value when a new campaign is created
+    enum: ['draft', 'scheduled', 'sent', 'failed'],
+    default: 'draft',
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+}, {
+  timestamps: true
 });
 
-// Create and export the model based on the schema
-// Mongoose will create a collection named "campaigns" (plural and lowercase)
 module.exports = mongoose.model('Campaign', CampaignSchema);
