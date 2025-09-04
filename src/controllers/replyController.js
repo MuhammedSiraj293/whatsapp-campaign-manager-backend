@@ -3,7 +3,6 @@
 const Reply = require('../models/Reply');
 const { sendTextMessage } = require('../integrations/whatsappAPI');
 
-// This function gets a list of unique conversations
 const getConversations = async (req, res) => {
   try {
     const conversations = await Reply.aggregate([
@@ -15,8 +14,28 @@ const getConversations = async (req, res) => {
           lastMessageTimestamp: { $first: '$timestamp' },
         },
       },
+      // --- NEW: Join with the 'contacts' collection ---
+      {
+        $lookup: {
+          from: 'contacts', // The collection to join with
+          localField: '_id', // The field from the replies collection (the phone number)
+          foreignField: 'phoneNumber', // The field from the contacts collection
+          as: 'contactInfo', // The name of the new array field to add
+        },
+      },
+      // --- NEW: Reshape the data ---
+      {
+        $project: {
+          _id: 1,
+          lastMessage: 1,
+          lastMessageTimestamp: 1,
+          // Get the first item from the 'contactInfo' array and get its 'name' field
+          name: { $arrayElemAt: ['$contactInfo.name', 0] },
+        },
+      },
       { $sort: { lastMessageTimestamp: -1 } },
     ]);
+
     res.status(200).json({ success: true, data: conversations });
   } catch (error) {
     console.error('Error fetching conversations:', error);
