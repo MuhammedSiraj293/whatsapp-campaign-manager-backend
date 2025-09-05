@@ -1,6 +1,8 @@
 // backend/src/middleware/webhookHandler.js
 
 const Reply = require('../models/Reply');
+// --- THIS LINE WAS MISSING ---
+const { getMediaUrl } = require('../integrations/whatsappAPI'); 
 
 // This function handles the webhook verification challenge from Meta.
 const verifyWebhook = (req, res) => {
@@ -19,7 +21,6 @@ const verifyWebhook = (req, res) => {
   }
 };
 
-// This function processes incoming message data from Meta.
 const processWebhook = async (req, res) => {
   const body = req.body;
 
@@ -35,7 +36,6 @@ const processWebhook = async (req, res) => {
           direction: 'incoming',
         };
 
-        // --- NEW LOGIC TO HANDLE DIFFERENT MESSAGE TYPES ---
         switch (message.type) {
           case 'text':
             newReplyData.body = message.text.body;
@@ -46,10 +46,9 @@ const processWebhook = async (req, res) => {
           case 'audio':
           case 'document':
             const mediaId = message[message.type].id;
-            const url = await getMediaUrl(mediaId);
+            const url = await getMediaUrl(mediaId); // <-- This line was causing the error
             newReplyData.mediaUrl = url;
             newReplyData.mediaType = message.type;
-            // For media with captions
             if (message[message.type].caption) {
                 newReplyData.body = message[message.type].caption;
             }
@@ -60,7 +59,6 @@ const processWebhook = async (req, res) => {
             break;
         }
 
-        // Save to DB if we have something to save
         if (newReplyData.body || newReplyData.mediaUrl) {
             const newReply = new Reply(newReplyData);
             await newReply.save();
@@ -77,6 +75,7 @@ const processWebhook = async (req, res) => {
     res.sendStatus(404);
   }
 };
+
 module.exports = {
   verifyWebhook,
   processWebhook,
