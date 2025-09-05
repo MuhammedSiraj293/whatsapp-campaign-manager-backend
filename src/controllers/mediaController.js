@@ -16,7 +16,7 @@ const getMediaFile = async (req, res) => {
     const mediaUrl = urlResponse.data.url;
 
     if (!mediaUrl) {
-      return res.status(404).json({ success: false, error: 'Media URL not found.' });
+      return res.status(404).send('Media URL not found.');
     }
 
     // 2. Download the media file from Meta as a stream
@@ -31,7 +31,7 @@ const getMediaFile = async (req, res) => {
 
   } catch (error) {
     console.error('Error proxying media:', error.response ? error.response.data : error.message);
-    res.status(500).json({ success: false, error: 'Failed to fetch media.' });
+    res.status(500).send('Failed to fetch media.');
   }
 };
 
