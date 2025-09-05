@@ -1,9 +1,7 @@
 // backend/src/middleware/webhookHandler.js
 
 const Reply = require('../models/Reply');
-
-// We no longer need getMediaUrl here
-// const { getMediaUrl } = require('../integrations/whatsappAPI'); 
+const { getMediaUrl } = require('../integrations/whatsappAPI');
 
 const verifyWebhook = (req, res) => {
   const mode = req.query['hub.mode'];
@@ -46,9 +44,7 @@ const processWebhook = async (req, res) => {
           case 'audio':
           case 'document':
             const mediaId = message[message.type].id;
-            // --- THIS IS THE KEY CHANGE ---
-            // Save the permanent ID, not the temporary URL
-            newReplyData.mediaId = mediaId; 
+            newReplyData.mediaId = mediaId; // Save the permanent ID
             newReplyData.mediaType = message.type;
             if (message[message.type].caption) {
                 newReplyData.body = message[message.type].caption;

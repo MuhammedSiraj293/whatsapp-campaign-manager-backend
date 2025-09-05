@@ -11,10 +11,7 @@ const sendTextMessage = async (to, text) => {
     messaging_product: 'whatsapp',
     to: to,
     type: 'text',
-    text: {
-      preview_url: false,
-      body: text,
-    },
+    text: { preview_url: false, body: text },
   };
   const headers = {
     'Content-Type': 'application/json',
@@ -97,17 +94,30 @@ const sendMediaMessage = async (to, file) => {
         };
         const sendResponse = await axios.post(sendUrl, sendData, { headers: sendHeaders });
         
-        // --- THIS IS THE KEY CHANGE ---
-        // Return both the final response and the mediaId
         return { sendResponse: sendResponse.data, mediaId: mediaId };
 
     } catch (error) {
         console.error('❌ Error sending WhatsApp media message:', error.response ? error.response.data : error.message);
         throw new Error('Failed to send WhatsApp media message.');
     } finally {
-        fs.unlinkSync(file.path);
+        if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+        }
     }
 };
+
+const getMediaUrl = async (mediaId) => {
+    try {
+        const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${mediaId}`;
+        const headers = { 'Authorization': `Bearer ${wabaConfig.accessToken}` };
+        const response = await axios.get(url, { headers });
+        return response.data.url;
+    } catch (error) {
+        console.error('❌ Error fetching media URL:', error.response ? error.response.data : error.message);
+        return null;
+    }
+};
+
 
 module.exports = {
   sendTextMessage,

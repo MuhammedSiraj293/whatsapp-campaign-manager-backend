@@ -1,7 +1,7 @@
 // backend/src/controllers/replyController.js
 
 const Reply = require('../models/Reply');
-const { sendTextMessage } = require('../integrations/whatsappAPI');
+const { sendTextMessage, sendMediaMessage } = require('../integrations/whatsappAPI');
 
 const getConversations = async (req, res) => {
   try {
@@ -9,10 +9,9 @@ const getConversations = async (req, res) => {
       { $sort: { timestamp: -1 } },
       {
         $group: {
-          _id: '$from', // Group by the phone number
+          _id: '$from',
           lastMessage: { $first: '$body' },
           lastMessageTimestamp: { $first: '$timestamp' },
-          // -- NEW: Count unread messages for each group --
           unreadCount: {
             $sum: {
               $cond: [{ $and: [{ $eq: ['$read', false] }, { $eq: ['$direction', 'incoming'] }] }, 1, 0]
@@ -33,7 +32,7 @@ const getConversations = async (req, res) => {
           _id: 1,
           lastMessage: 1,
           lastMessageTimestamp: 1,
-          unreadCount: 1, // Include the unread count in the final output
+          unreadCount: 1,
           name: { $arrayElemAt: ['$contactInfo.name', 0] },
         },
       },
@@ -109,10 +108,8 @@ const sendMediaReply = async (req, res) => {
             return res.status(400).json({ success: false, error: 'No file uploaded.' });
         }
 
-        // The service now returns an object with the response and the mediaId
         const result = await sendMediaMessage(phoneNumber, req.file);
 
-        // Save a record of the media message to our database
         if (result && result.sendResponse && result.sendResponse.messages[0].id) {
             const newReply = new Reply({
                 messageId: result.sendResponse.messages[0].id,
@@ -121,7 +118,7 @@ const sendMediaReply = async (req, res) => {
                 direction: 'outgoing',
                 read: true,
                 mediaType: req.file.mimetype.split('/')[0],
-                mediaId: result.mediaId, // <-- Save the permanent mediaId
+                mediaId: result.mediaId, // Correctly save the mediaId
             });
             await newReply.save();
         }

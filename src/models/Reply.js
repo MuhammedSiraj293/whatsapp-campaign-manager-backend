@@ -15,7 +15,6 @@ const ReplySchema = new mongoose.Schema({
   body: {
     type: String,
     trim: true,
-    // Body is no longer required, as a message could be only an image
   },
   timestamp: {
     type: Date,
@@ -30,13 +29,15 @@ const ReplySchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  // --- NEW FIELDS ---
- mediaId: { // <-- RENAMED FROM mediaUrl
+  // This is the corrected field name
+  mediaId: {
     type: String,
   },
   mediaType: {
-    type: String, 
+    type: String, // e.g., 'image', 'video', 'audio', 'document'
   },
-}, { timestamps: true });
+}, {
+  timestamps: true,
+});
 
 module.exports = mongoose.model('Reply', ReplySchema);
