@@ -171,10 +171,28 @@ const sendMediaMessage = async (to, file) => {
         fs.unlinkSync(file.path);
     }
 };
+// --- NEW HELPER FUNCTION ---
+/**
+ * Gets a temporary download URL for a given media ID.
+ * @param {string} mediaId - The ID of the media from Meta.
+ * @returns {Promise<string|null>} The temporary URL or null.
+ */
+const getMediaUrl = async (mediaId) => {
+    try {
+        const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${mediaId}`;
+        const headers = { 'Authorization': `Bearer ${wabaConfig.accessToken}` };
 
+        const response = await axios.get(url, { headers });
+        return response.data.url;
+    } catch (error) {
+        console.error('❌ Error fetching media URL:', error.response ? error.response.data : error.message);
+        return null;
+    }
+};
 
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
   sendMediaMessage,
+    getMediaUrl,
 };

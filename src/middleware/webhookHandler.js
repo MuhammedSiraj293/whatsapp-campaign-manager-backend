@@ -26,18 +26,47 @@ const processWebhook = async (req, res) => {
   if (body.object === 'whatsapp_business_account') {
     const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    if (message && message.type === 'text') {
+    if (message) {
       try {
-        const newReply = new Reply({
+        let newReplyData = {
           messageId: message.id,
           from: message.from,
-          body: message.text.body,
           timestamp: new Date(message.timestamp * 1000),
-          direction: 'incoming', // <-- SET THE DIRECTION
-        });
+          direction: 'incoming',
+        };
 
-        await newReply.save();
-        console.log('✅ Incoming reply saved to DB:', newReply);
+        // --- NEW LOGIC TO HANDLE DIFFERENT MESSAGE TYPES ---
+        switch (message.type) {
+          case 'text':
+            newReplyData.body = message.text.body;
+            break;
+
+          case 'image':
+          case 'video':
+          case 'audio':
+          case 'document':
+            const mediaId = message[message.type].id;
+            const url = await getMediaUrl(mediaId);
+            newReplyData.mediaUrl = url;
+            newReplyData.mediaType = message.type;
+            // For media with captions
+            if (message[message.type].caption) {
+                newReplyData.body = message[message.type].caption;
+            }
+            break;
+
+          default:
+            console.log(`Unsupported message type received: ${message.type}`);
+            break;
+        }
+
+        // Save to DB if we have something to save
+        if (newReplyData.body || newReplyData.mediaUrl) {
+            const newReply = new Reply(newReplyData);
+            await newReply.save();
+            console.log('✅ Incoming reply saved to DB:', newReply);
+        }
+
       } catch (error) {
         console.error('❌ Error saving reply to DB:', error);
       }
@@ -48,7 +77,6 @@ const processWebhook = async (req, res) => {
     res.sendStatus(404);
   }
 };
-
 module.exports = {
   verifyWebhook,
   processWebhook,
