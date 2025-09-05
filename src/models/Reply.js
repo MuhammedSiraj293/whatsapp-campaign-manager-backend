@@ -14,27 +14,30 @@ const ReplySchema = new mongoose.Schema({
   },
   body: {
     type: String,
-    required: true,
     trim: true,
+    // Body is no longer required, as a message could be only an image
   },
   timestamp: {
     type: Date,
     required: true,
-  },
-  recipient: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Recipient',
   },
   direction: {
     type: String,
     enum: ['incoming', 'outgoing'],
     required: true,
   },
-  // --- NEW FIELD ---
   read: {
     type: Boolean,
     default: false,
   },
+  // --- NEW FIELDS ---
+  mediaUrl: {
+    type: String,
+  },
+  mediaType: {
+    type: String, // e.g., 'image', 'video', 'audio', 'document'
+  },
+  // --- END OF NEW FIELDS ---
 }, {
   timestamps: true,
 });
