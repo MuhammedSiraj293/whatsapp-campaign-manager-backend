@@ -58,7 +58,6 @@ const getMessagesByNumber = async (req, res) => {
   }
 };
 
-// --- NEW FUNCTION TO MARK MESSAGES AS READ ---
 const markAsRead = async (req, res) => {
     try {
         const { phoneNumber } = req.params;
@@ -72,7 +71,7 @@ const markAsRead = async (req, res) => {
         res.status(500).json({ success: false, error: 'Server Error' });
     }
 };
-// @desc    Send a text message reply to a specific number
+
 const sendReply = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
@@ -102,8 +101,6 @@ const sendReply = async (req, res) => {
   }
 };
 
-
-// --- NEW FUNCTION TO SEND A MEDIA REPLY ---
 const sendMediaReply = async (req, res) => {
     try {
         const { phoneNumber } = req.params;
@@ -112,27 +109,24 @@ const sendMediaReply = async (req, res) => {
             return res.status(400).json({ success: false, error: 'No file uploaded.' });
         }
 
-        // Use our new WhatsApp service to upload and send the media
+        // The service now returns an object with the response and the mediaId
         const result = await sendMediaMessage(phoneNumber, req.file);
 
         // Save a record of the media message to our database
-        if (result && result.messages && result.messages[0].id) {
+        if (result && result.sendResponse && result.sendResponse.messages[0].id) {
             const newReply = new Reply({
-                messageId: result.messages[0].id,
+                messageId: result.sendResponse.messages[0].id,
                 from: phoneNumber,
                 timestamp: new Date(),
                 direction: 'outgoing',
                 read: true,
                 mediaType: req.file.mimetype.split('/')[0],
-                // Note: Meta does not provide a permanent URL. In a production app,
-                // you would store the file in your own cloud storage (like S3)
-                // and save your own URL here. For now, we'll leave it blank.
-                mediaUrl: '', 
+                mediaId: result.mediaId, // <-- Save the permanent mediaId
             });
             await newReply.save();
         }
 
-        res.status(200).json({ success: true, data: result });
+        res.status(200).json({ success: true, data: result.sendResponse });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Failed to send media reply.' });
     }
@@ -143,5 +137,5 @@ module.exports = {
   getMessagesByNumber,
   markAsRead,
   sendReply,
-  sendMediaReply, // <-- EXPORT NEW FUNCTION
+  sendMediaReply,
 };

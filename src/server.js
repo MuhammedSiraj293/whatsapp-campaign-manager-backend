@@ -11,6 +11,7 @@ const webhookRoutes = require('./routes/webhookRoutes');
 const replyRoutes = require('./routes/replyRoutes');
 const authRoutes = require('./routes/authRoutes');
 const contactRoutes = require('./routes/contactRoutes');
+const mediaRoutes = require('./routes/mediaRoutes'); // <-- IMPORT NEW ROUTES
 
 dotenv.config();
 connectDB();
@@ -40,6 +41,7 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/replies', replyRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/media', mediaRoutes); // <-- USE THE NEW ROUTES
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);

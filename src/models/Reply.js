@@ -31,15 +31,12 @@ const ReplySchema = new mongoose.Schema({
     default: false,
   },
   // --- NEW FIELDS ---
-  mediaUrl: {
+ mediaId: { // <-- RENAMED FROM mediaUrl
     type: String,
   },
   mediaType: {
-    type: String, // e.g., 'image', 'video', 'audio', 'document'
+    type: String, 
   },
-  // --- END OF NEW FIELDS ---
-}, {
-  timestamps: true,
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Reply', ReplySchema);

@@ -1,10 +1,10 @@
 // backend/src/middleware/webhookHandler.js
 
 const Reply = require('../models/Reply');
-// --- THIS LINE WAS MISSING ---
-const { getMediaUrl } = require('../integrations/whatsappAPI'); 
 
-// This function handles the webhook verification challenge from Meta.
+// We no longer need getMediaUrl here
+// const { getMediaUrl } = require('../integrations/whatsappAPI'); 
+
 const verifyWebhook = (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -46,8 +46,9 @@ const processWebhook = async (req, res) => {
           case 'audio':
           case 'document':
             const mediaId = message[message.type].id;
-            const url = await getMediaUrl(mediaId); // <-- This line was causing the error
-            newReplyData.mediaUrl = url;
+            // --- THIS IS THE KEY CHANGE ---
+            // Save the permanent ID, not the temporary URL
+            newReplyData.mediaId = mediaId; 
             newReplyData.mediaType = message.type;
             if (message[message.type].caption) {
                 newReplyData.body = message[message.type].caption;
@@ -59,7 +60,7 @@ const processWebhook = async (req, res) => {
             break;
         }
 
-        if (newReplyData.body || newReplyData.mediaUrl) {
+        if (newReplyData.body || newReplyData.mediaId) {
             const newReply = new Reply(newReplyData);
             await newReply.save();
             console.log('✅ Incoming reply saved to DB:', newReply);
