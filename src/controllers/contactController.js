@@ -6,41 +6,23 @@ const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
-/**
- * Extracts variables from a row of data (from CSV/XLSX).
- * It intelligently handles fallbacks for the first variable.
- * @param {object} row - A row object from the parsed file.
- * @returns {string[]} An array of variable values.
- */
 const extractVariables = (row) => {
-  // Find all keys in the row object that start with 'var' (var1, var2, etc.) and sort them
-  const varKeys = Object.keys(row)
-    .filter(k => k.startsWith('var'))
-    .sort();
-
-  // If the file has no 'var' columns at all, return an empty array.
+  const varKeys = Object.keys(row).filter(k => k.startsWith('var')).sort();
   if (varKeys.length === 0) {
-    return [];
+    // If the template requires a variable, provide a fallback.
+    // This assumes the first variable is the name.
+    return [row.name || 'Valued Customer'];
   }
-
-  // Map the values from the var keys
   const variables = varKeys.map(key => row[key]);
-
-  // --- THIS IS THE IMPROVED FALLBACK LOGIC ---
-  // If the first variable (var1) is missing or empty, use the name or a default value.
   if (!variables[0]) {
     variables[0] = row.name || 'Valued Customer';
   }
-
   return variables;
 };
 
-// @desc    Create a new contact list (segment)
 const createContactList = async (req, res) => {
   const { name } = req.body;
-  if (!name) {
-    return res.status(400).json({ success: false, error: 'Please provide a list name.' });
-  }
+  if (!name) return res.status(400).json({ success: false, error: 'Please provide a list name.' });
   try {
     const contactList = await ContactList.create({ name });
     res.status(201).json({ success: true, data: contactList });
@@ -49,7 +31,6 @@ const createContactList = async (req, res) => {
   }
 };
 
-// @desc    Get all contact lists
 const getAllContactLists = async (req, res) => {
   try {
     const contactLists = await ContactList.find().sort({ createdAt: -1 });
@@ -59,22 +40,15 @@ const getAllContactLists = async (req, res) => {
   }
 };
 
-// @desc    Upload contacts to a specific list
 const uploadContacts = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: 'No file uploaded.' });
-  }
-
+  if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded.' });
   const { listId } = req.params;
   const filePath = req.file.path;
   let results = [];
-
   try {
     const processRow = (row) => {
       const cleanedRow = {};
-      Object.keys(row).forEach(key => {
-        cleanedRow[key.trim()] = row[key];
-      });
+      Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
       return {
         phoneNumber: cleanedRow.phoneNumber,
         name: cleanedRow.name,
@@ -82,12 +56,8 @@ const uploadContacts = async (req, res) => {
         variables: extractVariables(cleanedRow),
       };
     };
-
     if (req.file.mimetype === 'text/csv') {
-      fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('data', (data) => results.push(processRow(data)))
-        .on('end', () => processContactUpload(results, res, filePath));
+      fs.createReadStream(filePath).pipe(csv()).on('data', (data) => results.push(processRow(data))).on('end', () => processContactUpload(results, res, filePath));
     } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || req.file.mimetype === 'application/vnd.ms-excel') {
       const workbook = XLSX.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
@@ -100,36 +70,24 @@ const uploadContacts = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Unsupported file type.' });
     }
   } catch (error) {
-      fs.unlinkSync(filePath);
-      res.status(500).json({ success: false, error: 'Error processing file.' });
+    fs.unlinkSync(filePath);
+    res.status(500).json({ success: false, error: 'Error processing file.' });
   }
 };
 
-// Helper function to process the parsed data
 async function processContactUpload(results, res, filePath) {
   try {
     if (results.length === 0) {
-        fs.unlinkSync(filePath);
-        return res.status(400).json({ success: false, error: 'The file is empty or headers are incorrect.' });
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ success: false, error: 'The file is empty or headers are incorrect.' });
     }
     await Contact.insertMany(results, { ordered: false });
-    res.status(201).json({
-      success: true,
-      message: `${results.length} contacts successfully imported.`,
-    });
+    res.status(201).json({ success: true, message: `${results.length} contacts successfully imported.` });
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: `Import failed. Some contacts may have been duplicates within this list.`,
-      error: error.message,
-    });
+    res.status(400).json({ success: false, message: `Import failed.`, error: error.message });
   } finally {
     fs.unlinkSync(filePath);
   }
 }
 
-module.exports = {
-  createContactList,
-  getAllContactLists,
-  uploadContacts,
-};
+module.exports = { createContactList, getAllContactLists, uploadContacts };
