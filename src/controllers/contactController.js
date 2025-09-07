@@ -50,7 +50,9 @@ const uploadContacts = async (req, res) => {
       const cleanedRow = {};
       Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
       return {
-        phoneNumber: cleanedRow.phoneNumber,
+        // --- THIS IS THE KEY CHANGE ---
+        // Ensure phoneNumber is treated as a string to prevent scientific notation
+        phoneNumber: String(cleanedRow.phoneNumber),
         name: cleanedRow.name,
         contactList: listId,
         variables: extractVariables(cleanedRow),
@@ -58,7 +60,7 @@ const uploadContacts = async (req, res) => {
     };
     if (req.file.mimetype === 'text/csv') {
       fs.createReadStream(filePath).pipe(csv()).on('data', (data) => results.push(processRow(data))).on('end', () => processContactUpload(results, res, filePath));
-    } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || req.file.mimetype === 'application/vnd.ms-excel') {
+    } else if (req.file.mimetype.includes('sheet')) {
       const workbook = XLSX.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];

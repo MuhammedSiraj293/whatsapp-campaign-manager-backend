@@ -1,5 +1,3 @@
-// backend/src/services/campaignService.js
-
 const Campaign = require('../models/Campaign');
 const Contact = require('../models/Contact');
 const { sendTemplateMessage } = require('../integrations/whatsappAPI');
@@ -18,20 +16,14 @@ const sendCampaign = async (campaignId) => {
 
   for (const contact of contacts) {
     try {
-      // --- THIS IS THE KEY CHANGE ---
-      const options = {
-        headerImageUrl: campaign.headerImageUrl,
-      };
-      // Only add bodyVariables if the template expects them
-      if (campaign.expectedVariables > 0) {
-        options.bodyVariables = contact.variables;
-      }
-      
       await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
         campaign.templateLanguage,
-        options
+        {
+          headerImageUrl: campaign.headerImageUrl,
+          bodyVariables: contact.variables,
+        }
       );
       successCount++;
     } catch (error) {
@@ -51,6 +43,4 @@ const sendCampaign = async (campaignId) => {
   };
 };
 
-module.exports = {
-  sendCampaign,
-};
+module.exports = { sendCampaign };

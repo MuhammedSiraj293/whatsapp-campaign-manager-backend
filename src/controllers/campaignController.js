@@ -1,117 +1,89 @@
-// backend/src/controllers/campaignController.js
-
-const Campaign = require('../models/Campaign');
+const fs = require('fs');
+const csv = require('csv-parser');
+const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
-const { sendTextMessage } = require('../integrations/whatsappAPI');
-const { sendCampaign } = require('../services/campaignService');
-const axios = require('axios');
-const wabaConfig = require('../config/wabaConfig');
+const ContactList = require('../models/ContactList');
 
-// @desc    Get all campaigns
-const getCampaigns = async (req, res) => {
+const extractVariables = (row) => {
+  const varKeys = Object.keys(row).filter(k => k.startsWith('var')).sort();
+  if (varKeys.length === 0) {
+    return [row.name || 'Valued Customer'];
+  }
+  const variables = varKeys.map(key => row[key]);
+  if (!variables[0]) {
+    variables[0] = row.name || 'Valued Customer';
+  }
+  return variables;
+};
+
+const createContactList = async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ success: false, error: 'Please provide a list name.' });
   try {
-    const campaigns = await Campaign.find().sort({ createdAt: -1 });
-    res.status(200).json({ success: true, count: campaigns.length, data: campaigns });
+    const contactList = await ContactList.create({ name });
+    res.status(201).json({ success: true, data: contactList });
+  } catch (error) {
+    res.status(400).json({ success: false, error: 'List name may already exist.' });
+  }
+};
+
+const getAllContactLists = async (req, res) => {
+  try {
+    const contactLists = await ContactList.find().sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: contactLists });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Server Error' });
   }
 };
 
-// @desc    Get the count of contacts for a specific campaign's list
-const getRecipientCount = async (req, res) => {
+const uploadContacts = async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded.' });
+  const { listId } = req.params;
+  const filePath = req.file.path;
+  let results = [];
   try {
-    const campaign = await Campaign.findById(req.params.id);
-    if (!campaign || !campaign.contactList) {
-        return res.status(200).json({ success: true, count: 0 });
+    const processRow = (row) => {
+      const cleanedRow = {};
+      Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
+      return {
+        phoneNumber: cleanedRow.phoneNumber,
+        name: cleanedRow.name,
+        contactList: listId,
+        variables: extractVariables(cleanedRow),
+      };
+    };
+    if (req.file.mimetype === 'text/csv') {
+      fs.createReadStream(filePath).pipe(csv()).on('data', (data) => results.push(processRow(data))).on('end', () => processContactUpload(results, res, filePath));
+    } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || req.file.mimetype === 'application/vnd.ms-excel') {
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(sheet);
+      results = jsonData.map(processRow);
+      processContactUpload(results, res, filePath);
+    } else {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ success: false, error: 'Unsupported file type.' });
     }
-    const count = await Contact.countDocuments({ contactList: campaign.contactList });
-    res.status(200).json({ success: true, count });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Server Error' });
+    fs.unlinkSync(filePath);
+    res.status(500).json({ success: false, error: 'Error processing file.' });
   }
 };
 
-// @desc    Create a new campaign
-const createCampaign = async (req, res) => {
+async function processContactUpload(results, res, filePath) {
   try {
-    const {
-      name,
-      message,
-      templateName,
-      templateLanguage,
-      headerImageUrl,
-      bodyVariables,
-      contactList,
-      expectedVariables // <-- NEW
-    } = req.body;
-
-    const campaign = await Campaign.create({
-      name,
-      message,
-      templateName,
-      templateLanguage,
-      headerImageUrl,
-      bodyVariables,
-      contactList,
-      expectedVariables // <-- NEW
-    });
-    res.status(201).json({ success: true, data: campaign });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-};
-
-// @desc    Execute and send a campaign
-const executeCampaign = async (req, res) => {
-  try {
-    const campaignId = req.params.id;
-    const result = await sendCampaign(campaignId);
-    res.status(200).json({ success: true, data: result });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// @desc    Get message templates from Meta
-const getMessageTemplates = async (req, res) => {
-  const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.businessAccountId}/message_templates`;
-  const headers = {
-    'Authorization': `Bearer ${wabaConfig.accessToken}`,
-  };
-
-  try {
-    const response = await axios.get(url, { headers });
-    const approvedTemplates = response.data.data.filter(template =>
-      template.status === 'APPROVED' &&
-      template.components.some(c => c.type === 'BODY')
-    );
-    res.status(200).json({ success: true, data: approvedTemplates });
-  } catch (error) {
-    console.error('Error fetching message templates:', error.response ? error.response.data : error.message);
-    res.status(500).json({ success: false, error: 'Failed to fetch message templates.' });
-  }
-};
-
-// @desc    Send a test WhatsApp message
-const testSendMessage = async (req, res) => {
-  try {
-    const recipient = process.env.TEST_RECIPIENT_NUMBER;
-    if (!recipient) {
-      return res.status(400).json({ success: false, error: 'TEST_RECIPIENT_NUMBER is not set in .env file.' });
+    if (results.length === 0) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ success: false, error: 'The file is empty or headers are incorrect.' });
     }
-    const message = 'Hello from your Campaign Manager! 👋 This is a successful test.';
-    const result = await sendTextMessage(recipient, message);
-    res.status(200).json({ success: true, message: 'Test message sent successfully.', data: result });
+    await Contact.insertMany(results, { ordered: false });
+    res.status(201).json({ success: true, message: `${results.length} contacts successfully imported.` });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Failed to send test message.' });
+    res.status(400).json({ success: false, message: `Import failed.`, error: error.message });
+  } finally {
+    fs.unlinkSync(filePath);
   }
-};
+}
 
-module.exports = {
-  getCampaigns,
-  getRecipientCount,
-  createCampaign,
-  executeCampaign,
-  testSendMessage,
-  getMessageTemplates,
-};
+module.exports = { createContactList, getAllContactLists, uploadContacts };
