@@ -18,15 +18,27 @@ const sendCampaign = async (campaignId) => {
 
   for (const contact of contacts) {
     try {
+      const finalBodyVariables = [];
+      if (campaign.expectedVariables > 0) {
+        for (let i = 0; i < campaign.expectedVariables; i++) {
+          let variable = contact.variables[i];
+          // If the first variable is missing, use the name or a default
+          if (i === 0 && !variable) {
+            variable = contact.name || 'Valued Customer';
+          }
+          // --- THIS IS THE KEY CHANGE ---
+          // Ensure the final value is always a string, even if it's empty
+          finalBodyVariables.push(String(variable || ''));
+        }
+      }
+
       await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
         campaign.templateLanguage,
         {
           headerImageUrl: campaign.headerImageUrl,
-          // --- THIS IS THE KEY CHANGE ---
-          // Pass the entire variables object from the contact
-          bodyVariables: contact.variables,
+          bodyVariables: finalBodyVariables,
         }
       );
       successCount++;
