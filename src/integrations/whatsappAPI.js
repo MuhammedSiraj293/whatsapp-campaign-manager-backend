@@ -28,19 +28,28 @@ const sendTextMessage = async (to, text) => {
 
 const sendTemplateMessage = async (to, templateName, languageCode, options = {}) => {
   const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.phoneNumberId}/messages`;
+  
   const components = [];
+
+  // Add header component if an image URL is provided
   if (options.headerImageUrl) {
     components.push({
       type: 'header',
       parameters: [{ type: 'image', image: { link: options.headerImageUrl } }],
     });
   }
+
+  // Only add the body component if there are actual variables to send.
   if (options.bodyVariables && options.bodyVariables.length > 0 && options.bodyVariables.every(v => v)) {
     components.push({
       type: 'body',
-      parameters: options.bodyVariables.map(variable => ({ type: 'text', text: variable })),
+      parameters: options.bodyVariables.map(variable => ({
+        type: 'text',
+        text: variable,
+      })),
     });
   }
+
   const data = {
     messaging_product: 'whatsapp',
     to: to,
@@ -48,13 +57,16 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
     template: {
       name: templateName,
       language: { code: languageCode },
-      components: components,
+      // This is the key fix: only include the 'components' key if the array is not empty
+      ...(components.length > 0 && { components: components }),
     },
   };
+
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${wabaConfig.accessToken}`,
   };
+
   try {
     const response = await axios.post(url, data, { headers });
     return response.data;
@@ -117,7 +129,6 @@ const getMediaUrl = async (mediaId) => {
         return null;
     }
 };
-
 
 module.exports = {
   sendTextMessage,
