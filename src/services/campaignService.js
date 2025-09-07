@@ -18,7 +18,7 @@ const sendCampaign = async (campaignId) => {
 
   for (const contact of contacts) {
     try {
-      // --- THIS IS THE NEW INTELLIGENT LOGIC ---
+      // This is the intelligent logic that uses your manual input
       const finalBodyVariables = [];
       if (campaign.expectedVariables > 0) {
         for (let i = 0; i < campaign.expectedVariables; i++) {
@@ -27,7 +27,6 @@ const sendCampaign = async (campaignId) => {
           if (i === 0 && !variable) {
             variable = contact.name || 'Valued Customer';
           }
-          // Add the variable or an empty string if it's still undefined
           finalBodyVariables.push(variable || '');
         }
       }
