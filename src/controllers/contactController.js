@@ -1,5 +1,3 @@
-// backend/src/controllers/contactController.js
-
 const fs = require('fs');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
@@ -9,8 +7,6 @@ const ContactList = require('../models/ContactList');
 const extractVariables = (row) => {
   const varKeys = Object.keys(row).filter(k => k.startsWith('var')).sort();
   if (varKeys.length === 0) {
-    // If the template requires a variable, provide a fallback.
-    // This assumes the first variable is the name.
     return [row.name || 'Valued Customer'];
   }
   const variables = varKeys.map(key => row[key]);
@@ -50,8 +46,6 @@ const uploadContacts = async (req, res) => {
       const cleanedRow = {};
       Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
       return {
-        // --- THIS IS THE KEY CHANGE ---
-        // Ensure phoneNumber is treated as a string to prevent scientific notation
         phoneNumber: String(cleanedRow.phoneNumber),
         name: cleanedRow.name,
         contactList: listId,

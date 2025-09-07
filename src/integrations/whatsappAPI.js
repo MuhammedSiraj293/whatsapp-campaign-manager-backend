@@ -37,6 +37,7 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
   
   const components = [];
 
+  // Add header component if an image URL is provided
   if (options.headerImageUrl) {
     components.push({
       type: 'header',
@@ -44,6 +45,7 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
     });
   }
 
+  // Only add the body component if there are actual variables to send
   if (options.bodyVariables && options.bodyVariables.length > 0 && options.bodyVariables.every(v => v)) {
     components.push({
       type: 'body',
@@ -61,6 +63,7 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
     template: {
       name: templateName,
       language: { code: languageCode },
+      // Only include the 'components' key if the array is not empty
       ...(components.length > 0 && { components: components }),
     },
   };
@@ -71,11 +74,7 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
   };
 
   try {
-    // --- IMPORTANT DEBUGGING LOG ---
-    console.log('--- DEBUG: Final payload being sent to Meta ---');
-    console.log(JSON.stringify(data, null, 2));
-
-    const response = await axios.post(url, data, { headers });
+    const response = await axios.post(url, data, { headers, timeout: 15000 });
     return response.data;
   } catch (error) {
     console.error('❌ Error sending WhatsApp template message:', error.response ? error.response.data : error.message);
