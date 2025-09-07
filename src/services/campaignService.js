@@ -19,15 +19,18 @@ const sendCampaign = async (campaignId) => {
   for (const contact of contacts) {
     try {
       const finalBodyVariables = [];
+      // This logic now ensures that every variable is a defined string.
       if (campaign.expectedVariables > 0) {
         for (let i = 0; i < campaign.expectedVariables; i++) {
-          let variable = contact.variables[i];
-          // If the first variable is missing, use the name or a default
+          let variable = (contact.variables && contact.variables[i]) ? contact.variables[i] : undefined;
+          
+          // If the first variable is missing, use the name or a default.
           if (i === 0 && !variable) {
             variable = contact.name || 'Valued Customer';
           }
+
           // --- THIS IS THE KEY CHANGE ---
-          // Ensure the final value is always a string, even if it's empty
+          // Ensure the final value is always a string, even if it's empty.
           finalBodyVariables.push(String(variable || ''));
         }
       }
