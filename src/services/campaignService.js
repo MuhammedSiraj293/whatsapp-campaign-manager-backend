@@ -18,26 +18,15 @@ const sendCampaign = async (campaignId) => {
 
   for (const contact of contacts) {
     try {
-      // This is the intelligent logic that uses your manual input
-      const finalBodyVariables = [];
-      if (campaign.expectedVariables > 0) {
-        for (let i = 0; i < campaign.expectedVariables; i++) {
-          let variable = contact.variables[i];
-          // If the first variable is missing, use the name or a default
-          if (i === 0 && !variable) {
-            variable = contact.name || 'Valued Customer';
-          }
-          finalBodyVariables.push(variable || '');
-        }
-      }
-
       await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
         campaign.templateLanguage,
         {
           headerImageUrl: campaign.headerImageUrl,
-          bodyVariables: finalBodyVariables,
+          // --- THIS IS THE KEY CHANGE ---
+          // Pass the entire variables object from the contact
+          bodyVariables: contact.variables,
         }
       );
       successCount++;

@@ -16,14 +16,13 @@ const ContactSchema = new mongoose.Schema({
     ref: 'ContactList',
     required: true,
   },
-  // --- NEW FIELD ---
-  // An array to store variables like ['John'], ['Jane', 'Monday'], etc.
-  variables: [
-    {
-      type: String,
-      trim: true,
-    }
-  ],
+  // --- THIS IS THE KEY CHANGE ---
+  // Variables are now stored as a flexible key-value object
+  // Example: { "customer_name": "John", "order_id": "123" }
+  variables: {
+    type: Map,
+    of: String,
+  },
 }, { timestamps: true });
 
 ContactSchema.index({ phoneNumber: 1, contactList: 1 }, { unique: true });

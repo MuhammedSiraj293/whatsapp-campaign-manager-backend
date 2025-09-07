@@ -32,12 +32,13 @@ const sendTextMessage = async (to, text) => {
 /**
  * Sends an approved template message with dynamic components.
  */
+// This function is now the final, correct version.
 const sendTemplateMessage = async (to, templateName, languageCode, options = {}) => {
   const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.phoneNumberId}/messages`;
   
   const components = [];
 
-  // Add header component if an image URL is provided
+  // Handle header image
   if (options.headerImageUrl) {
     components.push({
       type: 'header',
@@ -45,15 +46,22 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
     });
   }
 
-  // Only add the body component if there are actual variables to send
-  if (options.bodyVariables && options.bodyVariables.length > 0 && options.bodyVariables.every(v => v)) {
-    components.push({
-      type: 'body',
-      parameters: options.bodyVariables.map(variable => ({
+  // --- THIS IS THE KEY CHANGE ---
+  // Convert the variables object into the ordered array Meta requires
+  if (options.bodyVariables && typeof options.bodyVariables === 'object' && Object.keys(options.bodyVariables).length > 0) {
+    // Assumes the keys in the CSV/XLSX file are in the correct order (e.g., var1, var2)
+    // Or that the object keys are already in the correct order.
+    const parameters = Object.values(options.bodyVariables).map(variable => ({
         type: 'text',
         text: variable,
-      })),
-    });
+    }));
+    
+    if (parameters.length > 0) {
+        components.push({
+            type: 'body',
+            parameters: parameters
+        });
+    }
   }
 
   const data = {
@@ -63,7 +71,6 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
     template: {
       name: templateName,
       language: { code: languageCode },
-      // Only include the 'components' key if the array is not empty
       ...(components.length > 0 && { components: components }),
     },
   };

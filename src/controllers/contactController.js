@@ -6,12 +6,18 @@ const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
-// This helper is now simpler: it only extracts variables that exist.
+// This helper now extracts named variables into an object
 const extractVariables = (row) => {
-  return Object.keys(row)
-    .filter(k => k.startsWith('var'))
-    .sort()
-    .map(key => row[key]);
+    const variables = {};
+    const reservedKeys = ['phonenumber', 'name']; // Use lowercase for case-insensitive check
+    
+    Object.keys(row).forEach(key => {
+        const keyLower = key.trim().toLowerCase();
+        if (!reservedKeys.includes(keyLower)) {
+            variables[key.trim()] = row[key];
+        }
+    });
+    return variables;
 };
 
 const createContactList = async (req, res) => {
