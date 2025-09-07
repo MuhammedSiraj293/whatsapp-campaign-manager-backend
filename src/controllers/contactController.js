@@ -6,6 +6,72 @@ const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
+// Helper function to extract variables from a row with new fallback logic
+const extractVariables = (row) => {
+    const variables = [];
+    const varKeys = Object.keys(row).filter(k => k.startsWith('var')).sort();
+
+    // --- NEW FALLBACK LOGIC ---
+    // If var1 is expected but not provided, use name or a default value.
+    if (!row.var1) {
+        row.var1 = row.name || 'Valued Customer';
+    }
+    // --- END OF NEW LOGIC ---
+
+    varKeys.forEach(key => {
+        variables.push(row[key]);
+    });
+    return variables;
+};
+
+// @desc    Upload contacts to a specific list
+const uploadContacts = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No file uploaded.' });
+  }
+
+  const { listId } = req.params;
+  const filePath = req.file.path;
+  let results = [];
+
+  try {
+    const processRow = (row) => {
+      // Clean up keys to remove potential whitespace issues from Excel files
+      const cleanedRow = {};
+      Object.keys(row).forEach(key => {
+        cleanedRow[key.trim()] = row[key];
+      });
+      
+      return {
+        phoneNumber: cleanedRow.phoneNumber,
+        name: cleanedRow.name,
+        contactList: listId,
+        variables: extractVariables(cleanedRow),
+      };
+    };
+
+    if (req.file.mimetype === 'text/csv') {
+      fs.createReadStream(filePath)
+        .pipe(csv())
+        .on('data', (data) => results.push(processRow(data)))
+        .on('end', () => processContactUpload(results, res, filePath));
+    } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || req.file.mimetype === 'application/vnd.ms-excel') {
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(sheet);
+      
+      results = jsonData.map(processRow);
+      processContactUpload(results, res, filePath);
+    } else {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ success: false, error: 'Unsupported file type.' });
+    }
+  } catch (error) {
+      fs.unlinkSync(filePath);
+      res.status(500).json({ success: false, error: 'Error processing file.' });
+  }
+};
 // @desc    Create a new contact list (segment)
 const createContactList = async (req, res) => {
   const { name } = req.body;
@@ -30,39 +96,7 @@ const getAllContactLists = async (req, res) => {
   }
 };
 
-// @desc    Upload contacts to a specific list
-const uploadContacts = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: 'No file uploaded.' });
-  }
 
-  const { listId } = req.params;
-  const filePath = req.file.path;
-  let results = [];
-
-  try {
-    if (req.file.mimetype === 'text/csv') {
-      fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('data', (data) => results.push({ ...data, contactList: listId }))
-        .on('end', () => processContactUpload(results, res, filePath));
-    } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || req.file.mimetype === 'application/vnd.ms-excel') {
-      const workbook = XLSX.readFile(filePath);
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(sheet);
-      
-      results = jsonData.map(row => ({ ...row, contactList: listId }));
-      processContactUpload(results, res, filePath);
-    } else {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({ success: false, error: 'Unsupported file type.' });
-    }
-  } catch (error) {
-      fs.unlinkSync(filePath);
-      res.status(500).json({ success: false, error: 'Error processing file.' });
-  }
-};
 
 // Helper function to process the parsed data
 async function processContactUpload(results, res, filePath) {
