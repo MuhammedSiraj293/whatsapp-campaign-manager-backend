@@ -31,7 +31,6 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
   
   const components = [];
 
-  // Add header component if an image URL is provided
   if (options.headerImageUrl) {
     components.push({
       type: 'header',
@@ -40,6 +39,7 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
   }
 
   // Only add the body component if there are actual variables to send.
+  // The .every(v => v) check ensures we don't send empty strings.
   if (options.bodyVariables && options.bodyVariables.length > 0 && options.bodyVariables.every(v => v)) {
     components.push({
       type: 'body',
