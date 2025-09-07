@@ -87,10 +87,26 @@ const getMessageTemplates = async (req, res) => {
   }
 };
 
+// @desc    Send a test WhatsApp message
+const testSendMessage = async (req, res) => {
+  try {
+    const recipient = process.env.TEST_RECIPIENT_NUMBER;
+    if (!recipient) {
+      return res.status(400).json({ success: false, error: 'TEST_RECIPIENT_NUMBER is not set in .env file.' });
+    }
+    const message = 'Hello from your Campaign Manager! 👋 This is a successful test.';
+    const result = await sendTextMessage(recipient, message);
+    res.status(200).json({ success: true, message: 'Test message sent successfully.', data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to send test message.' });
+  }
+};
+
 module.exports = {
   getCampaigns,
-  getRecipientCount, // <-- This was missing from the exports
+  getRecipientCount,
   createCampaign,
   executeCampaign,
   getMessageTemplates,
+  testSendMessage, // <-- This was missing from the exports
 };
