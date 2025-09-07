@@ -1,19 +1,17 @@
+// backend/src/controllers/contactController.js
+
 const fs = require('fs');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
+// This helper is now simpler: it only extracts variables that exist.
 const extractVariables = (row) => {
-  const varKeys = Object.keys(row).filter(k => k.startsWith('var')).sort();
-  if (varKeys.length === 0) {
-    return [row.name || 'Valued Customer'];
-  }
-  const variables = varKeys.map(key => row[key]);
-  if (!variables[0]) {
-    variables[0] = row.name || 'Valued Customer';
-  }
-  return variables;
+  return Object.keys(row)
+    .filter(k => k.startsWith('var'))
+    .sort()
+    .map(key => row[key]);
 };
 
 const createContactList = async (req, res) => {

@@ -1,3 +1,5 @@
+// backend/src/services/campaignService.js
+
 const Campaign = require('../models/Campaign');
 const Contact = require('../models/Contact');
 const { sendTemplateMessage } = require('../integrations/whatsappAPI');
@@ -16,13 +18,27 @@ const sendCampaign = async (campaignId) => {
 
   for (const contact of contacts) {
     try {
+      // --- THIS IS THE NEW INTELLIGENT LOGIC ---
+      const finalBodyVariables = [];
+      if (campaign.expectedVariables > 0) {
+        for (let i = 0; i < campaign.expectedVariables; i++) {
+          let variable = contact.variables[i];
+          // If the first variable is missing, use the name or a default
+          if (i === 0 && !variable) {
+            variable = contact.name || 'Valued Customer';
+          }
+          // Add the variable or an empty string if it's still undefined
+          finalBodyVariables.push(variable || '');
+        }
+      }
+
       await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
         campaign.templateLanguage,
         {
           headerImageUrl: campaign.headerImageUrl,
-          bodyVariables: contact.variables,
+          bodyVariables: finalBodyVariables,
         }
       );
       successCount++;
@@ -43,4 +59,6 @@ const sendCampaign = async (campaignId) => {
   };
 };
 
-module.exports = { sendCampaign };
+module.exports = {
+  sendCampaign,
+};
