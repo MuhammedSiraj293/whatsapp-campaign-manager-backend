@@ -18,14 +18,20 @@ const sendCampaign = async (campaignId) => {
 
   for (const contact of contacts) {
     try {
+      // --- THIS IS THE KEY CHANGE ---
+      const options = {
+        headerImageUrl: campaign.headerImageUrl,
+      };
+      // Only add bodyVariables if the template expects them
+      if (campaign.expectedVariables > 0) {
+        options.bodyVariables = contact.variables;
+      }
+      
       await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
         campaign.templateLanguage,
-        {
-          headerImageUrl: campaign.headerImageUrl,
-          bodyVariables: contact.variables, // Use the variables from the contact document
-        }
+        options
       );
       successCount++;
     } catch (error) {

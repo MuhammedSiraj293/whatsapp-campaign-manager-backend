@@ -24,23 +24,26 @@ const CampaignSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
-  bodyVariables: [
+  bodyVariables: [ // This field is now for static variables
     {
       type: String,
       trim: true,
     }
   ],
+  // --- NEW FIELD ---
+  // Stores the number of variables the template body expects
+  expectedVariables: {
+      type: Number,
+      default: 0,
+  },
   status: {
     type: String,
     enum: ['draft', 'scheduled', 'sent', 'failed'],
     default: 'draft',
   },
-  // --- THIS IS THE KEY CHANGE ---
-  // A campaign is now linked to one ContactList.
   contactList: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ContactList',
-    // It's not required when creating, you can assign it later.
   },
 }, {
   timestamps: true

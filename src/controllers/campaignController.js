@@ -34,8 +34,6 @@ const getRecipientCount = async (req, res) => {
 // @desc    Create a new campaign
 const createCampaign = async (req, res) => {
   try {
-    // --- THIS IS THE KEY CHANGE ---
-    // We now accept 'contactList' from the request body
     const {
       name,
       message,
@@ -43,7 +41,8 @@ const createCampaign = async (req, res) => {
       templateLanguage,
       headerImageUrl,
       bodyVariables,
-      contactList // <-- NEW
+      contactList,
+      expectedVariables // <-- NEW
     } = req.body;
 
     const campaign = await Campaign.create({
@@ -53,7 +52,8 @@ const createCampaign = async (req, res) => {
       templateLanguage,
       headerImageUrl,
       bodyVariables,
-      contactList // <-- NEW
+      contactList,
+      expectedVariables // <-- NEW
     });
     res.status(201).json({ success: true, data: campaign });
   } catch (error) {
