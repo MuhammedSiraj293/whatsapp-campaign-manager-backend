@@ -2,6 +2,7 @@
 
 const Campaign = require('../models/Campaign');
 const Contact = require('../models/Contact');
+const Analytics = require('../models/Analytics'); // <-- Import Analytics model
 const { sendTemplateMessage } = require('../integrations/whatsappAPI');
 
 const sendCampaign = async (campaignId) => {
@@ -19,29 +20,17 @@ const sendCampaign = async (campaignId) => {
   for (const contact of contacts) {
     try {
       const finalBodyVariables = [];
-
-      // This is the final, most robust logic for handling variables.
       if (campaign.expectedVariables > 0) {
         for (let i = 0; i < campaign.expectedVariables; i++) {
-          // Start with the variable from the contact file
           let value = contact.variables[i];
-
-          // If the FIRST variable (i === 0) is missing, try to use the contact's name.
           if (i === 0 && !value) {
-            value = contact.name;
+            value = contact.name || 'Valued Customer';
           }
-          
-          // If the value is still missing after all checks, use a generic fallback.
-          if (!value) {
-            value = 'there'; // A safe default like "Hi there,"
-          }
-
-          // Ensure the final value is always a string.
-          finalBodyVariables.push(String(value));
+          finalBodyVariables.push(String(value || ''));
         }
       }
 
-      await sendTemplateMessage(
+      const response = await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
         campaign.templateLanguage,
@@ -50,16 +39,34 @@ const sendCampaign = async (campaignId) => {
           bodyVariables: finalBodyVariables,
         }
       );
+
+      // --- NEW: Create an analytics record for the sent message ---
+      if (response && response.messages && response.messages[0].id) {
+        const wamid = response.messages[0].id;
+        await Analytics.create({
+          wamid: wamid,
+          campaign: campaign._id,
+          contact: contact._id,
+          status: 'sent',
+        });
+      }
+      
       successCount++;
     } catch (error) {
       console.error(`Failed to send message to ${contact.phoneNumber}:`, error);
       failureCount++;
     }
+
+    // Add a delay to avoid hitting rate limits
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  campaign.status = 'sent';
-  await campaign.save();
-
+  const finalCampaign = await Campaign.findById(campaignId);
+  if (finalCampaign) {
+    finalCampaign.status = 'sent';
+    await finalCampaign.save();
+  }
+  
   return {
     message: `Campaign "${campaign.name}" sent.`,
     totalRecipients: contacts.length,

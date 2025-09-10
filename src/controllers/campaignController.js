@@ -42,14 +42,24 @@ const createCampaign = async (req, res) => {
       headerImageUrl,
       bodyVariables,
       contactList,
-      expectedVariables
+      expectedVariables,
+      scheduledFor // <-- NEW: Get the scheduled date from the request
     } = req.body;
 
     const campaignData = {
-        name, message, templateName, templateLanguage, contactList,
-        ...(headerImageUrl && { headerImageUrl }),
-        ...(expectedVariables && { expectedVariables }),
-        ...(bodyVariables && { bodyVariables }),
+      name,
+      message,
+      templateName,
+      templateLanguage,
+      contactList,
+      headerImageUrl,
+      expectedVariables,
+      bodyVariables,
+      // --- THIS IS THE KEY CHANGE ---
+      // Set status based on whether a date was provided
+      status: scheduledFor ? 'scheduled' : 'draft',
+      // Only set the scheduledFor field if it exists
+      ...(scheduledFor && { scheduledFor: new Date(scheduledFor) }),
     };
 
     const campaign = await Campaign.create(campaignData);
@@ -59,7 +69,8 @@ const createCampaign = async (req, res) => {
   }
 };
 
-// @desc    Execute and send a campaign
+// This function is now for a "Send Now" feature, which we can build later.
+// The scheduler handles automatic sending.
 const executeCampaign = async (req, res) => {
   try {
     const campaignId = req.params.id;

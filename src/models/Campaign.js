@@ -24,14 +24,12 @@ const CampaignSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
-  bodyVariables: [ // This field is now for static variables
+  bodyVariables: [
     {
       type: String,
       trim: true,
     }
   ],
-  // --- NEW FIELD ---
-  // Stores the number of variables the template body expects
   expectedVariables: {
       type: Number,
       default: 0,
@@ -44,6 +42,15 @@ const CampaignSchema = new mongoose.Schema({
   contactList: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ContactList',
+  },
+  scheduledFor: {
+    type: Date,
+  },
+  // --- NEW FIELD ---
+  // A simple counter for replies to this campaign
+  replyCount: {
+    type: Number,
+    default: 0,
   },
 }, {
   timestamps: true

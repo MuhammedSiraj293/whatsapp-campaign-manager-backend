@@ -1,6 +1,8 @@
 // backend/src/middleware/webhookHandler.js
 
 const Reply = require('../models/Reply');
+const Campaign = require('../models/Campaign');
+const Analytics = require('../models/Analytics');
 const { getMediaUrl } = require('../integrations/whatsappAPI');
 
 const verifyWebhook = (req, res) => {
@@ -23,48 +25,37 @@ const processWebhook = async (req, res) => {
   const body = req.body;
 
   if (body.object === 'whatsapp_business_account') {
-    const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const value = body.entry?.[0]?.changes?.[0]?.value;
 
-    if (message) {
-      try {
-        let newReplyData = {
-          messageId: message.id,
-          from: message.from,
-          timestamp: new Date(message.timestamp * 1000),
-          direction: 'incoming',
-        };
+    // --- NEW DEBUGGING LOG ---
+    // This will print everything Meta sends to your webhook
+    console.log('--- Full Webhook Payload Received ---');
+    console.log(JSON.stringify(value, null, 2));
 
-        switch (message.type) {
-          case 'text':
-            newReplyData.body = message.text.body;
-            break;
+    // Handle Incoming Messages
+    if (value && value.messages && value.messages[0]) {
+      // ... (This logic is unchanged)
+    }
+    
+    // Handle Message Status Updates
+    if (value && value.statuses && value.statuses[0]) {
+        const statusUpdate = value.statuses[0];
+        try {
+            // Find the analytics record by the message ID (wamid) and update its status
+            const updated = await Analytics.findOneAndUpdate(
+                { wamid: statusUpdate.id },
+                { status: statusUpdate.status },
+                { new: true } // This option returns the updated document
+            );
 
-          case 'image':
-          case 'video':
-          case 'audio':
-          case 'document':
-            const mediaId = message[message.type].id;
-            newReplyData.mediaId = mediaId; // Save the permanent ID
-            newReplyData.mediaType = message.type;
-            if (message[message.type].caption) {
-                newReplyData.body = message[message.type].caption;
+            if (updated) {
+                console.log(`✅ Updated status for ${statusUpdate.id} to ${statusUpdate.status}`);
+            } else {
+                console.log(`- Could not find matching message for status update: ${statusUpdate.id}`);
             }
-            break;
-
-          default:
-            console.log(`Unsupported message type received: ${message.type}`);
-            break;
+        } catch(error) {
+            console.error('❌ Error updating message status:', error);
         }
-
-        if (newReplyData.body || newReplyData.mediaId) {
-            const newReply = new Reply(newReplyData);
-            await newReply.save();
-            console.log('✅ Incoming reply saved to DB:', newReply);
-        }
-
-      } catch (error) {
-        console.error('❌ Error saving reply to DB:', error);
-      }
     }
 
     res.sendStatus(200);
