@@ -20,7 +20,7 @@ const router = express.Router();
 router.route('/lists')
   .get(protect, getAllContactLists)
   // Example of role protection: only an 'admin' can create a new list
-  .post(protect, authorize('admin'), createContactList);
+   .post(protect, authorize('admin', 'manager'), createContactList);
 
 router.post('/lists/:listId/upload', protect, upload.single('file'), uploadContacts);
 
