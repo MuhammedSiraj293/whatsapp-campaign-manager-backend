@@ -21,23 +21,26 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please provide a password'],
     minlength: 6,
-    select: false, // This ensures the password is not sent back in API responses
+    select: false,
+  },
+  // --- NEW FIELD ---
+  role: {
+    type: String,
+    enum: ['admin', 'manager'],
+    default: 'manager',
   },
 });
 
-// This function runs automatically BEFORE a user document is saved to the DB
+// This function runs automatically BEFORE a user document is saved
 UserSchema.pre('save', async function (next) {
-  // If the password hasn't been changed, skip this
   if (!this.isModified('password')) {
     next();
   }
-
-  // "Salt" and "hash" the password for security
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-// This adds a custom function to our User model to compare passwords during login
+// This adds a custom function to our User model to compare passwords
 UserSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };

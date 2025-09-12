@@ -4,18 +4,28 @@ const express = require('express');
 const {
   getCampaigns,
   createCampaign,
-  testSendMessage,
   executeCampaign,
   getMessageTemplates,
-  getRecipientCount, // <-- IMPORT
+  getRecipientCount,
 } = require('../controllers/campaignController');
+
+// Import the security middleware
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-router.route('/').get(getCampaigns).post(createCampaign);
-router.post('/test-send', testSendMessage);
+// Get all campaigns and create a new one (protected)
+router.route('/')
+  .get(protect, getCampaigns)
+  .post(protect, authorize('admin', 'manager'), createCampaign);
+
+// Get templates (can remain public)
 router.get('/templates', getMessageTemplates);
-router.get('/:id/recipients/count', getRecipientCount); // <-- ADD NEW ROUTE
-router.post('/:id/send', executeCampaign);
+
+// Get recipient count for a specific campaign (protected)
+router.get('/:id/recipients/count', protect, getRecipientCount);
+
+// Send a campaign (protected for admin or manager roles)
+router.post('/:id/send', protect, authorize('admin', 'manager'), executeCampaign);
 
 module.exports = router;

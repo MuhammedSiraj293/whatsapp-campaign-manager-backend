@@ -3,7 +3,8 @@
 const Campaign = require('../models/Campaign');
 const Contact = require('../models/Contact');
 const Reply = require('../models/Reply');
-const Analytics = require('../models/Analytics'); // <-- Import Analytics model
+const Analytics = require('../models/Analytics'); 
+const { Parser } = require('json2csv'); // <-- Import Analytics model
 
 // @desc    Get key analytics stats
 const getStats = async (req, res) => {
@@ -77,7 +78,46 @@ const getCampaignAnalytics = async (req, res) => {
     }
 };
 
+// --- NEW FUNCTION TO EXPORT CAMPAIGN DATA ---
+const exportCampaignAnalytics = async (req, res) => {
+    try {
+        const { campaignId } = req.params;
+
+        // Find all analytics events for this campaign and populate the contact info
+        const analyticsData = await Analytics.find({ campaign: campaignId })
+            .populate('contact', 'phoneNumber name');
+
+        if (!analyticsData || analyticsData.length === 0) {
+            return res.status(404).json({ success: false, error: 'No analytics data found for this campaign.' });
+        }
+
+        // Define the columns for our CSV file
+        const fields = [
+            { label: 'Phone Number', value: 'contact.phoneNumber' },
+            { label: 'Contact Name', value: 'contact.name' },
+            { label: 'Message ID (wamid)', value: 'wamid' },
+            { label: 'Status', value: 'status' },
+            { label: 'Last Updated', value: 'updatedAt' },
+        ];
+
+        // Create a new CSV parser and convert the data
+        const json2csvParser = new Parser({ fields });
+        const csv = json2csvParser.parse(analyticsData);
+
+        // Set the headers to tell the browser to download the file
+        res.header('Content-Type', 'text/csv');
+        res.attachment(`campaign_${campaignId}_analytics.csv`);
+        res.send(csv);
+
+    } catch (error) {
+        console.error('Error exporting campaign analytics:', error);
+        res.status(500).json({ success: false, error: 'Server Error' });
+    }
+};
+
+
 module.exports = {
   getStats,
-  getCampaignAnalytics, // <-- EXPORT NEW FUNCTION
-};
+  getCampaignAnalytics,
+  exportCampaignAnalytics, // <-- EXPORT NEW FUNCTION
+  };

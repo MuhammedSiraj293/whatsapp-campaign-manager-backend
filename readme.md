@@ -42,28 +42,3 @@ This is the Node.js, Express, and MongoDB backend for the WhatsApp Campaign Mana
     npm start
     ```
     The server will start on `http://localhost:5001`.
-
----
-
-## Environment Variables
-
-Create a `.env` file in the `backend` root and add the following keys.
-
-```ini
-# Server Port
-PORT=5001
-
-# MongoDB Connection String
-MONGO_URI=mongodb+srv://...
-
-# WhatsApp Business API Credentials
-WHATSAPP_ACCESS_TOKEN=your_permanent_access_token
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
-WHATSAPP_VERIFY_TOKEN=your_secret_webhook_verify_token
-
-# Test Number (Optional)
-TEST_RECIIPENT_NUMBER=15551234567
-
-# JWT Configuration
-JWT_SECRET=your_super_long_and_random_secret
-JWT_EXPIRE=30d

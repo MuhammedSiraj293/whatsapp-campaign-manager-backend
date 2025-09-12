@@ -8,16 +8,20 @@ const {
   uploadContacts,
 } = require('../controllers/contactController');
 
-// Configure Multer for file uploads
+// Import the security middleware
+const { protect, authorize } = require('../middleware/authMiddleware');
+
 const upload = multer({ dest: 'uploads/' });
 const router = express.Router();
 
-// Routes for getting all lists and creating a new one
-router.route('/lists')
-  .get(getAllContactLists)
-  .post(createContactList);
+// --- SECURE THE ROUTES ---
+// The 'protect' function will now run before the controller function for each route.
 
-// Route for uploading contacts to a specific list
-router.post('/lists/:listId/upload', upload.single('file'), uploadContacts);
+router.route('/lists')
+  .get(protect, getAllContactLists)
+  // Example of role protection: only an 'admin' can create a new list
+  .post(protect, authorize('admin'), createContactList);
+
+router.post('/lists/:listId/upload', protect, upload.single('file'), uploadContacts);
 
 module.exports = router;
