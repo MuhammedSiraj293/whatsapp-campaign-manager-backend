@@ -1,5 +1,3 @@
-// backend/src/controllers/analyticsController.js
-
 const Campaign = require('../models/Campaign');
 const Contact = require('../models/Contact');
 const Reply = require('../models/Reply');
@@ -79,5 +77,5 @@ const exportCampaignAnalytics = async (req, res) => {
 module.exports = {
   getStats,
   getCampaignAnalytics,
-  exportCampaignAnalytics, // <-- This was missing from the exports
+  exportCampaignAnalytics,
 };

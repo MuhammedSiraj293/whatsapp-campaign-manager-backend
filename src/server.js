@@ -1,5 +1,3 @@
-// backend/src/server.js
-
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -20,9 +18,8 @@ connectDB();
 
 const app = express();
 
-// CORS Configuration
 const corsOptions = {
-  origin: ['http://localhost:3000', 'https://whatsapp-campaign-manager-frontend.vercel.app'],
+  origin: ['http://localhost:3000', 'https://whatsapp-campaign-manager-frontend.vercel.app', 'https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app'],
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
   optionsSuccessStatus: 204
