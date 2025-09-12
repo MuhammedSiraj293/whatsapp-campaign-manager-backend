@@ -4,7 +4,6 @@ const Reply = require('../models/Reply');
 const Campaign = require('../models/Campaign');
 const Analytics = require('../models/Analytics');
 const Contact = require('../models/Contact');
-const { getMediaUrl } = require('../integrations/whatsappAPI');
 const { sendTextMessage } = require('../integrations/whatsappAPI');
 
 const verifyWebhook = (req, res) => {
@@ -31,9 +30,8 @@ const processWebhook = async (req, res) => {
   if (body.object === 'whatsapp_business_account') {
     const value = body.entry?.[0]?.changes?.[0]?.value;
     
-    // Keep this console.log for debugging
-    console.log('--- Full Webhook Payload Received ---');
-    console.log(JSON.stringify(value, null, 2));
+    // console.log('--- Full Webhook Payload Received ---');
+    // console.log(JSON.stringify(value, null, 2));
 
     // --- Handle Incoming Messages ---
     if (value && value.messages && value.messages[0]) {

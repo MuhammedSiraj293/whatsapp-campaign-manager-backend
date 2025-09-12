@@ -4,7 +4,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./config/db');
-const { startScheduler } = require('./jobs/scheduler'); // <-- 1. IMPORT THE SCHEDULER
+const { startScheduler } = require('./jobs/scheduler');
 
 // Route Imports
 const campaignRoutes = require('./routes/campaignRoutes');
@@ -48,5 +48,5 @@ app.use('/api/analytics', analyticsRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
-  startScheduler(); // <-- 2. START THE SCHEDULER
+  startScheduler();
 });
