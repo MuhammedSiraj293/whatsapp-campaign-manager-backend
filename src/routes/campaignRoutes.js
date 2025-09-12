@@ -9,6 +9,7 @@ const {
   getRecipientCount,
 } = require('../controllers/campaignController');
 
+// Import the security middleware
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -18,8 +19,8 @@ router.route('/')
   .get(protect, getCampaigns)
   .post(protect, authorize('admin', 'manager'), createCampaign);
 
-// Get templates (protected)
-router.get('/templates', protect, getMessageTemplates);
+// Get templates (can remain public)
+router.get('/templates', getMessageTemplates);
 
 // Get recipient count for a specific campaign (protected)
 router.get('/:id/recipients/count', protect, getRecipientCount);
