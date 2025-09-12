@@ -3,8 +3,7 @@
 const Campaign = require('../models/Campaign');
 const Contact = require('../models/Contact');
 const Reply = require('../models/Reply');
-const Analytics = require('../models/Analytics'); 
-const { Parser } = require('json2csv'); // <-- Import Analytics model
+const Analytics = require('../models/Analytics');
 
 // @desc    Get key analytics stats
 const getStats = async (req, res) => {
@@ -26,7 +25,7 @@ const getStats = async (req, res) => {
   }
 };
 
-// --- NEW FUNCTION TO GET PER-CAMPAIGN STATS ---
+// @desc    Get aggregated stats for a single campaign
 const getCampaignAnalytics = async (req, res) => {
     try {
         const { campaignId } = req.params;
@@ -36,7 +35,6 @@ const getCampaignAnalytics = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Campaign not found.' });
         }
 
-        // Get total messages sent for this campaign
         const totalSent = await Analytics.countDocuments({ campaign: campaignId });
 
         if (totalSent === 0) {
@@ -52,11 +50,9 @@ const getCampaignAnalytics = async (req, res) => {
             }});
         }
 
-        // Get counts for each status
         const delivered = await Analytics.countDocuments({ campaign: campaignId, status: 'delivered' });
         const read = await Analytics.countDocuments({ campaign: campaignId, status: 'read' });
 
-        // Calculate rates
         const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + '%';
         const readRate = ((read / totalSent) * 100).toFixed(1) + '%';
         const replyRate = ((campaign.replyCount / totalSent) * 100).toFixed(1) + '%';
@@ -78,46 +74,8 @@ const getCampaignAnalytics = async (req, res) => {
     }
 };
 
-// --- NEW FUNCTION TO EXPORT CAMPAIGN DATA ---
-const exportCampaignAnalytics = async (req, res) => {
-    try {
-        const { campaignId } = req.params;
-
-        // Find all analytics events for this campaign and populate the contact info
-        const analyticsData = await Analytics.find({ campaign: campaignId })
-            .populate('contact', 'phoneNumber name');
-
-        if (!analyticsData || analyticsData.length === 0) {
-            return res.status(404).json({ success: false, error: 'No analytics data found for this campaign.' });
-        }
-
-        // Define the columns for our CSV file
-        const fields = [
-            { label: 'Phone Number', value: 'contact.phoneNumber' },
-            { label: 'Contact Name', value: 'contact.name' },
-            { label: 'Message ID (wamid)', value: 'wamid' },
-            { label: 'Status', value: 'status' },
-            { label: 'Last Updated', value: 'updatedAt' },
-        ];
-
-        // Create a new CSV parser and convert the data
-        const json2csvParser = new Parser({ fields });
-        const csv = json2csvParser.parse(analyticsData);
-
-        // Set the headers to tell the browser to download the file
-        res.header('Content-Type', 'text/csv');
-        res.attachment(`campaign_${campaignId}_analytics.csv`);
-        res.send(csv);
-
-    } catch (error) {
-        console.error('Error exporting campaign analytics:', error);
-        res.status(500).json({ success: false, error: 'Server Error' });
-    }
-};
-
 
 module.exports = {
   getStats,
   getCampaignAnalytics,
-  exportCampaignAnalytics, // <-- EXPORT NEW FUNCTION
-  };
+};

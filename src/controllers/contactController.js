@@ -6,10 +6,10 @@ const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
-// This helper now extracts named variables into an object
+// Helper function to extract named variables from a row
 const extractVariables = (row) => {
     const variables = {};
-    const reservedKeys = ['phonenumber', 'name']; // Use lowercase for case-insensitive check
+    const reservedKeys = ['phonenumber', 'name'];
     
     Object.keys(row).forEach(key => {
         const keyLower = key.trim().toLowerCase();

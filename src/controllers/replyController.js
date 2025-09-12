@@ -1,6 +1,9 @@
 // backend/src/controllers/replyController.js
 
 const Reply = require('../models/Reply');
+const Campaign = require('../models/Campaign');
+const Analytics = require('../models/Analytics');
+const Contact = require('../models/Contact');
 const { sendTextMessage, sendMediaMessage } = require('../integrations/whatsappAPI');
 
 const getConversations = async (req, res) => {
@@ -103,13 +106,10 @@ const sendReply = async (req, res) => {
 const sendMediaReply = async (req, res) => {
     try {
         const { phoneNumber } = req.params;
-
         if (!req.file) {
             return res.status(400).json({ success: false, error: 'No file uploaded.' });
         }
-
         const result = await sendMediaMessage(phoneNumber, req.file);
-
         if (result && result.sendResponse && result.sendResponse.messages[0].id) {
             const newReply = new Reply({
                 messageId: result.sendResponse.messages[0].id,
@@ -118,11 +118,10 @@ const sendMediaReply = async (req, res) => {
                 direction: 'outgoing',
                 read: true,
                 mediaType: req.file.mimetype.split('/')[0],
-                mediaId: result.mediaId, // Correctly save the mediaId
+                mediaId: result.mediaId,
             });
             await newReply.save();
         }
-
         res.status(200).json({ success: true, data: result.sendResponse });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Failed to send media reply.' });

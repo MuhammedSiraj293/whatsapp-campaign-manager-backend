@@ -29,12 +29,11 @@ const ReplySchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  // This is the corrected field name
   mediaId: {
     type: String,
   },
   mediaType: {
-    type: String, // e.g., 'image', 'video', 'audio', 'document'
+    type: String,
   },
 }, {
   timestamps: true,

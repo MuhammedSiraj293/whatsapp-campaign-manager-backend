@@ -1,7 +1,7 @@
 // backend/src/models/Analytics.js
-
+    
 const mongoose = require('mongoose');
-
+    
 const AnalyticsSchema = new mongoose.Schema({
   // The unique ID of the message from WhatsApp
   wamid: {
@@ -29,5 +29,5 @@ const AnalyticsSchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
-
+    
 module.exports = mongoose.model('Analytics', AnalyticsSchema);

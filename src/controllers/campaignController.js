@@ -32,14 +32,16 @@ const createCampaign = async (req, res) => {
   try {
     const {
       name, message, templateName, templateLanguage, headerImageUrl,
-      bodyVariables, contactList, expectedVariables
+      bodyVariables, contactList, expectedVariables, scheduledFor
     } = req.body;
 
     const campaignData = {
       name, message, templateName, templateLanguage, contactList,
+      status: scheduledFor ? 'scheduled' : 'draft',
       ...(headerImageUrl && { headerImageUrl }),
       ...(expectedVariables && { expectedVariables }),
       ...(bodyVariables && { bodyVariables }),
+      ...(scheduledFor && { scheduledFor: new Date(scheduledFor) }),
     };
 
     const campaign = await Campaign.create(campaignData);

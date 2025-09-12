@@ -16,9 +16,7 @@ const ContactSchema = new mongoose.Schema({
     ref: 'ContactList',
     required: true,
   },
-  // --- THIS IS THE KEY CHANGE ---
-  // Variables are now stored as a flexible key-value object
-  // Example: { "customer_name": "John", "order_id": "123" }
+  // Variables are stored as a flexible key-value object
   variables: {
     type: Map,
     of: String,

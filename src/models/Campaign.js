@@ -46,8 +46,6 @@ const CampaignSchema = new mongoose.Schema({
   scheduledFor: {
     type: Date,
   },
-  // --- NEW FIELD ---
-  // A simple counter for replies to this campaign
   replyCount: {
     type: Number,
     default: 0,

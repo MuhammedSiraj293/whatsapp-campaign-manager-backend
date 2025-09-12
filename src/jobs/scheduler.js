@@ -20,17 +20,16 @@ const startScheduler = () => {
         console.log(`🚀 Found ${dueCampaigns.length} campaigns to send.`);
       }
 
+      // Loop through each due campaign and send it.
       for (const campaign of dueCampaigns) {
         console.log(`Processing campaign: ${campaign.name}`);
         try {
-          // --- THIS IS THE KEY CHANGE ---
-          // We only update the status AFTER the send operation is complete.
           // The sendCampaign service now handles setting the status to 'sent'.
           await sendCampaign(campaign._id); 
           console.log(`✅ Campaign "${campaign.name}" sent successfully.`);
         } catch (error) {
           console.error(`❌ Failed to send campaign "${campaign.name}":`, error);
-          // If sending fails, we can optionally mark it as 'failed'.
+          // If sending fails, mark it as 'failed'.
           const failedCampaign = await Campaign.findById(campaign._id);
           if (failedCampaign) {
               failedCampaign.status = 'failed';

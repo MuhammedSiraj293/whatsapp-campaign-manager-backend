@@ -1,7 +1,7 @@
 // backend/src/middleware/authMiddleware.js
 
 const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // <-- This import is likely missing
+const User = require('../models/User');
 
 // Middleware to protect routes and check for a valid token
 const protect = async (req, res, next) => {
@@ -9,7 +9,7 @@ const protect = async (req, res, next) => {
 
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
-      // Get token from header (e.g., "Bearer eyJhbGci...")
+      // Get token from header
       token = req.headers.authorization.split(' ')[1];
 
       // Verify the token
@@ -22,7 +22,7 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ success: false, error: 'Not authorized, user not found' });
       }
 
-      next(); // Proceed to the next function
+      next();
     } catch (error) {
       console.error('Token verification failed:', error);
       return res.status(401).json({ success: false, error: 'Not authorized, token failed' });
@@ -47,7 +47,7 @@ const authorize = (...roles) => {
   };
 };
 
-module. philanthropy = {
+module.exports = {
   protect,
   authorize,
 };

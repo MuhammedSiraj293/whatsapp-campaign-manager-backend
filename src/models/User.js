@@ -23,7 +23,6 @@ const UserSchema = new mongoose.Schema({
     minlength: 6,
     select: false,
   },
-  // --- NEW FIELD ---
   role: {
     type: String,
     enum: ['admin', 'manager'],
