@@ -2,11 +2,7 @@
 
 const Campaign = require('../models/Campaign');
 const Contact = require('../models/Contact');
-const Analytics = require('../models/Analytics');
 const { sendTemplateMessage } = require('../integrations/whatsappAPI');
-
-// A helper function to create a delay
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const sendCampaign = async (campaignId) => {
   const campaign = await Campaign.findById(campaignId);
@@ -20,22 +16,26 @@ const sendCampaign = async (campaignId) => {
   let successCount = 0;
   let failureCount = 0;
 
-  console.log(`Starting campaign "${campaign.name}" for ${contacts.length} contacts...`);
-
   for (const contact of contacts) {
     try {
+      // This is the intelligent logic that uses your manual input
       const finalBodyVariables = [];
       if (campaign.expectedVariables > 0) {
         for (let i = 0; i < campaign.expectedVariables; i++) {
-          let value = (contact.variables && contact.variables.get(`var${i + 1}`)) || undefined;
-          if (i === 0 && !value) {
-            value = contact.name || 'Valued Customer';
+          // The key here is `contact.variables.get()` for the new Map format
+          let variable = (contact.variables && contact.variables.get(`var${i + 1}`)) || undefined;
+          
+          // If the first variable is missing, use the name or a default
+          if (i === 0 && !variable) {
+            variable = contact.name || 'Valued Customer';
           }
-          finalBodyVariables.push(String(value || ''));
+
+          // Ensure the final value is always a string, even if it's empty
+          finalBodyVariables.push(String(variable || ''));
         }
       }
 
-      const response = await sendTemplateMessage(
+      await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
         campaign.templateLanguage,
@@ -44,35 +44,16 @@ const sendCampaign = async (campaignId) => {
           bodyVariables: finalBodyVariables,
         }
       );
-
-      if (response && response.messages && response.messages[0].id) {
-        const wamid = response.messages[0].id;
-        await Analytics.create({
-          wamid: wamid,
-          campaign: campaign._id,
-          contact: contact._id,
-          status: 'sent',
-        });
-      }
-      
       successCount++;
     } catch (error) {
       console.error(`Failed to send message to ${contact.phoneNumber}:`, error);
       failureCount++;
     }
-
-    // Wait for 1 second before sending the next message
-    await sleep(1000); 
   }
 
-  const finalCampaign = await Campaign.findById(campaignId);
-  if (finalCampaign) {
-    finalCampaign.status = 'sent';
-    await finalCampaign.save();
-  }
+  campaign.status = 'sent';
+  await campaign.save();
 
-  console.log(`Campaign "${campaign.name}" finished. Success: ${successCount}, Failures: ${failureCount}`);
-  
   return {
     message: `Campaign "${campaign.name}" sent.`,
     totalRecipients: contacts.length,

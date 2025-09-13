@@ -5,9 +5,6 @@ const FormData = require('form-data');
 const fs = require('fs');
 const wabaConfig = require('../config/wabaConfig');
 
-/**
- * Sends a simple text message.
- */
 const sendTextMessage = async (to, text) => {
   const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.phoneNumberId}/messages`;
   const data = {
@@ -29,16 +26,11 @@ const sendTextMessage = async (to, text) => {
   }
 };
 
-/**
- * Sends an approved template message with dynamic components.
- */
-// This function is now the final, correct version.
 const sendTemplateMessage = async (to, templateName, languageCode, options = {}) => {
   const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.phoneNumberId}/messages`;
   
   const components = [];
 
-  // Handle header image
   if (options.headerImageUrl) {
     components.push({
       type: 'header',
@@ -46,20 +38,23 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
     });
   }
 
-  // --- THIS IS THE KEY CHANGE ---
-  // Convert the variables object into the ordered array Meta requires
-  if (options.bodyVariables && typeof options.bodyVariables === 'object' && Object.keys(options.bodyVariables).length > 0) {
-    // Assumes the keys in the CSV/XLSX file are in the correct order (e.g., var1, var2)
-    // Or that the object keys are already in the correct order.
-    const parameters = Object.values(options.bodyVariables).map(variable => ({
-        type: 'text',
-        text: variable,
-    }));
-    
-    if (parameters.length > 0) {
+  // This logic correctly handles both named and numbered variables
+  if (options.bodyVariables && (Array.isArray(options.bodyVariables) || typeof options.bodyVariables === 'object')) {
+    let vars = [];
+    if(Array.isArray(options.bodyVariables)) {
+        vars = options.bodyVariables;
+    } else {
+        // For objects, get the values in order
+        vars = Object.values(options.bodyVariables);
+    }
+
+    if (vars.length > 0 && vars.every(v => v)) {
         components.push({
             type: 'body',
-            parameters: parameters
+            parameters: vars.map(variable => ({
+                type: 'text',
+                text: variable,
+            })),
         });
     }
   }
@@ -89,21 +84,15 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
   }
 };
 
-/**
- * Uploads a media file to Meta and then sends it to a user.
- */
 const sendMediaMessage = async (to, file) => {
     try {
-        // Step 1: Upload the media to get an ID
         const uploadUrl = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.phoneNumberId}/media`;
-        
         const formData = new FormData();
         formData.append('messaging_product', 'whatsapp');
         formData.append('file', fs.createReadStream(file.path), {
             filename: file.originalname,
             contentType: file.mimetype,
         });
-
         const uploadHeaders = {
             ...formData.getHeaders(),
             'Authorization': `Bearer ${wabaConfig.accessToken}`,
@@ -111,10 +100,11 @@ const sendMediaMessage = async (to, file) => {
         const uploadResponse = await axios.post(uploadUrl, formData, { headers: uploadHeaders });
         const mediaId = uploadResponse.data.id;
 
-        // Step 2: Send the media message using the ID
         const sendUrl = `https://graph.facebook.com/${wabaConfig.apiVersion}/${wabaConfig.phoneNumberId}/messages`;
-        const mediaType = file.mimetype.split('/')[0]; 
-        
+        let mediaType = 'document';
+        if (file.mimetype && typeof file.mimetype === 'string') {
+            mediaType = file.mimetype.split('/')[0];
+        }
         const sendData = {
             messaging_product: 'whatsapp',
             to: to,
@@ -133,16 +123,12 @@ const sendMediaMessage = async (to, file) => {
         console.error('❌ Error sending WhatsApp media message:', error.response ? error.response.data : error.message);
         throw new Error('Failed to send WhatsApp media message.');
     } finally {
-        // Clean up the temporary file
         if (fs.existsSync(file.path)) {
             fs.unlinkSync(file.path);
         }
     }
 };
 
-/**
- * Gets a temporary download URL for a given media ID.
- */
 const getMediaUrl = async (mediaId) => {
     try {
         const url = `https://graph.facebook.com/${wabaConfig.apiVersion}/${mediaId}`;
