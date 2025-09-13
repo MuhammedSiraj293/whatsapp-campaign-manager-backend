@@ -6,31 +6,15 @@ const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
-// Helper to extract variables and create a fallback for var1
 const extractVariables = (row) => {
-  const variables = [];
-  const varKeys = Object.keys(row).filter(k => k.startsWith('var')).sort();
-
-  if (varKeys.length === 0) {
-    // If no var columns exist, use the name as the first variable
-    return [row.name || 'Valued Customer'];
-  }
-
-  const tempVars = {};
-  varKeys.forEach(key => {
-    tempVars[key] = row[key];
+  const variables = {};
+  const reservedKeys = ['phonenumber', 'name'];
+  Object.keys(row).forEach(key => {
+      const keyLower = key.trim().toLowerCase();
+      if (!reservedKeys.includes(keyLower)) {
+          variables[key.trim()] = row[key];
+      }
   });
-
-  // Ensure var1 has a fallback
-  if (!tempVars.var1) {
-    tempVars.var1 = row.name || 'Valued Customer';
-  }
-
-  // Convert the object back to a sorted array
-  Object.keys(tempVars).sort().forEach(key => {
-    variables.push(tempVars[key]);
-  });
-  
   return variables;
 };
 
@@ -64,6 +48,8 @@ const uploadContacts = async (req, res) => {
       const cleanedRow = {};
       Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
       return {
+        // --- THIS IS THE KEY FIX ---
+        // Ensure phoneNumber is always treated as a string
         phoneNumber: String(cleanedRow.phoneNumber),
         name: cleanedRow.name,
         contactList: listId,
