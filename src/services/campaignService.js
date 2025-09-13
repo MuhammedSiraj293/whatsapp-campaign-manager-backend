@@ -3,7 +3,7 @@
 const Campaign = require('../models/Campaign');
 const Contact = require('../models/Contact');
 const Analytics = require('../models/Analytics');
-const Log = require('../models/Log'); // <-- 1. IMPORT THE LOG MODEL
+const Log = require('../models/Log');
 const { sendTemplateMessage } = require('../integrations/whatsappAPI');
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -13,7 +13,6 @@ const sendCampaign = async (campaignId) => {
   if (!campaign) throw new Error('Campaign not found.');
   if (!campaign.contactList) throw new Error('No contact list is assigned to this campaign.');
   if (campaign.status === 'sent') {
-    // 2. Log if a campaign is already sent
     await Log.create({ level: 'error', message: `Attempted to send campaign "${campaign.name}" which has already been sent.`, campaign: campaignId });
     throw new Error('This campaign has already been sent.');
   }
@@ -24,7 +23,6 @@ const sendCampaign = async (campaignId) => {
   let successCount = 0;
   let failureCount = 0;
 
-  // 3. Log the start of the campaign
   await Log.create({ level: 'info', message: `Starting campaign "${campaign.name}" for ${contacts.length} contacts.`, campaign: campaignId });
 
   for (const contact of contacts) {
@@ -40,6 +38,8 @@ const sendCampaign = async (campaignId) => {
         }
       }
 
+      // --- THIS IS THE CORRECTED SECTION ---
+      // Capture the response from the API call
       const response = await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
@@ -50,6 +50,7 @@ const sendCampaign = async (campaignId) => {
         }
       );
 
+      // Create an analytics record for the sent message
       if (response && response.messages && response.messages[0].id) {
         const wamid = response.messages[0].id;
         await Analytics.create({
@@ -62,7 +63,6 @@ const sendCampaign = async (campaignId) => {
       
       successCount++;
     } catch (error) {
-      // 4. Log each individual message failure
       await Log.create({ level: 'error', message: `Failed to send to ${contact.phoneNumber} for campaign "${campaign.name}".`, campaign: campaignId });
       failureCount++;
     }
@@ -76,7 +76,6 @@ const sendCampaign = async (campaignId) => {
     await finalCampaign.save();
   }
   
-  // 5. Log the final result of the campaign
   await Log.create({ level: 'success', message: `Campaign "${campaign.name}" finished. Success: ${successCount}, Failures: ${failureCount}.`, campaign: campaignId });
 
   return {
