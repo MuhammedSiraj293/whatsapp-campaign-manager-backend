@@ -5,7 +5,6 @@ const Campaign = require('../models/Campaign');
 const Analytics = require('../models/Analytics');
 const Contact = require('../models/Contact');
 const { sendTextMessage } = require('../integrations/whatsappAPI');
-// We do not need getMediaUrl here anymore
 
 const verifyWebhook = (req, res) => {
   const mode = req.query['hub.mode'];
@@ -30,7 +29,7 @@ const processWebhook = async (req, res) => {
 
   if (body.object === 'whatsapp_business_account') {
     const value = body.entry?.[0]?.changes?.[0]?.value;
-
+    
     // --- Handle Incoming Messages ---
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
@@ -42,6 +41,7 @@ const processWebhook = async (req, res) => {
           direction: 'incoming',
         };
 
+        // This switch statement now includes 'voice'
         switch (message.type) {
           case 'text':
             newReplyData.body = message.text.body;
@@ -50,7 +50,7 @@ const processWebhook = async (req, res) => {
           case 'video':
           case 'audio':
           case 'document':
-            // This is the corrected logic: Save the mediaId, not a URL
+          case 'voice': // <-- ADDED VOICE
             newReplyData.mediaId = message[message.type].id;
             newReplyData.mediaType = message.type;
             if (message[message.type].caption) {
@@ -89,12 +89,12 @@ const processWebhook = async (req, res) => {
         if (message.type === 'text') {
             const messageBodyLower = message.text.body.toLowerCase();
             if (messageBodyLower.includes('marbella')) {
-                const autoReplyText = 'Thank you for your interest in Marbella. I will connect you with one of our property consultants, who will assist you with the specific property and provide you with further details.';
+                const autoReplyText = 'Thank you for your interest in Marbella...'; // Full message
                 await sendTextMessage(message.from, autoReplyText);
             } else {
                 const messageCount = await Reply.countDocuments({ from: message.from });
                 if (messageCount === 1) {
-                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue! How can we help on your interest.';
+                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue!...'; // Full message
                     await sendTextMessage(message.from, welcomeMessage);
                 }
             }
