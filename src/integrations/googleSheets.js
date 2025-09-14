@@ -1,26 +1,33 @@
 // backend/src/integrations/googleSheets.js
 
 const { google } = require('googleapis');
-const path = require('path');
 
-const KEY_FILE_PATH = path.join(__dirname, '../config/credentials.json');
+// We no longer need the file path
+// const path = require('path');
+// const KEY_FILE_PATH = path.join(__dirname, '../config/credentials.json');
+
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
-// Create an authenticated client
+// --- THIS IS THE KEY CHANGE ---
+// Get the credentials directly from an environment variable
+const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON;
+if (!credentialsJson) {
+  throw new Error('GOOGLE_CREDENTIALS_JSON environment variable not set.');
+}
+
+// Parse the JSON string from the environment variable
+const credentials = JSON.parse(credentialsJson);
+
+// Create an authenticated client using the credentials object
 const auth = new google.auth.GoogleAuth({
-  keyFile: KEY_FILE_PATH,
+  credentials,
   scopes: SCOPES,
 });
 
 const sheets = google.sheets({ version: 'v4', auth });
+// --- END OF CHANGE ---
 
-/**
- * Appends rows of data to a Google Sheet.
- * @param {string} spreadsheetId - The ID of the Google Sheet.
- * @param {string} range - The sheet and range in A1 notation (e.g., 'Sheet1!A1').
- * @param {Array<Array<string>>} values - An array of rows to append.
- * @returns {Promise<object>} The response from the Sheets API.
- */
+
 const appendToSheet = async (spreadsheetId, range, values) => {
   try {
     const response = await sheets.spreadsheets.values.append({
@@ -35,7 +42,7 @@ const appendToSheet = async (spreadsheetId, range, values) => {
     return response.data;
   } catch (error) {
     console.error('❌ Error appending data to Google Sheet:', error.message);
-    throw new Error('Failed to write to Google Sheet.');
+    throw new Error('Failed to write to Google Sheet. Ensure it is shared with the client_email.');
   }
 };
 
