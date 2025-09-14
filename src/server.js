@@ -3,6 +3,8 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 
 // Load environment variables first
 dotenv.config();
@@ -23,19 +25,40 @@ const logRoutes = require('./routes/logRoutes');
 connectDB();
 
 const app = express();
+const httpServer = http.createServer(app);
 
-// CORS Configuration
+// CORS Configuration for both API and Sockets
+const allowedOrigins = [
+  'http://localhost:3000', 
+  'https://whatsapp-campaign-manager-frontend.vercel.app',
+  'https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app'
+];
 const corsOptions = {
-  origin: [
-      'http://localhost:3000', 
-      'https://whatsapp-campaign-manager-frontend.vercel.app',
-      'https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app' // Add all your Vercel URLs
-    ],
+  origin: allowedOrigins,
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
-  optionsSuccessStatus: 204
 };
 app.use(cors(corsOptions));
+
+// Initialize Socket.IO Server
+const io = new Server(httpServer, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"]
+  }
+});
+
+// We need to export 'io' so other files can use it to send messages
+module.exports.io = io; 
+
+// Listen for new connections
+io.on('connection', (socket) => {
+  console.log('🔌 A user connected:', socket.id);
+
+  socket.on('disconnect', () => {
+    console.log('🔌 User disconnected:', socket.id);
+  });
+});
 
 app.use(express.json());
 
@@ -55,7 +78,8 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/logs', logRoutes);
 
-app.listen(PORT, () => {
+// Start the httpServer, not the app
+httpServer.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
   startScheduler();
 });
