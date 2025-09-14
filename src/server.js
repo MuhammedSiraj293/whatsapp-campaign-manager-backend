@@ -6,13 +6,11 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 
-// Load environment variables first
 dotenv.config();
 
 const connectDB = require('./config/db');
 const { startScheduler } = require('./jobs/scheduler');
 
-// Route Imports
 const campaignRoutes = require('./routes/campaignRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const replyRoutes = require('./routes/replyRoutes');
@@ -27,38 +25,29 @@ connectDB();
 const app = express();
 const httpServer = http.createServer(app);
 
-// CORS Configuration for both API and Sockets
 const allowedOrigins = [
   'http://localhost:3000', 
   'https://whatsapp-campaign-manager-frontend.vercel.app',
   'https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app'
 ];
-const corsOptions = {
-  origin: allowedOrigins,
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-  credentials: true,
-};
+const corsOptions = { origin: allowedOrigins, methods: "GET,HEAD,PUT,PATCH,POST,DELETE", credentials: true };
 app.use(cors(corsOptions));
 
-// Initialize Socket.IO Server
-const io = new Server(httpServer, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"]
-  }
-});
+const io = new Server(httpServer, { cors: { origin: allowedOrigins, methods: ["GET", "POST"] } });
 
-// We need to export 'io' so other files can use it to send messages
-module.exports.io = io; 
-
-// Listen for new connections
 io.on('connection', (socket) => {
   console.log('🔌 A user connected:', socket.id);
-
   socket.on('disconnect', () => {
     console.log('🔌 User disconnected:', socket.id);
   });
 });
+
+// --- THIS IS THE KEY CHANGE ---
+// Create middleware to attach the io instance to the request object
+const socketIoMiddleware = (req, res, next) => {
+  req.io = io;
+  next();
+};
 
 app.use(express.json());
 
@@ -72,13 +61,13 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/replies', replyRoutes);
-app.use('/api/webhook', webhookRoutes);
+// Apply the middleware specifically to the webhook route
+app.use('/api/webhook', socketIoMiddleware, webhookRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/logs', logRoutes);
 
-// Start the httpServer, not the app
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
   startScheduler();
