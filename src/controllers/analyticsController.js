@@ -78,42 +78,48 @@ const exportCampaignAnalytics = async (req, res) => {
 const exportLeadsToSheet = async (req, res) => {
     try {
         const { campaignId } = req.params;
-        const { spreadsheetId } = req.body; // Get Sheet ID from the request body
+        const { spreadsheetId } = req.body;
 
         if (!spreadsheetId) {
             return res.status(400).json({ success: false, error: 'Spreadsheet ID is required.' });
         }
 
-        // Find all incoming replies that are linked to this campaign
-        const campaign = await Campaign.findById(campaignId).populate('contactList');
+        const campaign = await Campaign.findById(campaignId);
         if (!campaign) {
             return res.status(404).json({ success: false, error: 'Campaign not found.' });
         }
         
-        // Find contacts in the campaign's list
+        // --- THIS IS THE CORRECTED LOGIC ---
+        // 1. Find all contacts that belong to the campaign's list
         const contactsInList = await Contact.find({ contactList: campaign.contactList });
         const contactPhoneNumbers = contactsInList.map(c => c.phoneNumber);
 
-        // Find replies from those contacts
-        const replies = await Reply.find({ from: { $in: contactPhoneNumbers }, direction: 'incoming' })
-            .populate({ path: 'from', model: Contact, select: 'name' }) // This is a bit tricky, might need adjustment
-            .sort({ timestamp: 'asc' });
-
+        // 2. Find all incoming replies from those specific phone numbers
+        const replies = await Reply.find({ 
+            from: { $in: contactPhoneNumbers }, 
+            direction: 'incoming' 
+        }).sort({ timestamp: 'asc' });
 
         if (replies.length === 0) {
             return res.status(200).json({ success: true, message: 'No replies to export for this campaign.' });
         }
         
-        // Format the data for Google Sheets (an array of arrays)
-        const headerRow = ['Timestamp', 'From', 'Message'];
-        const dataRows = replies.map(reply => [
-            new Date(reply.timestamp).toLocaleString(),
-            reply.from, // This will be the phone number
-            reply.body,
-        ]);
+        // 3. Format the data for Google Sheets
+        const headerRow = ['Timestamp', 'From', 'Name', 'Message'];
+        const dataRows = replies.map(reply => {
+            // Find the contact's name from our list
+            const contact = contactsInList.find(c => c.phoneNumber === reply.from);
+            return [
+                new Date(reply.timestamp).toLocaleString(),
+                reply.from,
+                contact ? contact.name : 'Unknown', // Use the name or a fallback
+                reply.body,
+            ];
+        });
+        // --- END OF CORRECTED LOGIC ---
 
         const values = [headerRow, ...dataRows];
-        const range = 'Sheet1!A1'; // Assumes you want to write to the first sheet
+        const range = 'Sheet1!A1';
 
         await appendToSheet(spreadsheetId, range, values);
         
