@@ -50,6 +50,12 @@ const CampaignSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // --- NEW FIELD ---
+  // Stores the unique ID of the Google Sheet for this campaign's live leads
+  spreadsheetId: {
+    type: String,
+    trim: true,
+  },
 }, {
   timestamps: true
 });

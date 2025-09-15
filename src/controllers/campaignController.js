@@ -32,14 +32,18 @@ const createCampaign = async (req, res) => {
   try {
     const {
       name, message, templateName, templateLanguage, headerImageUrl,
-      bodyVariables, contactList, expectedVariables
+      bodyVariables, contactList, expectedVariables, scheduledFor,
+      spreadsheetId // <-- NEW
     } = req.body;
 
     const campaignData = {
       name, message, templateName, templateLanguage, contactList,
+      status: scheduledFor ? 'scheduled' : 'draft',
       ...(headerImageUrl && { headerImageUrl }),
       ...(expectedVariables && { expectedVariables }),
       ...(bodyVariables && { bodyVariables }),
+      ...(scheduledFor && { scheduledFor: new Date(scheduledFor) }),
+      ...(spreadsheetId && { spreadsheetId }), // <-- NEW
     };
 
     const campaign = await Campaign.create(campaignData);
@@ -55,10 +59,7 @@ const executeCampaign = async (req, res) => {
     const result = await sendCampaign(campaignId);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
-    // --- THIS IS THE KEY CHANGE ---
-    // If the error is our specific message, send a 400 status.
-    // Otherwise, it's a real server error, so send 500.
-    if (error.message === 'This campaign has already been sent.') {
+    if (error.message.includes('already been sent')) {
       return res.status(400).json({ success: false, error: error.message });
     }
     res.status(500).json({ success: false, error: error.message });
