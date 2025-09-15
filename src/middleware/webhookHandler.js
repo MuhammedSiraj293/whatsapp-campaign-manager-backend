@@ -5,8 +5,7 @@ const Campaign = require('../models/Campaign');
 const Analytics = require('../models/Analytics');
 const Contact = require('../models/Contact');
 const { sendTextMessage } = require('../integrations/whatsappAPI');
-const { appendToSheet } = require('../integrations/googleSheets'); // <-- 1. IMPORT
-const { io } = require('../server');
+const { appendToSheet } = require('../integrations/googleSheets');
 
 const verifyWebhook = (req, res) => {
   const mode = req.query['hub.mode'];
@@ -28,49 +27,45 @@ const verifyWebhook = (req, res) => {
 
 const processWebhook = async (req, res) => {
   const body = req.body;
+  const io = req.io; // Get the io instance from the request object
 
   if (body.object === 'whatsapp_business_account') {
     const value = body.entry?.[0]?.changes?.[0]?.value;
 
+    // Handle Incoming Messages
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
       try {
-        let savedReply = null; // Variable to hold the saved reply document
+        let savedReply = null;
+        let newReplyData = {
+          messageId: message.id, from: message.from,
+          timestamp: new Date(message.timestamp * 1000), direction: 'incoming',
+        };
 
-        // --- Save the incoming message ---
-        if (message.type) {
-            let newReplyData = {
-                messageId: message.id,
-                from: message.from,
-                timestamp: new Date(message.timestamp * 1000),
-                direction: 'incoming',
-            };
-            switch (message.type) {
-                case 'text':
-                    newReplyData.body = message.text.body;
-                    break;
-                case 'image': case 'video': case 'audio': case 'document': case 'voice':
-                    newReplyData.mediaId = message[message.type].id;
-                    newReplyData.mediaType = message.type;
-                    if (message[message.type].caption) newReplyData.body = message[message.type].caption;
-                    break;
-                default:
-                    console.log(`Unsupported message type received: ${message.type}`);
-                    break;
-            }
-
-            if (newReplyData.body || newReplyData.mediaId) {
-                const newReply = new Reply(newReplyData);
-                savedReply = await newReply.save();
-                console.log('✅ Incoming reply saved to DB.');
-                io.emit('newMessage', { from: message.from, message: savedReply });
-                console.log(`📡 Emitted newMessage event for ${message.from}`);
-            }
+        switch (message.type) {
+          case 'text':
+            newReplyData.body = message.text.body;
+            break;
+          case 'image': case 'video': case 'audio': case 'document': case 'voice':
+            newReplyData.mediaId = message[message.type].id;
+            newReplyData.mediaType = message.type;
+            if (message[message.type].caption) newReplyData.body = message[message.type].caption;
+            break;
+          default:
+            console.log(`Unsupported message type: ${message.type}`);
+            break;
         }
 
-        // --- NEW LIVE LEADS LOGIC ---
-        let campaignToCredit = null;
+        if (newReplyData.body || newReplyData.mediaId) {
+          const newReply = new Reply(newReplyData);
+          savedReply = await newReply.save();
+          console.log('✅ Incoming reply saved to DB.');
+          io.emit('newMessage', { from: message.from, message: savedReply });
+          console.log(`📡 Emitted newMessage event for ${message.from}`);
+        }
 
+        // --- Reply Counting and Live Leads Logic ---
+        let campaignToCredit = null;
         if (message.context && message.context.id) {
           const originalMessage = await Analytics.findOne({ wamid: message.context.id }).populate('campaign');
           if (originalMessage) campaignToCredit = originalMessage.campaign;
@@ -81,34 +76,39 @@ const processWebhook = async (req, res) => {
             if (lastSentMessage) campaignToCredit = lastSentMessage.campaign;
           }
         }
-
+        
         if (campaignToCredit) {
-          const messageCountForCampaign = await Reply.countDocuments({ from: message.from, campaign: campaignToCredit._id });
-          
-          if (messageCountForCampaign === 1 && campaignToCredit.spreadsheetId) {
-            console.log(`✨ New lead for campaign "${campaignToCredit.name}". Appending to Google Sheet...`);
-            
-            const contact = await Contact.findOne({ phoneNumber: message.from });
-            const dataRow = [[
-              new Date(message.timestamp * 1000).toLocaleString(),
-              message.from,
-              contact ? contact.name : 'Unknown',
-              message.text ? message.text.body : `[Media: ${message.type}]`,
-            ]];
+            // Find if this user has replied to this campaign before
+            const existingReplyForCampaign = await Reply.findOne({ from: message.from, campaign: campaignToCredit._id });
 
-            await appendToSheet(campaignToCredit.spreadsheetId, 'Sheet1!A1', dataRow);
-          }
+            // If this is the very first reply for this campaign...
+            if (!existingReplyForCampaign && savedReply) {
+                savedReply.campaign = campaignToCredit._id; // Link the reply to the campaign
+                await savedReply.save();
 
-          // Increment reply count regardless
-          await Campaign.findByIdAndUpdate(campaignToCredit._id, { $inc: { replyCount: 1 } });
-          console.log(`✅ Incremented reply count for campaign: ${campaignToCredit._id}`);
+                // ...and if a sheet is linked, send the lead
+                if (campaignToCredit.spreadsheetId) {
+                    console.log(`✨ New lead for campaign "${campaignToCredit.name}". Appending to Google Sheet...`);
+                    const contact = await Contact.findOne({ phoneNumber: message.from });
+                    const dataRow = [[
+                        new Date(message.timestamp * 1000).toLocaleString(),
+                        message.from,
+                        contact ? contact.name : 'Unknown',
+                        message.text ? message.text.body : `[Media: ${message.type}]`,
+                    ]];
+                    await appendToSheet(campaignToCredit.spreadsheetId, 'Sheet1!A1', dataRow);
+                }
+            }
+            // Increment the main reply count for every reply
+            await Campaign.findByIdAndUpdate(campaignToCredit._id, { $inc: { replyCount: 1 } });
+            console.log(`✅ Incremented reply count for campaign: ${campaignToCredit._id}`);
         }
         
         // --- Auto-Reply Bot Logic ---
         if (message.type === 'text') {
             const messageBodyLower = message.text.body.toLowerCase();
             if (messageBodyLower.includes('marbella')) {
-                const autoReplyText = 'Thank you for your interest in Marbella. I will connect you with one of our property consultants...';
+                const autoReplyText = 'Thank you for your interest in Marbella. I will connect you with one of our property consultants, who will assist you with the specific property and provide you with further details.';
                 await sendTextMessage(message.from, autoReplyText);
             } else {
                 const messageCount = await Reply.countDocuments({ from: message.from });
@@ -128,13 +128,12 @@ const processWebhook = async (req, res) => {
     if (value && value.statuses && value.statuses[0]) {
         const statusUpdate = value.statuses[0];
         try {
-            await Analytics.findOneAndUpdate( { wamid: statusUpdate.id }, { status: statusUpdate.status });
+            await Analytics.findOneAndUpdate({ wamid: statusUpdate.id }, { status: statusUpdate.status });
             console.log(`✅ Updated status for ${statusUpdate.id} to ${statusUpdate.status}`);
         } catch(error) {
             console.error('❌ Error updating message status:', error);
         }
     }
-
     res.sendStatus(200);
   } else {
     res.sendStatus(404);

@@ -35,6 +35,11 @@ const ReplySchema = new mongoose.Schema({
   mediaType: {
     type: String,
   },
+  // This field links a reply back to a campaign for analytics
+  campaign: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Campaign',
+  },
 }, {
   timestamps: true,
 });
