@@ -6,6 +6,7 @@ const Analytics = require('../models/Analytics');
 const Contact = require('../models/Contact');
 const { sendTextMessage } = require('../integrations/whatsappAPI');
 const { appendToSheet } = require('../integrations/googleSheets');
+const { io } = require('../server');
 
 const verifyWebhook = (req, res) => {
   const mode = req.query['hub.mode'];
@@ -17,7 +18,6 @@ const verifyWebhook = (req, res) => {
       console.log('✅ Webhook verified');
       res.status(200).send(challenge);
     } else {
-      console.error('❌ Webhook verification failed: Tokens do not match.');
       res.sendStatus(403);
     }
   } else {
@@ -27,11 +27,11 @@ const verifyWebhook = (req, res) => {
 
 const processWebhook = async (req, res) => {
   const body = req.body;
-  const io = req.io; // Get the io instance from the request object
+  const io = req.io;
 
   if (body.object === 'whatsapp_business_account') {
     const value = body.entry?.[0]?.changes?.[0]?.value;
-
+    
     // Handle Incoming Messages
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
@@ -61,10 +61,9 @@ const processWebhook = async (req, res) => {
           savedReply = await newReply.save();
           console.log('✅ Incoming reply saved to DB.');
           io.emit('newMessage', { from: message.from, message: savedReply });
-          console.log(`📡 Emitted newMessage event for ${message.from}`);
         }
 
-        // --- Reply Counting and Live Leads Logic ---
+        // Reply Counting and Live Leads Logic
         let campaignToCredit = null;
         if (message.context && message.context.id) {
           const originalMessage = await Analytics.findOne({ wamid: message.context.id }).populate('campaign');
@@ -78,15 +77,10 @@ const processWebhook = async (req, res) => {
         }
         
         if (campaignToCredit) {
-            // Find if this user has replied to this campaign before
-            const existingReplyForCampaign = await Reply.findOne({ from: message.from, campaign: campaignToCredit._id });
-
-            // If this is the very first reply for this campaign...
-            if (!existingReplyForCampaign && savedReply) {
-                savedReply.campaign = campaignToCredit._id; // Link the reply to the campaign
+            const existingReply = await Reply.findOne({ from: message.from, campaign: campaignToCredit._id });
+            if (!existingReply && savedReply) {
+                savedReply.campaign = campaignToCredit._id;
                 await savedReply.save();
-
-                // ...and if a sheet is linked, send the lead
                 if (campaignToCredit.spreadsheetId) {
                     console.log(`✨ New lead for campaign "${campaignToCredit.name}". Appending to Google Sheet...`);
                     const contact = await Contact.findOne({ phoneNumber: message.from });
@@ -99,32 +93,30 @@ const processWebhook = async (req, res) => {
                     await appendToSheet(campaignToCredit.spreadsheetId, 'Sheet1!A1', dataRow);
                 }
             }
-            // Increment the main reply count for every reply
             await Campaign.findByIdAndUpdate(campaignToCredit._id, { $inc: { replyCount: 1 } });
             console.log(`✅ Incremented reply count for campaign: ${campaignToCredit._id}`);
         }
         
-        // --- Auto-Reply Bot Logic ---
+        // Auto-Reply Bot Logic
         if (message.type === 'text') {
             const messageBodyLower = message.text.body.toLowerCase();
             if (messageBodyLower.includes('marbella')) {
-                const autoReplyText = 'Thank you for your interest in Marbella. I will connect you with one of our property consultants, who will assist you with the specific property and provide you with further details.';
+                const autoReplyText = 'Thank you for your interest in Marbella...';
                 await sendTextMessage(message.from, autoReplyText);
             } else {
                 const messageCount = await Reply.countDocuments({ from: message.from });
                 if (messageCount === 1) {
-                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue! How can we help on your interest.';
+                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue!...';
                     await sendTextMessage(message.from, welcomeMessage);
                 }
             }
         }
-
       } catch (error) {
         console.error('❌ Error processing incoming message:', error);
       }
     }
     
-    // --- Handle Message Status Updates ---
+    // Handle Message Status Updates
     if (value && value.statuses && value.statuses[0]) {
         const statusUpdate = value.statuses[0];
         try {
