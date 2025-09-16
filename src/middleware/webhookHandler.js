@@ -18,6 +18,7 @@ const verifyWebhook = (req, res) => {
       console.log('✅ Webhook verified');
       res.status(200).send(challenge);
     } else {
+      console.error('❌ Webhook verification failed: Tokens do not match.');
       res.sendStatus(403);
     }
   } else {
@@ -32,11 +33,16 @@ const processWebhook = async (req, res) => {
   if (body.object === 'whatsapp_business_account') {
     const value = body.entry?.[0]?.changes?.[0]?.value;
     
-    // Handle Incoming Messages
+    // This console.log is useful for debugging all incoming data from Meta
+    console.log('--- Full Webhook Payload Received ---');
+    console.log(JSON.stringify(value, null, 2));
+
+    // --- Handle Incoming Messages ---
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
       try {
         let savedReply = null;
+        let messageBody = ''; // Variable to hold the text from any message type
         let newReplyData = {
           messageId: message.id, from: message.from,
           timestamp: new Date(message.timestamp * 1000), direction: 'incoming',
@@ -44,7 +50,14 @@ const processWebhook = async (req, res) => {
 
         switch (message.type) {
           case 'text':
-            newReplyData.body = message.text.body;
+            messageBody = message.text.body;
+            newReplyData.body = messageBody;
+            break;
+          case 'interactive': // For button clicks
+            if (message.interactive && message.interactive.button_reply) {
+              messageBody = message.interactive.button_reply.title;
+              newReplyData.body = messageBody;
+            }
             break;
           case 'image': case 'video': case 'audio': case 'document': case 'voice':
             newReplyData.mediaId = message[message.type].id;
@@ -52,7 +65,7 @@ const processWebhook = async (req, res) => {
             if (message[message.type].caption) newReplyData.body = message[message.type].caption;
             break;
           default:
-            console.log(`Unsupported message type: ${message.type}`);
+            console.log(`Unsupported message type received: ${message.type}`);
             break;
         }
 
@@ -63,7 +76,7 @@ const processWebhook = async (req, res) => {
           io.emit('newMessage', { from: message.from, message: savedReply });
         }
 
-        // Reply Counting and Live Leads Logic
+        // --- Reply Counting and Live Leads Logic ---
         let campaignToCredit = null;
         if (message.context && message.context.id) {
           const originalMessage = await Analytics.findOne({ wamid: message.context.id }).populate('campaign');
@@ -77,8 +90,8 @@ const processWebhook = async (req, res) => {
         }
         
         if (campaignToCredit) {
-            const existingReply = await Reply.findOne({ from: message.from, campaign: campaignToCredit._id });
-            if (!existingReply && savedReply) {
+            const existingReplyForCampaign = await Reply.findOne({ from: message.from, campaign: campaignToCredit._id });
+            if (!existingReplyForCampaign && savedReply) {
                 savedReply.campaign = campaignToCredit._id;
                 await savedReply.save();
                 if (campaignToCredit.spreadsheetId) {
@@ -88,7 +101,7 @@ const processWebhook = async (req, res) => {
                         new Date(message.timestamp * 1000).toLocaleString(),
                         message.from,
                         contact ? contact.name : 'Unknown',
-                        message.text ? message.text.body : `[Media: ${message.type}]`,
+                        messageBody, // Use the extracted message body
                     ]];
                     await appendToSheet(campaignToCredit.spreadsheetId, 'Sheet1!A1', dataRow);
                 }
@@ -97,26 +110,34 @@ const processWebhook = async (req, res) => {
             console.log(`✅ Incremented reply count for campaign: ${campaignToCredit._id}`);
         }
         
-        // Auto-Reply Bot Logic
-        if (message.type === 'text') {
-            const messageBodyLower = message.text.body.toLowerCase();
+        // --- COMBINED AUTO-REPLY BOT LOGIC ---
+        if (messageBody) {
+            const messageBodyLower = messageBody.toLowerCase();
+
             if (messageBodyLower.includes('marbella')) {
-                const autoReplyText = 'Thank you for your interest in Marbella...';
+                const autoReplyText = 'Thank you for your interest in Marbella. I will connect you with one of our property consultants, who will assist you with the specific property and provide you with further details.';
+                await sendTextMessage(message.from, autoReplyText);
+            } else if (messageBodyLower.includes('rise') || messageBodyLower.includes('yes, i am interested')) {
+                const autoReplyText = 'Thank you for your interest in RISE. I will connect you with one of our property consultants, who will assist you with the specific property and provide you with further details.';
+                await sendTextMessage(message.from, autoReplyText);
+            } else if (messageBodyLower.includes('not interested')) {
+                const autoReplyText = 'Thank you for your feedback. We have noted your preference.';
                 await sendTextMessage(message.from, autoReplyText);
             } else {
                 const messageCount = await Reply.countDocuments({ from: message.from });
                 if (messageCount === 1) {
-                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue!...';
+                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue! How can we help on your interest.';
                     await sendTextMessage(message.from, welcomeMessage);
                 }
             }
         }
+
       } catch (error) {
         console.error('❌ Error processing incoming message:', error);
       }
     }
     
-    // Handle Message Status Updates
+    // --- Handle Message Status Updates ---
     if (value && value.statuses && value.statuses[0]) {
         const statusUpdate = value.statuses[0];
         try {
