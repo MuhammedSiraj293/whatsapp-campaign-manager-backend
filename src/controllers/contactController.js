@@ -6,9 +6,11 @@ const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
+// Helper to extract variables named var1, var2, etc. from a row
 const extractVariables = (row) => {
   const variables = {};
   const reservedKeys = ['phonenumber', 'name'];
+  
   Object.keys(row).forEach(key => {
       const keyLower = key.trim().toLowerCase();
       if (!reservedKeys.includes(keyLower)) {
@@ -48,9 +50,7 @@ const uploadContacts = async (req, res) => {
       const cleanedRow = {};
       Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
       return {
-        // --- THIS IS THE KEY FIX ---
-        // Ensure phoneNumber is always treated as a string
-        phoneNumber: String(cleanedRow.phoneNumber),
+        phoneNumber: String(cleanedRow.phoneNumber), // Still good to have as a fallback
         name: cleanedRow.name,
         contactList: listId,
         variables: extractVariables(cleanedRow),
@@ -62,7 +62,12 @@ const uploadContacts = async (req, res) => {
       const workbook = XLSX.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(sheet);
+      
+      // --- THIS IS THE KEY CHANGE ---
+      // The { raw: false } option tells the parser to use the formatted text
+      // for every cell, preventing numbers from being converted.
+      const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false });
+      
       results = jsonData.map(processRow);
       processContactUpload(results, res, filePath);
     } else {
