@@ -6,7 +6,7 @@ const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
-// Helper to extract variables named var1, var2, etc. from a row
+// Helper to extract named variables from a row
 const extractVariables = (row) => {
   const variables = {};
   const reservedKeys = ['phonenumber', 'name'];
@@ -50,20 +50,26 @@ const uploadContacts = async (req, res) => {
       const cleanedRow = {};
       Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
       return {
-        // This ensures phoneNumber is always treated as a string
+        // --- THIS IS THE KEY FIX ---
+        // This ensures the phoneNumber is always a string, even if it's in scientific notation.
         phoneNumber: String(cleanedRow.phoneNumber),
         name: cleanedRow.name,
         contactList: listId,
         variables: extractVariables(cleanedRow),
       };
     };
+
     if (req.file.mimetype === 'text/csv') {
-      fs.createReadStream(filePath).pipe(csv()).on('data', (data) => results.push(processRow(data))).on('end', () => processContactUpload(results, res, filePath));
+      fs.createReadStream(filePath)
+        .pipe(csv())
+        .on('data', (data) => results.push(processRow(data)))
+        .on('end', () => processContactUpload(results, res, filePath));
     } else if (req.file.mimetype.includes('sheet')) {
       const workbook = XLSX.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      // The { raw: false } option forces the parser to use the formatted text
+      // The { raw: false } option tells the parser to use the formatted text
+      // from every cell, preventing numbers from being converted.
       const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false });
       results = jsonData.map(processRow);
       processContactUpload(results, res, filePath);
