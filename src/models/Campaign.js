@@ -2,6 +2,23 @@
 
 const mongoose = require('mongoose');
 
+// A sub-schema for the buttons
+const ButtonSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['QUICK_REPLY', 'URL'],
+    required: true,
+  },
+  text: {
+    type: String,
+    required: true,
+  },
+  // URL is only required if the button type is 'URL'
+  url: {
+    type: String,
+  },
+});
+
 const CampaignSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -50,12 +67,13 @@ const CampaignSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-  // --- NEW FIELD ---
-  // Stores the unique ID of the Google Sheet for this campaign's live leads
   spreadsheetId: {
     type: String,
     trim: true,
   },
+  // --- NEW FIELD ---
+  // An array to store the button configurations
+  buttons: [ButtonSchema],
 }, {
   timestamps: true
 });

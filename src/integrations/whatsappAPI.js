@@ -38,26 +38,40 @@ const sendTemplateMessage = async (to, templateName, languageCode, options = {})
     });
   }
 
-  // This logic correctly handles both named and numbered variables
-  if (options.bodyVariables && (Array.isArray(options.bodyVariables) || typeof options.bodyVariables === 'object')) {
-    let vars = [];
-    if(Array.isArray(options.bodyVariables)) {
-        vars = options.bodyVariables;
-    } else {
-        // For objects, get the values in order
-        vars = Object.values(options.bodyVariables);
-    }
-
-    if (vars.length > 0 && vars.every(v => v)) {
-        components.push({
-            type: 'body',
-            parameters: vars.map(variable => ({
-                type: 'text',
-                text: variable,
-            })),
-        });
-    }
+  if (options.bodyVariables && options.bodyVariables.length > 0 && options.bodyVariables.every(v => v)) {
+    components.push({
+      type: 'body',
+      parameters: options.bodyVariables.map(variable => ({
+        type: 'text',
+        text: variable,
+      })),
+    });
   }
+
+  // --- NEW LOGIC TO ADD BUTTONS ---
+  if (options.buttons && options.buttons.length > 0) {
+    // This example focuses on URL buttons, as they are common for marketing.
+    // It assumes your template in Meta is a "Call to Action" button type.
+    options.buttons.forEach((button, index) => {
+        if (button.type === 'URL') {
+            components.push({
+                type: 'button',
+                sub_type: 'url',
+                index: String(index), // The index of the button (0, 1, 2...)
+                parameters: [
+                    {
+                        type: 'text',
+                        // The API requires you to send the dynamic part of the URL.
+                        // This code assumes the dynamic part is everything after the last '/'.
+                        // Example URL: https://example.com/products/TICKET123 -> sends "TICKET123"
+                        text: button.url.split('/').pop() 
+                    }
+                ]
+            });
+        }
+    });
+  }
+
 
   const data = {
     messaging_product: 'whatsapp',

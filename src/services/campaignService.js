@@ -38,8 +38,8 @@ const sendCampaign = async (campaignId) => {
         }
       }
 
-      // --- THIS IS THE CORRECTED SECTION ---
-      // Capture the response from the API call
+      // --- THIS IS THE KEY CHANGE ---
+      // Pass the campaign's button configuration to the sending function
       const response = await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
@@ -47,10 +47,10 @@ const sendCampaign = async (campaignId) => {
         {
           headerImageUrl: campaign.headerImageUrl,
           bodyVariables: finalBodyVariables,
+          buttons: campaign.buttons, // <-- Pass the buttons
         }
       );
 
-      // Create an analytics record for the sent message
       if (response && response.messages && response.messages[0].id) {
         const wamid = response.messages[0].id;
         await Analytics.create({

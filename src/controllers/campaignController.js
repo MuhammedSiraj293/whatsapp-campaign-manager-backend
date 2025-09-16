@@ -33,7 +33,7 @@ const createCampaign = async (req, res) => {
     const {
       name, message, templateName, templateLanguage, headerImageUrl,
       bodyVariables, contactList, expectedVariables, scheduledFor,
-      spreadsheetId // <-- NEW
+      spreadsheetId, buttons // <-- NEW: Get buttons from the request
     } = req.body;
 
     const campaignData = {
@@ -43,7 +43,8 @@ const createCampaign = async (req, res) => {
       ...(expectedVariables && { expectedVariables }),
       ...(bodyVariables && { bodyVariables }),
       ...(scheduledFor && { scheduledFor: new Date(scheduledFor) }),
-      ...(spreadsheetId && { spreadsheetId }), // <-- NEW
+      ...(spreadsheetId && { spreadsheetId }),
+      ...(buttons && { buttons }), // <-- NEW: Add buttons to the data
     };
 
     const campaign = await Campaign.create(campaignData);
