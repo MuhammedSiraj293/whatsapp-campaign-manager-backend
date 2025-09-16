@@ -50,27 +50,24 @@ const uploadContacts = async (req, res) => {
       const cleanedRow = {};
       Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
       return {
-        // --- THIS IS THE KEY FIX ---
-        // This ensures the phoneNumber is always a string, even if it's in scientific notation.
         phoneNumber: String(cleanedRow.phoneNumber),
         name: cleanedRow.name,
         contactList: listId,
         variables: extractVariables(cleanedRow),
       };
     };
-
     if (req.file.mimetype === 'text/csv') {
-      fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('data', (data) => results.push(processRow(data)))
-        .on('end', () => processContactUpload(results, res, filePath));
+      fs.createReadStream(filePath).pipe(csv()).on('data', (data) => results.push(processRow(data))).on('end', () => processContactUpload(results, res, filePath));
     } else if (req.file.mimetype.includes('sheet')) {
       const workbook = XLSX.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
+      
+      // --- THIS IS THE KEY CHANGE ---
       // The { raw: false } option tells the parser to use the formatted text
       // from every cell, preventing numbers from being converted.
       const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false });
+      
       results = jsonData.map(processRow);
       processContactUpload(results, res, filePath);
     } else {
