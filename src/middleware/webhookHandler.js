@@ -18,7 +18,6 @@ const verifyWebhook = (req, res) => {
       console.log('✅ Webhook verified');
       res.status(200).send(challenge);
     } else {
-      console.error('❌ Webhook verification failed: Tokens do not match.');
       res.sendStatus(403);
     }
   } else {
@@ -32,12 +31,7 @@ const processWebhook = async (req, res) => {
 
   if (body.object === 'whatsapp_business_account') {
     const value = body.entry?.[0]?.changes?.[0]?.value;
-    
-    // This console.log is useful for debugging all incoming data from Meta
-    console.log('--- Full Webhook Payload Received ---');
-    console.log(JSON.stringify(value, null, 2));
 
-    // --- Handle Incoming Messages ---
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
       try {
@@ -48,15 +42,23 @@ const processWebhook = async (req, res) => {
           timestamp: new Date(message.timestamp * 1000), direction: 'incoming',
         };
 
+        // --- THIS IS THE KEY CHANGE ---
+        // This switch statement now correctly handles button clicks
         switch (message.type) {
           case 'text':
             messageBody = message.text.body;
             newReplyData.body = messageBody;
             break;
-          case 'interactive': // For button clicks
+          case 'interactive': // For Quick Reply button clicks
             if (message.interactive && message.interactive.button_reply) {
               messageBody = message.interactive.button_reply.title;
               newReplyData.body = messageBody;
+            }
+            break;
+          case 'button': // For Call to Action button clicks
+            if (message.button && message.button.text) {
+                messageBody = message.button.text;
+                newReplyData.body = messageBody;
             }
             break;
           case 'image': case 'video': case 'audio': case 'document': case 'voice':
@@ -110,15 +112,14 @@ const processWebhook = async (req, res) => {
             console.log(`✅ Incremented reply count for campaign: ${campaignToCredit._id}`);
         }
         
-        // --- COMBINED AUTO-REPLY BOT LOGIC ---
+        // --- Auto-Reply Bot Logic ---
         if (messageBody) {
             const messageBodyLower = messageBody.toLowerCase();
-
             if (messageBodyLower.includes('marbella')) {
-                const autoReplyText = 'Thank you for your interest in Marbella. I will connect you with one of our property consultants, who will assist you with the specific property and provide you with further details.';
+                const autoReplyText = 'Thank you for your interest in Marbella. A consultant will connect with you shortly.';
                 await sendTextMessage(message.from, autoReplyText);
             } else if (messageBodyLower.includes('rise') || messageBodyLower.includes('yes, i am interested')) {
-                const autoReplyText = 'Thank you for your interest in RISE. I will connect you with one of our property consultants, who will assist you with the specific property and provide you with further details.';
+                const autoReplyText = 'Thank you for your interest in RISE. A consultant will connect with you shortly.';
                 await sendTextMessage(message.from, autoReplyText);
             } else if (messageBodyLower.includes('not interested')) {
                 const autoReplyText = 'Thank you for your feedback. We have noted your preference.';
@@ -126,7 +127,7 @@ const processWebhook = async (req, res) => {
             } else {
                 const messageCount = await Reply.countDocuments({ from: message.from });
                 if (messageCount === 1) {
-                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue! How can we help on your interest.';
+                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue! How can we help?';
                     await sendTextMessage(message.from, welcomeMessage);
                 }
             }
