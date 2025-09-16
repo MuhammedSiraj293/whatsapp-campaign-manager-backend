@@ -1,23 +1,20 @@
 // backend/src/controllers/contactController.js
 
-const fs = require('fs');
-const csv = require('csv-parser');
-const XLSX = require('xlsx');
 const Contact = require('../models/Contact');
 const ContactList = require('../models/ContactList');
 
-// Helper to extract named variables from a row
+// Helper function to extract named variables from a row
 const extractVariables = (row) => {
-  const variables = {};
-  const reservedKeys = ['phonenumber', 'name'];
-  
-  Object.keys(row).forEach(key => {
-      const keyLower = key.trim().toLowerCase();
-      if (!reservedKeys.includes(keyLower)) {
-          variables[key.trim()] = row[key];
-      }
-  });
-  return variables;
+    const variables = {};
+    const reservedKeys = ['phonenumber', 'name'];
+    
+    Object.keys(row).forEach(key => {
+        const keyLower = key.trim().toLowerCase();
+        if (!reservedKeys.includes(keyLower)) {
+            variables[key.trim()] = row[key];
+        }
+    });
+    return variables;
 };
 
 const createContactList = async (req, res) => {
@@ -40,59 +37,40 @@ const getAllContactLists = async (req, res) => {
   }
 };
 
-const uploadContacts = async (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, error: 'No file uploaded.' });
-  const { listId } = req.params;
-  const filePath = req.file.path;
-  let results = [];
-  try {
-    const processRow = (row) => {
-      const cleanedRow = {};
-      Object.keys(row).forEach(key => { cleanedRow[key.trim()] = row[key]; });
-      return {
-        phoneNumber: String(cleanedRow.phoneNumber),
-        name: cleanedRow.name,
-        contactList: listId,
-        variables: extractVariables(cleanedRow),
-      };
-    };
-    if (req.file.mimetype === 'text/csv') {
-      fs.createReadStream(filePath).pipe(csv()).on('data', (data) => results.push(processRow(data))).on('end', () => processContactUpload(results, res, filePath));
-    } else if (req.file.mimetype.includes('sheet')) {
-      const workbook = XLSX.readFile(filePath);
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      
-      // --- THIS IS THE KEY CHANGE ---
-      // The { raw: false } option tells the parser to use the formatted text
-      // from every cell, preventing numbers from being converted.
-      const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false });
-      
-      results = jsonData.map(processRow);
-      processContactUpload(results, res, filePath);
-    } else {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({ success: false, error: 'Unsupported file type.' });
+// --- NEW FUNCTION FOR PASTED DATA ---
+const bulkAddContacts = async (req, res) => {
+    const { listId } = req.params;
+    const { contacts } = req.body;
+
+    if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+        return res.status(400).json({ success: false, error: 'No contacts provided.' });
     }
-  } catch (error) {
-    fs.unlinkSync(filePath);
-    res.status(500).json({ success: false, error: 'Error processing file.' });
-  }
+
+    // Process each contact to match our database schema
+    const processedContacts = contacts.map(contact => ({
+        phoneNumber: String(contact.phoneNumber),
+        name: contact.name,
+        contactList: listId,
+        variables: extractVariables(contact),
+    }));
+
+    try {
+        await Contact.insertMany(processedContacts, { ordered: false });
+        res.status(201).json({
+            success: true,
+            message: `${contacts.length} contacts were processed successfully.`,
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: `Import failed. Some contacts may have been duplicates within this list.`,
+            error: error.message,
+        });
+    }
 };
 
-async function processContactUpload(results, res, filePath) {
-  try {
-    if (results.length === 0) {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({ success: false, error: 'The file is empty or headers are incorrect.' });
-    }
-    await Contact.insertMany(results, { ordered: false });
-    res.status(201).json({ success: true, message: `${results.length} contacts successfully imported.` });
-  } catch (error) {
-    res.status(400).json({ success: false, message: `Import failed.`, error: error.message });
-  } finally {
-    fs.unlinkSync(filePath);
-  }
-}
-
-module.exports = { createContactList, getAllContactLists, uploadContacts };
+module.exports = { 
+    createContactList, 
+    getAllContactLists, 
+    bulkAddContacts 
+};
