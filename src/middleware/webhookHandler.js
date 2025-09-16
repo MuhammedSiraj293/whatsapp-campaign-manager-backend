@@ -116,18 +116,18 @@ const processWebhook = async (req, res) => {
         if (messageBody) {
             const messageBodyLower = messageBody.toLowerCase();
             if (messageBodyLower.includes('marbella')) {
-                const autoReplyText = 'Thank you for your interest in Marbella. A consultant will connect with you shortly.';
+                const autoReplyText = 'Thank you for your interest in Marbella. I will connect you with one of our property consultants.';
                 await sendTextMessage(message.from, autoReplyText);
             } else if (messageBodyLower.includes('rise') || messageBodyLower.includes('yes, i am interested')) {
-                const autoReplyText = 'Thank you for your interest in RISE. A consultant will connect with you shortly.';
+                const autoReplyText = 'Thank you for your interest in Rise by Athlon. I will connect you with one of our property consultants.';
                 await sendTextMessage(message.from, autoReplyText);
             } else if (messageBodyLower.includes('not interested')) {
-                const autoReplyText = 'Thank you for your feedback. We have noted your preference.';
+                const autoReplyText = 'Thank you for your feedback. How can we help you?';
                 await sendTextMessage(message.from, autoReplyText);
             } else {
                 const messageCount = await Reply.countDocuments({ from: message.from });
                 if (messageCount === 1) {
-                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue! How can we help?';
+                    const welcomeMessage = 'Hello, Thank you for connecting Capital Avenue! How can we help you?';
                     await sendTextMessage(message.from, welcomeMessage);
                 }
             }
