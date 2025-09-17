@@ -79,6 +79,24 @@ const getMessageTemplates = async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to fetch message templates.' });
   }
 };
+// --- NEW DELETE FUNCTION ---
+// @desc    Delete a campaign
+// @route   DELETE /api/campaigns/:id
+const deleteCampaign = async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id);
+
+        if (!campaign) {
+            return res.status(404).json({ success: false, error: 'Campaign not found' });
+        }
+
+        await campaign.deleteOne();
+
+        res.status(200).json({ success: true, data: {} });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Server Error' });
+    }
+};
 
 module.exports = {
   getCampaigns,
@@ -86,4 +104,5 @@ module.exports = {
   createCampaign,
   executeCampaign,
   getMessageTemplates,
+  deleteCampaign,
 };

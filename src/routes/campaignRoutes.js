@@ -7,6 +7,7 @@ const {
   executeCampaign,
   getMessageTemplates,
   getRecipientCount,
+  deleteCampaign,
 } = require('../controllers/campaignController');
 
 const { protect, authorize } = require('../middleware/authMiddleware');
@@ -22,5 +23,6 @@ router.get('/templates', protect, getMessageTemplates);
 router.get('/:id/recipients/count', protect, getRecipientCount);
 
 router.post('/:id/send', protect, authorize('admin', 'manager'), executeCampaign);
-
+router.route('/:id')
+    .delete(protect, authorize('admin', 'manager'), deleteCampaign); // <-- ADDED
 module.exports = router;
