@@ -122,12 +122,12 @@ const processWebhook = async (req, res) => {
                 const autoReplyText = 'Your interest has been noted. will contact you shortly. Thank you for contacting us.';
                 await sendTextMessage(message.from, autoReplyText);
             } else if (messageBodyLower.includes('not interested')) {
-                const autoReplyText = 'We appreciate your feedback. If at any point you like to revisit the opportunity, our team will be ready to support you.';
+                const autoReplyText = 'Your preference has been noted, and you will no longer receive messages from us. We value your choice and remain available when you wish to engage with us again in the future.';
                 await sendTextMessage(message.from, autoReplyText);
             } else {
                 const messageCount = await Reply.countDocuments({ from: message.from });
                 if (messageCount === 1) {
-                    const welcomeMessage = 'Hello and welcome to Capital Avenue! Its a pleasure to connect with you. How can we help you today!';
+                    const welcomeMessage = 'Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?';
                     await sendTextMessage(message.from, welcomeMessage);
                 }
             }
