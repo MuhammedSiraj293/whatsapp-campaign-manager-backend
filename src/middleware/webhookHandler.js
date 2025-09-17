@@ -116,10 +116,10 @@ const processWebhook = async (req, res) => {
         if (messageBody) {
             const messageBodyLower = messageBody.toLowerCase();
             if (messageBodyLower.includes('marbella')) {
-                const autoReplyText = 'Thank you for your Interest. We will contact you shortly.';
+                const autoReplyText = 'Your interest has been noted. will contact you shortly.Thank you for contacting us.';
                 await sendTextMessage(message.from, autoReplyText);
             } else if (messageBodyLower.includes('rise') || messageBodyLower.includes('yes, i am interested')) {
-                const autoReplyText = 'Thank you for your Interest. We will contact you shortly.';
+                const autoReplyText = 'Your interest has been noted. will contact you shortly. Thank you for contacting us.';
                 await sendTextMessage(message.from, autoReplyText);
             } else if (messageBodyLower.includes('not interested')) {
                 const autoReplyText = 'We appreciate your feedback. If at any point you like to revisit the opportunity, our team will be ready to support you.';
