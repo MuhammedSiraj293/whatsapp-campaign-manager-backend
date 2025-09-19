@@ -26,6 +26,10 @@ const sendCampaign = async (campaignId) => {
   await Log.create({ level: 'info', message: `Starting campaign "${campaign.name}" for ${contacts.length} contacts.`, campaign: campaignId });
 
   for (const contact of contacts) {
+    let wamid = `failed-${contact._id}-${Date.now()}`; // Create a temporary unique ID for failures
+    let status = 'sent';
+    let failureReason = null;
+
     try {
       const finalBodyVariables = [];
       if (campaign.expectedVariables > 0) {
@@ -38,8 +42,6 @@ const sendCampaign = async (campaignId) => {
         }
       }
 
-      // --- THIS IS THE KEY CHANGE ---
-      // Pass the campaign's button configuration to the sending function
       const response = await sendTemplateMessage(
         contact.phoneNumber,
         campaign.templateName,
@@ -47,25 +49,31 @@ const sendCampaign = async (campaignId) => {
         {
           headerImageUrl: campaign.headerImageUrl,
           bodyVariables: finalBodyVariables,
-          buttons: campaign.buttons, // <-- Pass the buttons
+          buttons: campaign.buttons,
         }
       );
-
-      if (response && response.messages && response.messages[0].id) {
-        const wamid = response.messages[0].id;
-        await Analytics.create({
-          wamid: wamid,
-          campaign: campaign._id,
-          contact: contact._id,
-          status: 'sent',
-        });
-      }
       
+      if (response && response.messages && response.messages[0].id) {
+        wamid = response.messages[0].id; // Get the real message ID on success
+      }
       successCount++;
     } catch (error) {
-      await Log.create({ level: 'error', message: `Failed to send to ${contact.phoneNumber} for campaign "${campaign.name}".`, campaign: campaignId });
+      // --- THIS IS THE KEY CHANGE ---
+      // Capture the specific error message from Meta
+      failureReason = error.response?.data?.error?.message || error.message;
+      status = 'failed';
+      await Log.create({ level: 'error', message: `Failed to send to ${contact.phoneNumber}. Reason: ${failureReason}`, campaign: campaignId });
       failureCount++;
     }
+
+    // Create an analytics record for every attempt (success or failure)
+    await Analytics.create({
+      wamid: wamid,
+      campaign: campaign._id,
+      contact: contact._id,
+      status: status,
+      failureReason: failureReason, // Save the failure reason
+    });
 
     await sleep(1000); 
   }

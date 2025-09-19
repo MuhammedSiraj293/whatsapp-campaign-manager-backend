@@ -26,6 +26,11 @@ const AnalyticsSchema = new mongoose.Schema({
     enum: ['sent', 'delivered', 'read', 'failed'],
     required: true,
   },
+  // --- NEW FIELD ---
+  // Stores the specific error message from Meta if the status is 'failed'
+  failureReason: {
+    type: String,
+  },
 }, {
   timestamps: true,
 });
