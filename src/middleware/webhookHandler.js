@@ -138,12 +138,26 @@ const processWebhook = async (req, res) => {
       }
     }
     
-    // --- Handle Message Status Updates ---
+    // --- Handle Message Status Updates (Upgraded Logic) ---
     if (value && value.statuses && value.statuses[0]) {
         const statusUpdate = value.statuses[0];
         try {
-            await Analytics.findOneAndUpdate({ wamid: statusUpdate.id }, { status: statusUpdate.status });
-            console.log(`✅ Updated status for ${statusUpdate.id} to ${statusUpdate.status}`);
+            const updateData = { status: statusUpdate.status };
+            
+            // --- THIS IS THE KEY CHANGE ---
+            // If the status is 'failed', extract the error reason from the payload
+            if (statusUpdate.status === 'failed' && statusUpdate.errors && statusUpdate.errors[0]) {
+                updateData.failureReason = statusUpdate.errors[0].title;
+            }
+
+            const updated = await Analytics.findOneAndUpdate(
+                { wamid: statusUpdate.id },
+                updateData, // Use the new updateData object
+                { new: true }
+            );
+            if (updated) {
+                console.log(`✅ Updated status for ${statusUpdate.id} to ${statusUpdate.status}`);
+            }
         } catch(error) {
             console.error('❌ Error updating message status:', error);
         }
