@@ -4,9 +4,9 @@ const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const Analytics = require("../models/Analytics");
 const Log = require("../models/Log");
-const Reply = require('../models/Reply'); // <-- 1. IMPORT Reply
-const { io } = require('../server'); // <-- 2. IMPORT io
+const Reply = require("../models/Reply"); // <-- 1. IMPORT Reply
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
+const { io } = require("../server"); // <-- 2. IMPORT io
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -38,7 +38,7 @@ const sendCampaign = async (campaignId) => {
   });
 
   for (const contact of contacts) {
-    let wamid = `failed-${contact._id}-${Date.now()}`; // Create a temporary unique ID for failures
+    let wamid = `failed-${contact._id}-${Date.now()}`;
     let status = "sent";
     let failureReason = null;
 
@@ -68,15 +68,10 @@ const sendCampaign = async (campaignId) => {
       );
 
       if (response && response.messages && response.messages[0].id) {
-        const wamid = response.messages[0].id;
-        await Analytics.create({
-          wamid: wamid,
-          campaign: campaign._id,
-          contact: contact._id,
-          status: "sent",
-        });
+        wamid = response.messages[0].id;
 
-        // Save the outgoing campaign message to the 'replies' collection
+        // --- 3. THIS IS THE FIX ---
+        // Save the outgoing campaign message to the 'replies' collection for chat history
         const campaignMessage = new Reply({
           messageId: wamid,
           from: contact.phoneNumber,
@@ -88,20 +83,14 @@ const sendCampaign = async (campaignId) => {
         });
         await campaignMessage.save();
 
-        // Emit an event so the frontend updates instantly
+        // Emit an event so the frontend chat updates instantly
         io.emit("newMessage", {
           from: contact.phoneNumber,
           message: campaignMessage,
         });
       }
-
-      if (response && response.messages && response.messages[0].id) {
-        wamid = response.messages[0].id; // Get the real message ID on success
-      }
       successCount++;
     } catch (error) {
-      // --- THIS IS THE KEY CHANGE ---
-      // Capture the specific error message from Meta
       failureReason = error.response?.data?.error?.message || error.message;
       status = "failed";
       await Log.create({
@@ -112,13 +101,12 @@ const sendCampaign = async (campaignId) => {
       failureCount++;
     }
 
-    // Create an analytics record for every attempt (success or failure)
     await Analytics.create({
       wamid: wamid,
       campaign: campaign._id,
       contact: contact._id,
       status: status,
-      failureReason: failureReason, // Save the failure reason
+      failureReason: failureReason,
     });
 
     await sleep(1000);
