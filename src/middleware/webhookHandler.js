@@ -115,6 +115,8 @@ const processWebhook = async (req, res) => {
         // --- Auto-Reply Bot Logic ---
         if (messageBody) {
             const messageBodyLower = messageBody.toLowerCase();
+            let autoReplyText = null;
+            
             if (messageBodyLower.includes('marbella')) {
                 const autoReplyText = 'Your interest has been noted. will contact you shortly.Thank you for contacting us.';
                 await sendTextMessage(message.from, autoReplyText);
@@ -129,6 +131,24 @@ const processWebhook = async (req, res) => {
                 if (messageCount === 1) {
                     const welcomeMessage = 'Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?';
                     await sendTextMessage(message.from, welcomeMessage);
+                }
+            }
+
+            // If a reply text was determined, send it and save it.
+            if (autoReplyText) {
+                console.log(`🤖 Sending auto-reply to ${message.from}...`);
+                const result = await sendTextMessage(message.from, autoReplyText);
+                if (result && result.messages && result.messages[0].id) {
+                    const newAutoReply = new Reply({
+                        messageId: result.messages[0].id,
+                        from: message.from,
+                        body: autoReplyText,
+                        timestamp: new Date(),
+                        direction: 'outgoing',
+                        read: true,
+                    });
+                    await newAutoReply.save();
+                    io.emit('newMessage', { from: message.from, message: newAutoReply });
                 }
             }
         }
