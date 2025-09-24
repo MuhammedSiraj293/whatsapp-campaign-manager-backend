@@ -116,7 +116,7 @@ const processWebhook = async (req, res) => {
         if (messageBody) {
             const messageBodyLower = messageBody.toLowerCase();
             let autoReplyText = null;
-            
+
             if (messageBodyLower.includes('marbella')) {
                 const autoReplyText = 'Your interest has been noted. will contact you shortly.Thank you for contacting us.';
                 await sendTextMessage(message.from, autoReplyText);
@@ -134,7 +134,7 @@ const processWebhook = async (req, res) => {
                 }
             }
 
-            // If a reply text was determined, send it and save it.
+            // If a reply text was determined, send it, save it, and emit it.
             if (autoReplyText) {
                 console.log(`🤖 Sending auto-reply to ${message.from}...`);
                 const result = await sendTextMessage(message.from, autoReplyText);
