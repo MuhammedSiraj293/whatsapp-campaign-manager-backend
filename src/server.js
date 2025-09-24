@@ -11,7 +11,6 @@ dotenv.config();
 const connectDB = require('./config/db');
 const { startScheduler } = require('./jobs/scheduler');
 
-// Route Imports
 const campaignRoutes = require('./routes/campaignRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const replyRoutes = require('./routes/replyRoutes');
@@ -26,34 +25,15 @@ connectDB();
 const app = express();
 const httpServer = http.createServer(app);
 
-// --- THIS IS THE FIX ---
-// Add all your frontend URLs to the list of allowed origins
 const allowedOrigins = [
   'http://localhost:3000', 
   'https://whatsapp-campaign-manager-frontend.vercel.app',
   'https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app'
 ];
-const corsOptions = {
-  origin: allowedOrigins,
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-  credentials: true,
-};
+const corsOptions = { origin: allowedOrigins, methods: "GET,HEAD,PUT,PATCH,POST,DELETE", credentials: true };
 app.use(cors(corsOptions));
 
-// Initialize Socket.IO Server
-const io = new Server(httpServer, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"]
-  }
-});
-
-// Middleware to attach io to requests
-const socketIoMiddleware = (req, res, next) => {
-  req.io = io;
-  next();
-};
-module.exports.io = io; 
+const io = new Server(httpServer, { cors: { origin: allowedOrigins, methods: ["GET", "POST"] } });
 
 io.on('connection', (socket) => {
   console.log('🔌 A user connected:', socket.id);
@@ -61,6 +41,13 @@ io.on('connection', (socket) => {
     console.log('🔌 User disconnected:', socket.id);
   });
 });
+
+// --- THIS IS THE KEY CHANGE ---
+// Create middleware to attach the io instance to the request object
+const socketIoMiddleware = (req, res, next) => {
+  req.io = io;
+  next();
+};
 
 app.use(express.json());
 
@@ -74,6 +61,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/replies', replyRoutes);
+// Apply the middleware specifically to the webhook route
 app.use('/api/webhook', socketIoMiddleware, webhookRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/media', mediaRoutes);
