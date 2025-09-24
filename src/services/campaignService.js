@@ -52,6 +52,31 @@ const sendCampaign = async (campaignId) => {
           buttons: campaign.buttons,
         }
       );
+
+      if (response && response.messages && response.messages[0].id) {
+        const wamid = response.messages[0].id;
+        await Analytics.create({
+          wamid: wamid,
+          campaign: campaign._id,
+          contact: contact._id,
+          status: 'sent',
+        });
+
+        // Save the outgoing campaign message to the 'replies' collection
+        const campaignMessage = new Reply({
+            messageId: wamid,
+            from: contact.phoneNumber,
+            body: campaign.message,
+            timestamp: new Date(),
+            direction: 'outgoing',
+            read: true,
+            campaign: campaign._id,
+        });
+        await campaignMessage.save();
+        
+        // Emit an event so the frontend updates instantly
+        io.emit('newMessage', { from: contact.phoneNumber, message: campaignMessage });
+      }
       
       if (response && response.messages && response.messages[0].id) {
         wamid = response.messages[0].id; // Get the real message ID on success

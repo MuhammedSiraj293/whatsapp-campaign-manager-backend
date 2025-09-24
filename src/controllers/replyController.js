@@ -95,6 +95,9 @@ const sendReply = async (req, res) => {
         read: true,
       });
       await newReply.save();
+      
+      // Emit an event to update the frontend instantly
+      io.emit('newMessage', { from: phoneNumber, message: newReply });
     }
 
     res.status(200).json({ success: true, data: result });
@@ -121,6 +124,9 @@ const sendMediaReply = async (req, res) => {
                 mediaId: result.mediaId,
             });
             await newReply.save();
+            
+            // Emit an event to update the frontend instantly
+            io.emit('newMessage', { from: phoneNumber, message: newReply });
         }
         res.status(200).json({ success: true, data: result.sendResponse });
     } catch (error) {
