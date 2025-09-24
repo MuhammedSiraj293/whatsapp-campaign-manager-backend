@@ -75,63 +75,65 @@ const markAsRead = async (req, res) => {
 };
 
 const sendReply = async (req, res) => {
+  const io = req.io; // Get the io instance from the request
   try {
     const { phoneNumber } = req.params;
     const { message } = req.body;
-
     if (!message) {
-      return res.status(400).json({ success: false, error: 'Message body is required.' });
+      return res
+        .status(400)
+        .json({ success: false, error: "Message body is required." });
     }
-
     const result = await sendTextMessage(phoneNumber, message);
-
     if (result && result.messages && result.messages[0].id) {
       const newReply = new Reply({
         messageId: result.messages[0].id,
         from: phoneNumber,
         body: message,
         timestamp: new Date(),
-        direction: 'outgoing',
+        direction: "outgoing",
         read: true,
       });
       await newReply.save();
-      
-      // Emit an event to update the frontend instantly
-      io.emit('newMessage', { from: phoneNumber, message: newReply });
+      // --- THIS IS THE FIX ---
+      io.emit("newMessage", { from: phoneNumber, message: newReply });
     }
-
     res.status(200).json({ success: true, data: result });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Failed to send reply.' });
+    res.status(500).json({ success: false, error: "Failed to send reply." });
   }
 };
 
 const sendMediaReply = async (req, res) => {
-    try {
-        const { phoneNumber } = req.params;
-        if (!req.file) {
-            return res.status(400).json({ success: false, error: 'No file uploaded.' });
-        }
-        const result = await sendMediaMessage(phoneNumber, req.file);
-        if (result && result.sendResponse && result.sendResponse.messages[0].id) {
-            const newReply = new Reply({
-                messageId: result.sendResponse.messages[0].id,
-                from: phoneNumber,
-                timestamp: new Date(),
-                direction: 'outgoing',
-                read: true,
-                mediaType: req.file.mimetype.split('/')[0],
-                mediaId: result.mediaId,
-            });
-            await newReply.save();
-            
-            // Emit an event to update the frontend instantly
-            io.emit('newMessage', { from: phoneNumber, message: newReply });
-        }
-        res.status(200).json({ success: true, data: result.sendResponse });
-    } catch (error) {
-        res.status(500).json({ success: false, error: 'Failed to send media reply.' });
+  const io = req.io; // Get the io instance from the request
+  try {
+    const { phoneNumber } = req.params;
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ success: false, error: "No file uploaded." });
     }
+    const result = await sendMediaMessage(phoneNumber, req.file);
+    if (result && result.sendResponse && result.sendResponse.messages[0].id) {
+      const newReply = new Reply({
+        messageId: result.sendResponse.messages[0].id,
+        from: phoneNumber,
+        timestamp: new Date(),
+        direction: "outgoing",
+        read: true,
+        mediaType: req.file.mimetype.split("/")[0],
+        mediaId: result.mediaId,
+      });
+      await newReply.save();
+      // --- THIS IS THE FIX ---
+      io.emit("newMessage", { from: phoneNumber, message: newReply });
+    }
+    res.status(200).json({ success: true, data: result.sendResponse });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to send media reply." });
+  }
 };
 
 module.exports = {

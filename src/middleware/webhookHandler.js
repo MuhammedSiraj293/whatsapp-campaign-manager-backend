@@ -32,7 +32,7 @@ const processWebhook = async (req, res) => {
   if (body.object === "whatsapp_business_account") {
     const value = body.entry?.[0]?.changes?.[0]?.value;
 
-    // --- Handle Incoming Messages ---
+    // Handle Incoming Messages
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
       try {
@@ -84,7 +84,7 @@ const processWebhook = async (req, res) => {
           io.emit("newMessage", { from: message.from, message: savedReply });
         }
 
-        // --- Reply Counting and Live Leads Logic ---
+        // Reply Counting and Live Leads Logic
         let campaignToCredit = null;
         if (message.context && message.context.id) {
           const originalMessage = await Analytics.findOne({
@@ -141,34 +141,30 @@ const processWebhook = async (req, res) => {
           );
         }
 
-        // --- UPGRADED AUTO-REPLY BOT LOGIC ---
+        // --- THIS IS THE CORRECTED BOT LOGIC ---
         if (messageBody) {
           const messageBodyLower = messageBody.toLowerCase();
-          let autoReplyText = null;
+          let autoReplyText = null; // Declare the variable once, outside the blocks
 
           if (messageBodyLower.includes("marbella")) {
-            const autoReplyText =
+            autoReplyText =
               "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
-            await sendTextMessage(message.from, autoReplyText);
           } else if (
             messageBodyLower.includes("rise") ||
             messageBodyLower.includes("yes, i am interested")
           ) {
-            const autoReplyText =
+            autoReplyText =
               "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
-            await sendTextMessage(message.from, autoReplyText);
           } else if (messageBodyLower.includes("not interested")) {
-            const autoReplyText =
+            autoReplyText =
               "Your preference has been noted, and you will no longer receive messages from us. We value your choice and remain available when you wish to engage with us again in the future.";
-            await sendTextMessage(message.from, autoReplyText);
           } else {
             const messageCount = await Reply.countDocuments({
               from: message.from,
             });
             if (messageCount === 1) {
-              const welcomeMessage =
+              autoReplyText =
                 "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
-              await sendTextMessage(message.from, welcomeMessage);
             }
           }
 
@@ -198,7 +194,7 @@ const processWebhook = async (req, res) => {
       }
     }
 
-    // --- Handle Message Status Updates ---
+    // Handle Message Status Updates
     if (value && value.statuses && value.statuses[0]) {
       const statusUpdate = value.statuses[0];
       try {
