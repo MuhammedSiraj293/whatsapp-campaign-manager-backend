@@ -84,54 +84,43 @@ const processWebhook = async (req, res) => {
           io.emit("newMessage", { from: message.from, message: savedReply });
         }
 
-        // Reply Counting and Live Leads Logic
         let campaignToCredit = null;
         if (message.context && message.context.id) {
           const originalMessage = await Analytics.findOne({
             wamid: message.context.id,
           }).populate("campaign");
           if (originalMessage) campaignToCredit = originalMessage.campaign;
-        } else {
-          const contact = await Contact.findOne({ phoneNumber: message.from });
-          if (contact) {
-            const lastSentMessage = await Analytics.findOne({
-              contact: contact._id,
-            })
-              .populate("campaign")
-              .sort({ createdAt: -1 });
-            if (lastSentMessage) campaignToCredit = lastSentMessage.campaign;
-          }
         }
 
         if (campaignToCredit) {
-          const existingReplyForCampaign = await Reply.findOne({
+          // --- THIS IS THE KEY FIX ---
+          // Count only INCOMING messages to determine if it's a new lead
+          const incomingMessageCount = await Reply.countDocuments({
             from: message.from,
             campaign: campaignToCredit._id,
+            direction: "incoming",
           });
-          if (!existingReplyForCampaign && savedReply) {
-            savedReply.campaign = campaignToCredit._id;
-            await savedReply.save();
-            if (campaignToCredit.spreadsheetId) {
-              console.log(
-                `✨ New lead for campaign "${campaignToCredit.name}". Appending to Google Sheet...`
-              );
-              const contact = await Contact.findOne({
-                phoneNumber: message.from,
-              });
-              const dataRow = [
-                [
-                  new Date(message.timestamp * 1000).toLocaleString(),
-                  message.from,
-                  contact ? contact.name : "Unknown",
-                  messageBody,
-                ],
-              ];
-              await appendToSheet(
-                campaignToCredit.spreadsheetId,
-                "Sheet1!A1",
-                dataRow
-              );
-            }
+
+          if (incomingMessageCount === 1 && campaignToCredit.spreadsheetId) {
+            console.log(
+              `✨ New lead for campaign "${campaignToCredit.name}". Appending to Google Sheet...`
+            );
+            const contact = await Contact.findOne({
+              phoneNumber: message.from,
+            });
+            const dataRow = [
+              [
+                new Date(message.timestamp * 1000).toLocaleString(),
+                message.from,
+                contact ? contact.name : "Unknown",
+                messageBody,
+              ],
+            ];
+            await appendToSheet(
+              campaignToCredit.spreadsheetId,
+              "Sheet1!A1",
+              dataRow
+            );
           }
           await Campaign.findByIdAndUpdate(campaignToCredit._id, {
             $inc: { replyCount: 1 },
