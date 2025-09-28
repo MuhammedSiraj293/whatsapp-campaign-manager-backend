@@ -32,17 +32,29 @@ const processWebhook = async (req, res) => {
   if (body.object === "whatsapp_business_account") {
     const value = body.entry?.[0]?.changes?.[0]?.value;
 
-    // Handle Incoming Messages
+    // --- Handle Incoming Messages ---
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
       try {
         let savedReply = null;
         let messageBody = "";
+
+        // --- 1. Find the campaign this message belongs to ---
+        let campaignToCredit = null;
+        if (message.context && message.context.id) {
+          // Find the original sent message and get its campaign
+          const originalMessage = await Analytics.findOne({
+            wamid: message.context.id,
+          }).populate("campaign");
+          if (originalMessage) campaignToCredit = originalMessage.campaign;
+        }
+
         let newReplyData = {
           messageId: message.id,
           from: message.from,
           timestamp: new Date(message.timestamp * 1000),
           direction: "incoming",
+          campaign: campaignToCredit ? campaignToCredit._id : null, // Link to the campaign
         };
 
         switch (message.type) {
@@ -51,16 +63,11 @@ const processWebhook = async (req, res) => {
             newReplyData.body = messageBody;
             break;
           case "interactive":
-            if (message.interactive && message.interactive.button_reply) {
-              messageBody = message.interactive.button_reply.title;
-              newReplyData.body = messageBody;
-            }
-            break;
           case "button":
-            if (message.button && message.button.text) {
-              messageBody = message.button.text;
-              newReplyData.body = messageBody;
-            }
+            if (message.interactive?.button_reply)
+              messageBody = message.interactive.button_reply.title;
+            else if (message.button?.text) messageBody = message.button.text;
+            newReplyData.body = messageBody;
             break;
           case "image":
           case "video":
@@ -73,7 +80,7 @@ const processWebhook = async (req, res) => {
               newReplyData.body = message[message.type].caption;
             break;
           default:
-            console.log(`Unsupported message type received: ${message.type}`);
+            console.log(`Unsupported message type: ${message.type}`);
             break;
         }
 
@@ -84,17 +91,8 @@ const processWebhook = async (req, res) => {
           io.emit("newMessage", { from: message.from, message: savedReply });
         }
 
-        let campaignToCredit = null;
-        if (message.context && message.context.id) {
-          const originalMessage = await Analytics.findOne({
-            wamid: message.context.id,
-          }).populate("campaign");
-          if (originalMessage) campaignToCredit = originalMessage.campaign;
-        }
-
         if (campaignToCredit) {
-          // --- THIS IS THE KEY FIX ---
-          // Count only INCOMING messages to determine if it's a new lead
+          // --- 2. Check if it's the FIRST reply for this specific campaign ---
           const incomingMessageCount = await Reply.countDocuments({
             from: message.from,
             campaign: campaignToCredit._id,
@@ -122,6 +120,7 @@ const processWebhook = async (req, res) => {
               dataRow
             );
           }
+          // Always increment the main reply count
           await Campaign.findByIdAndUpdate(campaignToCredit._id, {
             $inc: { replyCount: 1 },
           });

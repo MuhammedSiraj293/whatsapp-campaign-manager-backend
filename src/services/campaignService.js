@@ -2,7 +2,7 @@
 
 const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
-const Analytics = require("../models/Analytics");
+const Analytics = "require"("../models/Analytics");
 const Log = require("../models/Log");
 const Reply = require("../models/Reply"); // <-- 1. IMPORT Reply
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
@@ -79,7 +79,7 @@ const sendCampaign = async (campaignId) => {
           timestamp: new Date(),
           direction: "outgoing",
           read: true,
-          campaign: campaign._id,
+          campaign: campaign._id, // Link the message to the campaign
         });
         await campaignMessage.save();
 
