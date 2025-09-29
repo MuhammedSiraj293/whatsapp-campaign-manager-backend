@@ -4,7 +4,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const http = require('http');
-const { Server } = require('socket.io');
+const socketManager = require('./socketManager'); // <-- 1. IMPORT the manager
 
 // Load environment variables first
 dotenv.config();
@@ -31,29 +31,24 @@ const httpServer = http.createServer(app);
 const allowedOrigins = [
   'http://localhost:3000', 
   'https://whatsapp-campaign-manager-frontend.vercel.app',
-  'https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app' // Add all your Vercel URLs
+  'https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app'
 ];
 const corsOptions = {
   origin: allowedOrigins,
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
-  optionsSuccessStatus: 204
 };
 app.use(cors(corsOptions));
 
-// Initialize Socket.IO Server
-const io = new Server(httpServer, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"]
-  }
-});
+// --- 2. INITIALIZE Socket.IO using the manager ---
+const io = socketManager.init(httpServer, { origin: allowedOrigins });
 
-// Middleware to attach io to requests, making it available in controllers
-const socketIoMiddleware = (req, res, next) => {
-  req.io = io;
-  next();
-};
+io.on('connection', (socket) => {
+  console.log('🔌 A user connected:', socket.id);
+  socket.on('disconnect', () => {
+    console.log('🔌 User disconnected:', socket.id);
+  });
+});
 
 app.use(express.json());
 
@@ -63,23 +58,15 @@ app.get('/', (req, res) => {
   res.send('✅ Backend server is live and connected to MongoDB!');
 });
 
-// Mount The Routes
-// Apply the socket middleware to all routes that might need it
+// Mount The Routes (no middleware needed here anymore)
 app.use('/api/auth', authRoutes);
-app.use('/api/campaigns', socketIoMiddleware, campaignRoutes);
-app.use('/api/replies', socketIoMiddleware, replyRoutes);
-app.use('/api/webhook', socketIoMiddleware, webhookRoutes);
-app.use('/api/contacts', socketIoMiddleware, contactRoutes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/replies', replyRoutes);
+app.use('/api/webhook', webhookRoutes);
+app.use('/api/contacts', contactRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/logs', logRoutes);
-
-io.on('connection', (socket) => {
-  console.log('🔌 A user connected:', socket.id);
-  socket.on('disconnect', () => {
-    console.log('🔌 User disconnected:', socket.id);
-  });
-});
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);

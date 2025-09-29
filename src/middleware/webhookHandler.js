@@ -6,7 +6,7 @@ const Analytics = require("../models/Analytics");
 const Contact = require("../models/Contact");
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { appendToSheet } = require("../integrations/googleSheets");
-const { io } = require("../server");
+const { getIO } = require('../socketManager'); // <-- 1. IMPORT from the manager
 
 const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
@@ -27,7 +27,7 @@ const verifyWebhook = (req, res) => {
 
 const processWebhook = async (req, res) => {
   const body = req.body;
-  const io = req.io;
+  const io = getIO(); // <-- 2. GET the io instance
 
   if (body.object === "whatsapp_business_account") {
     const value = body.entry?.[0]?.changes?.[0]?.value;
@@ -108,7 +108,9 @@ const processWebhook = async (req, res) => {
             });
             const dataRow = [
               [
-                new Date(message.timestamp * 1000).toLocaleString(),
+                new Date(message.timestamp * 1000).toLocaleString("en-US", {
+                  timeZone: "Asia/Dubai",
+                }),
                 message.from,
                 contact ? contact.name : "Unknown",
                 messageBody,

@@ -5,6 +5,7 @@ const Campaign = require('../models/Campaign');
 const Analytics = require('../models/Analytics');
 const Contact = require('../models/Contact');
 const { sendTextMessage, sendMediaMessage } = require('../integrations/whatsappAPI');
+const { getIO } = require('../socketManager'); // <-- 1. IMPORT from the manager
 
 const getConversations = async (req, res) => {
   try {
@@ -75,7 +76,7 @@ const markAsRead = async (req, res) => {
 };
 
 const sendReply = async (req, res) => {
-  const io = req.io; // Get the io instance from the request
+   const io = getIO(); // <-- 2. GET the io instance
   try {
     const { phoneNumber } = req.params;
     const { message } = req.body;
@@ -105,7 +106,7 @@ const sendReply = async (req, res) => {
 };
 
 const sendMediaReply = async (req, res) => {
-  const io = req.io; // Get the io instance from the request
+   const io = getIO(); // <-- 2. GET the io instance
   try {
     const { phoneNumber } = req.params;
     if (!req.file) {

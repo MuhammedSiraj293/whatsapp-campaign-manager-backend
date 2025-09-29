@@ -6,11 +6,12 @@ const Analytics = require("../models/Analytics");
 const Log = require("../models/Log");
 const Reply = require("../models/Reply"); // <-- 1. IMPORT Reply
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
-const { io } = require("../server"); // <-- 2. IMPORT io
+const { getIO } = require('../socketManager'); // <-- 1. IMPORT from the manager
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const sendCampaign = async (campaignId) => {
+  const io = getIO(); // <-- 2. GET the io instance
   const campaign = await Campaign.findById(campaignId);
   if (!campaign) throw new Error("Campaign not found.");
   if (!campaign.contactList)
