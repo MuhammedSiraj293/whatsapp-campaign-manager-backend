@@ -23,10 +23,12 @@ const UserSchema = new mongoose.Schema({
     minlength: 6,
     select: false,
   },
+  // --- THIS IS THE CHANGE ---
+  // Add the new 'viewer' role to the list
   role: {
     type: String,
-    enum: ['admin', 'manager'],
-    default: 'manager',
+    enum: ['admin', 'manager', 'viewer'],
+    default: 'viewer', // New users will now default to 'viewer'
   },
 });
 

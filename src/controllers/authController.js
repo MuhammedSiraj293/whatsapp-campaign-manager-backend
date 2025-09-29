@@ -3,30 +3,55 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
-// Reusable function to create and send a token
+// This function remains the same
 const sendTokenResponse = (user, statusCode, res) => {
-  // Create token
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE,
   });
-
-  res.status(statusCode).json({ success: true, token });
+  res.status(statusCode).json({ 
+    success: true, 
+    token,
+    user: { name: user.name, role: user.role }
+  });
 };
 
-// @desc    Register a new user
+// --- THIS FUNCTION IS UPGRADED ---
+// @desc    Register a new user (publicly or by an admin)
 // @route   POST /api/auth/register
 const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
-    // Create user in the database
-    const user = await User.create({
-      name,
-      email,
-      password,
-    });
+    // Check if a user with this email already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+        return res.status(400).json({ success: false, error: 'A user with this email already exists.' });
+    }
 
-    sendTokenResponse(user, 201, res);
+    const newUser = { name, email, password };
+
+    // --- NEW LOGIC ---
+    // If the request is made by an admin, they can set the role.
+    // The `req.user` object is only present if the user is logged in (from our 'protect' middleware).
+    if (req.user && req.user.role === 'admin') {
+      if (role && ['admin', 'manager', 'viewer'].includes(role)) {
+        newUser.role = role;
+      } else {
+        newUser.role = 'viewer'; // Default for admin creation
+      }
+    } else {
+      // Public registration: always defaults to 'viewer'
+      newUser.role = 'viewer';
+    }
+
+    const user = await User.create(newUser);
+
+    // We don't send a token for admin creation to avoid confusion
+    if (req.user && req.user.role === 'admin') {
+        res.status(201).json({ success: true, message: 'User created successfully.' });
+    } else {
+        sendTokenResponse(user, 201, res);
+    }
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
