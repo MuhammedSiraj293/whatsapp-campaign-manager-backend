@@ -147,12 +147,12 @@ const processWebhook = async (req, res) => {
               "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
           } else if (messageBodyLower.includes("not interested")) {
             autoReplyText =
-              "Your preference has been noted, and you will no longer receive messages from us. We value your choice and remain available when you wish to engage with us again in the future.";
+              "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
           } else {
-            const messageCount = await Reply.countDocuments({
+            const incomingMessageCount = await Reply.countDocuments({
               from: message.from,
             });
-            if (messageCount === 1) {
+            if (incomingMessageCount === 1) {
               autoReplyText =
                 "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
             }
