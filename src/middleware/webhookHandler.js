@@ -148,6 +148,9 @@ const processWebhook = async (req, res) => {
           } else if (messageBodyLower.includes("not interested")) {
             autoReplyText =
               "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+          }else if (messageBodyLower.includes("stop")) {
+            autoReplyText =
+              "Your preference has been noted, and you will no longer receive messages from us. We value your choice and remain available when you wish to engage with us again in the future.";
           } else {
             const incomingMessageCount = await Reply.countDocuments({
               from: message.from,
