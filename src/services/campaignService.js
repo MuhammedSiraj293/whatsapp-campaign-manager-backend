@@ -90,6 +90,7 @@ const sendCampaign = async (campaignId) => {
 
   for (const contact of contacts) {
     const contactIdStr = contact._id.toString();
+    const phone = contact.phoneNumber;
 
     // Skip if already sent this campaign
     if (alreadySentContactIds.has(contactIdStr)) {
