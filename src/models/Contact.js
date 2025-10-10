@@ -21,12 +21,6 @@ const ContactSchema = new mongoose.Schema({
     type: Map,
     of: String,
   },
-  // --- NEW FIELD ---
-  // Tracks the subscription status of the contact
-  isSubscribed: {
-    type: Boolean,
-    default: true,
-  },
 }, { timestamps: true });
 
 ContactSchema.index({ phoneNumber: 1, contactList: 1 }, { unique: true });

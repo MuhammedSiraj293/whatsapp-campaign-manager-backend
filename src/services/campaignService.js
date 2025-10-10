@@ -31,7 +31,7 @@ const sendCampaign = async (campaignId) => {
     throw new Error("No contact list is assigned to this campaign.");
   }
 
-  const contacts = await Contact.find({ contactList: campaign.contactList, isSubscribed: true });
+  const contacts = await Contact.find({ contactList: campaign.contactList });
   if (contacts.length === 0) {
     await Log.create({
       level: "info",
