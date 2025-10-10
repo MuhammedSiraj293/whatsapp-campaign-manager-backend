@@ -53,7 +53,8 @@ const CampaignSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'scheduled', 'sent', 'failed'],
+     // Add 'sending' to the list of possible statuses
+    enum: ['draft', 'scheduled', 'sending', 'sent', 'failed'],
     default: 'draft',
   },
   contactList: {

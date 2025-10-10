@@ -4,41 +4,63 @@ const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const Analytics = require("../models/Analytics");
 const Log = require("../models/Log");
-const Reply = require("../models/Reply"); // <-- 1. IMPORT Reply
+const Reply = require("../models/Reply");
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
-const { getIO } = require('../socketManager'); // <-- 1. IMPORT from the manager
+const { getIO } = require("../socketManager");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const sendCampaign = async (campaignId) => {
-  const io = getIO(); // <-- 2. GET the io instance
+  const io = getIO();
   const campaign = await Campaign.findById(campaignId);
-  if (!campaign) throw new Error("Campaign not found.");
-  if (!campaign.contactList)
-    throw new Error("No contact list is assigned to this campaign.");
-  if (campaign.status === "sent") {
+
+  // Basic checks
+  if (!campaign) {
     await Log.create({
       level: "error",
-      message: `Attempted to send campaign "${campaign.name}" which has already been sent.`,
+      message: `sendCampaign failed: Campaign with ID ${campaignId} not found.`,
+    });
+    throw new Error("Campaign not found.");
+  }
+  if (!campaign.contactList) {
+    await Log.create({
+      level: "error",
+      message: `Campaign "${campaign.name}" has no contact list assigned.`,
       campaign: campaignId,
     });
-    throw new Error("This campaign has already been sent.");
+    throw new Error("No contact list is assigned to this campaign.");
   }
 
   const contacts = await Contact.find({ contactList: campaign.contactList });
-  if (contacts.length === 0)
+  if (contacts.length === 0) {
+    await Log.create({
+      level: "info",
+      message: `Campaign "${campaign.name}" has no contacts in its list.`,
+      campaign: campaignId,
+    });
     throw new Error("The assigned contact list is empty.");
+  }
+
+  // Get a list of contacts who have ALREADY received this campaign to prevent duplicates
+  const alreadySentAnalytics = await Analytics.find({
+    campaign: campaignId,
+  }).select("contact");
+  const alreadySentContactIds = new Set(
+    alreadySentAnalytics.map((a) => a.contact.toString())
+  );
 
   let successCount = 0;
   let failureCount = 0;
 
-  await Log.create({
-    level: "info",
-    message: `Starting campaign "${campaign.name}" for ${contacts.length} contacts.`,
-    campaign: campaignId,
-  });
-
   for (const contact of contacts) {
+    // Check if the current contact is in the list of already-sent contacts
+    if (alreadySentContactIds.has(contact._id.toString())) {
+      console.log(
+        `Skipping ${contact.phoneNumber}, message already sent for this campaign.`
+      );
+      continue; // Skip to the next contact
+    }
+
     let wamid = `failed-${contact._id}-${Date.now()}`;
     let status = "sent";
     let failureReason = null;
@@ -71,8 +93,6 @@ const sendCampaign = async (campaignId) => {
       if (response && response.messages && response.messages[0].id) {
         wamid = response.messages[0].id;
 
-        // --- 3. THIS IS THE FIX ---
-        // Save the outgoing campaign message to the 'replies' collection for chat history
         const campaignMessage = new Reply({
           messageId: wamid,
           from: contact.phoneNumber,
@@ -80,11 +100,10 @@ const sendCampaign = async (campaignId) => {
           timestamp: new Date(),
           direction: "outgoing",
           read: true,
-          campaign: campaign._id, // Link the message to the campaign
+          campaign: campaign._id,
         });
         await campaignMessage.save();
 
-        // Emit an event so the frontend chat updates instantly
         io.emit("newMessage", {
           from: contact.phoneNumber,
           message: campaignMessage,
@@ -113,6 +132,7 @@ const sendCampaign = async (campaignId) => {
     await sleep(1000);
   }
 
+  // Find the campaign again to update its status to 'sent'
   const finalCampaign = await Campaign.findById(campaignId);
   if (finalCampaign) {
     finalCampaign.status = "sent";
