@@ -59,19 +59,20 @@ const sendCampaign = async (campaignId) => {
   }).select("_id");
 
   const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
-  const analyticsForTemplate = await Analytics.find({
-    campaign: { $in: campaignIds },
-  }).select("contact");
 
-  const contactsWhoReceivedTemplate = new Set(
-    analyticsForTemplate.map((a) => a.contact.toString())
+  const analyticsWithPhones = await Analytics.find({
+    campaign: { $in: campaignIds },
+  }).populate("contact", "phoneNumber");
+
+  const phoneNumbersWhoReceivedTemplate = new Set(
+    analyticsWithPhones.map((a) => a.contact.phoneNumber)
   );
 
   console.log(
     `Found ${alreadySentContactIds.size} contacts who already received this campaign.`
   );
   console.log(
-    `Found ${contactsWhoReceivedTemplate.size} contacts who already received template "${campaign.templateName}".`
+    `Found ${phoneNumbersWhoReceivedTemplate.size} phone numbers who already received template "${campaign.templateName}".`
   );
 
   // ---------------------------------------
@@ -99,9 +100,9 @@ const sendCampaign = async (campaignId) => {
     }
 
     // Skip if already received this template
-    if (contactsWhoReceivedTemplate.has(contactIdStr)) {
+    if (phoneNumbersWhoReceivedTemplate.has(phone)) {
       console.log(
-        `Skipping ${contact.phoneNumber}: already received template "${campaign.templateName}".`
+        `Skipping ${phone}: already received template "${campaign.templateName}".`
       );
       continue;
     }
