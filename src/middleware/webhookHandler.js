@@ -91,6 +91,28 @@ const processWebhook = async (req, res) => {
           io.emit("newMessage", { from: message.from, message: savedReply });
         }
 
+        // --- NEW SUBSCRIBE/UNSUBSCRIBE LOGIC ---
+        if (message.type === 'text') {
+            const messageBodyLower = messageBody.toLowerCase().trim();
+            const contact = await Contact.findOne({ phoneNumber: message.from });
+
+            if (contact) {
+                // If the user texts "stop", unsubscribe them.
+                if (messageBodyLower === 'stop') {
+                    contact.isSubscribed = false;
+                    await contact.save();
+                    // Stop further processing for "stop" messages
+                    return res.sendStatus(200); 
+                } else if (!contact.isSubscribed) {
+                    // If they are unsubscribed and send any other message, re-subscribe them.
+                    contact.isSubscribed = true;
+                    await contact.save();
+                    console.log(`✅ Contact ${message.from} has been re-subscribed.`);
+                }
+            }
+        }
+        // --- END OF SUBSCRIBE/UNSUBSCRIBE LOGIC ---
+
         if (campaignToCredit) {
           // --- 2. Check if it's the FIRST reply for this specific campaign ---
           const incomingMessageCount = await Reply.countDocuments({

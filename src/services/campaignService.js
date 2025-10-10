@@ -31,7 +31,7 @@ const sendCampaign = async (campaignId) => {
     throw new Error("No contact list is assigned to this campaign.");
   }
 
-  const contacts = await Contact.find({ contactList: campaign.contactList });
+  const contacts = await Contact.find({ contactList: campaign.contactList, isSubscribed: true });
   if (contacts.length === 0) {
     await Log.create({
       level: "info",
@@ -40,8 +40,8 @@ const sendCampaign = async (campaignId) => {
     });
     throw new Error("The assigned contact list is empty.");
   }
-  
-   // ---------------------------------------
+
+  // ---------------------------------------
   // 🧠 Deduplication Checks
   // ---------------------------------------
 
@@ -49,24 +49,30 @@ const sendCampaign = async (campaignId) => {
   const alreadySentAnalytics = await Analytics.find({
     campaign: campaignId,
   }).select("contact");
-  const alreadySentContactIds = new Set(alreadySentAnalytics.map(a => a.contact.toString()));
+  const alreadySentContactIds = new Set(
+    alreadySentAnalytics.map((a) => a.contact.toString())
+  );
 
   // 2. Get contacts who have already received this template across any campaign
   const campaignsWithSameTemplate = await Campaign.find({
     templateName: campaign.templateName,
   }).select("_id");
 
-    const campaignIds = campaignsWithSameTemplate.map(c => c._id);
+  const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
   const analyticsForTemplate = await Analytics.find({
     campaign: { $in: campaignIds },
   }).select("contact");
 
   const contactsWhoReceivedTemplate = new Set(
-    analyticsForTemplate.map(a => a.contact.toString())
+    analyticsForTemplate.map((a) => a.contact.toString())
   );
 
-  console.log(`Found ${alreadySentContactIds.size} contacts who already received this campaign.`);
-  console.log(`Found ${contactsWhoReceivedTemplate.size} contacts who already received template "${campaign.templateName}".`);
+  console.log(
+    `Found ${alreadySentContactIds.size} contacts who already received this campaign.`
+  );
+  console.log(
+    `Found ${contactsWhoReceivedTemplate.size} contacts who already received template "${campaign.templateName}".`
+  );
 
   // ---------------------------------------
   // 🚀 Send messages
@@ -75,24 +81,28 @@ const sendCampaign = async (campaignId) => {
   let successCount = 0;
   let failureCount = 0;
 
-   await Log.create({
+  await Log.create({
     level: "info",
     message: `Starting campaign "${campaign.name}" for ${contacts.length} contacts.`,
     campaign: campaignId,
   });
-  
+
   for (const contact of contacts) {
     const contactIdStr = contact._id.toString();
 
     // Skip if already sent this campaign
     if (alreadySentContactIds.has(contactIdStr)) {
-      console.log(`Skipping ${contact.phoneNumber}: already sent in this campaign.`);
+      console.log(
+        `Skipping ${contact.phoneNumber}: already sent in this campaign.`
+      );
       continue;
     }
 
     // Skip if already received this template
     if (contactsWhoReceivedTemplate.has(contactIdStr)) {
-      console.log(`Skipping ${contact.phoneNumber}: already received template "${campaign.templateName}".`);
+      console.log(
+        `Skipping ${contact.phoneNumber}: already received template "${campaign.templateName}".`
+      );
       continue;
     }
 
