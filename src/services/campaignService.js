@@ -40,25 +40,60 @@ const sendCampaign = async (campaignId) => {
     });
     throw new Error("The assigned contact list is empty.");
   }
+  
+   // ---------------------------------------
+  // 🧠 Deduplication Checks
+  // ---------------------------------------
 
-  // Get a list of contacts who have ALREADY received this campaign to prevent duplicates
+  // 1. Get contacts who already received this campaign
   const alreadySentAnalytics = await Analytics.find({
     campaign: campaignId,
   }).select("contact");
-  const alreadySentContactIds = new Set(
-    alreadySentAnalytics.map((a) => a.contact.toString())
+  const alreadySentContactIds = new Set(alreadySentAnalytics.map(a => a.contact.toString()));
+
+  // 2. Get contacts who have already received this template across any campaign
+  const campaignsWithSameTemplate = await Campaign.find({
+    templateName: campaign.templateName,
+  }).select("_id");
+
+    const campaignIds = campaignsWithSameTemplate.map(c => c._id);
+  const analyticsForTemplate = await Analytics.find({
+    campaign: { $in: campaignIds },
+  }).select("contact");
+
+  const contactsWhoReceivedTemplate = new Set(
+    analyticsForTemplate.map(a => a.contact.toString())
   );
+
+  console.log(`Found ${alreadySentContactIds.size} contacts who already received this campaign.`);
+  console.log(`Found ${contactsWhoReceivedTemplate.size} contacts who already received template "${campaign.templateName}".`);
+
+  // ---------------------------------------
+  // 🚀 Send messages
+  // ---------------------------------------
 
   let successCount = 0;
   let failureCount = 0;
 
+   await Log.create({
+    level: "info",
+    message: `Starting campaign "${campaign.name}" for ${contacts.length} contacts.`,
+    campaign: campaignId,
+  });
+  
   for (const contact of contacts) {
-    // Check if the current contact is in the list of already-sent contacts
-    if (alreadySentContactIds.has(contact._id.toString())) {
-      console.log(
-        `Skipping ${contact.phoneNumber}, message already sent for this campaign.`
-      );
-      continue; // Skip to the next contact
+    const contactIdStr = contact._id.toString();
+
+    // Skip if already sent this campaign
+    if (alreadySentContactIds.has(contactIdStr)) {
+      console.log(`Skipping ${contact.phoneNumber}: already sent in this campaign.`);
+      continue;
+    }
+
+    // Skip if already received this template
+    if (contactsWhoReceivedTemplate.has(contactIdStr)) {
+      console.log(`Skipping ${contact.phoneNumber}: already received template "${campaign.templateName}".`);
+      continue;
     }
 
     let wamid = `failed-${contact._id}-${Date.now()}`;
