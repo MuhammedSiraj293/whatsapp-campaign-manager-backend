@@ -30,6 +30,17 @@ const UserSchema = new mongoose.Schema({
     enum: ['admin', 'manager', 'viewer'],
     default: 'viewer', // New users will now default to 'viewer'
   },
+   // --- NEW FIELDS FOR 2FA ---
+  isTwoFactorEnabled: {
+    type: Boolean,
+    default: false,
+  },
+  twoFactorSecret: {
+    ascii: String,
+    hex: String,
+    base32: String,
+    otpauth_url: String,
+  },
 });
 
 // This function runs automatically BEFORE a user document is saved
