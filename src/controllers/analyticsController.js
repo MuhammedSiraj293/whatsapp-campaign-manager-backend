@@ -51,13 +51,14 @@ const getCampaignAnalytics = async (req, res) => {
         if (totalSent === 0) {
             return res.status(200).json({ success: true, data: {
                 name: campaign.name, totalSent: 0, delivered: 0, read: 0, failed: 0,
-                replies: campaign.replyCount || 0, deliveryRate: '0%', readRate: '0%', replyRate: '0%',
+                replies: campaign.replyCount || 0, deliveryRate: '0%', readRate: '0%', replyRate: '0%', failedRate: '0%', 
             }});
         }
 
         const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + '%';
         const readRate = ((read / totalSent) * 100).toFixed(1) + '%';
         const replyRate = ((campaign.replyCount / totalSent) * 100).toFixed(1) + '%';
+        const failedRate = ((failed / totalSent) * 100).toFixed(1) + '%'; // <-- Added failedRat
 
         res.status(200).json({ success: true, data: {
             name: campaign.name,
@@ -69,6 +70,7 @@ const getCampaignAnalytics = async (req, res) => {
             deliveryRate,
             readRate,
             replyRate,
+            failedRate,
         }});
 
     } catch (error) {
