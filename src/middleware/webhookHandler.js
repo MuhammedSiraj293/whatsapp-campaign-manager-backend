@@ -6,7 +6,7 @@ const Analytics = require("../models/Analytics");
 const Contact = require("../models/Contact");
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { appendToSheet } = require("../integrations/googleSheets");
-const { getIO } = require('../socketManager'); // <-- 1. IMPORT from the manager
+const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
 
 const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
@@ -148,7 +148,7 @@ const processWebhook = async (req, res) => {
           } else if (messageBodyLower.includes("not interested")) {
             autoReplyText =
               "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
-          }else if (messageBodyLower.includes("stop")) {
+          } else if (messageBodyLower.includes("stop")) {
             autoReplyText =
               "Your preference has been noted, and you will no longer receive messages from us. We value your choice and remain available when you wish to engage with us again in the future.";
           } else {
@@ -191,21 +191,21 @@ const processWebhook = async (req, res) => {
     if (value && value.statuses && value.statuses[0]) {
       const statusUpdate = value.statuses[0];
       try {
-        await Analytics.findOneAndUpdate(
+        const updated = await Analytics.findOneAndUpdate(
           { wamid: statusUpdate.id },
           { status: statusUpdate.status },
           { new: true } // Return the updated document
         );
         if (updated) {
-                console.log(`✅ Updated status for ${statusUpdate.id} to ${statusUpdate.status}`);
-                // --- THIS IS THE KEY CHANGE ---
-                // Emit a real-time event to the frontend
-                io.emit('messageStatusUpdate', { 
-                    wamid: statusUpdate.id,
-                    status: statusUpdate.status,
-                    from: statusUpdate.recipient_id // The phone number of the conversation
-                });
-            }
+          console.log(
+            `✅ Updated status for ${statusUpdate.id} to ${statusUpdate.status}`
+          );
+          io.emit("messageStatusUpdate", {
+            wamid: statusUpdate.id,
+            status: statusUpdate.status,
+            from: statusUpdate.recipient_id,
+          });
+        }
       } catch (error) {
         console.error("❌ Error updating message status:", error);
       }
