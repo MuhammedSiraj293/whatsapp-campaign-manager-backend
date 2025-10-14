@@ -50,10 +50,36 @@ const getConversations = async (req, res) => {
   }
 };
 
+// --- THIS FUNCTION IS UPGRADED ---
 const getMessagesByNumber = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
-    const messages = await Reply.find({ from: phoneNumber }).sort({ timestamp: 'asc' });
+
+    // Use a MongoDB Aggregation Pipeline to join Replies with Analytics
+    const messages = await Reply.aggregate([
+      // 1. Find all messages for this conversation
+      { $match: { from: phoneNumber } },
+      // 2. Sort them by time
+      { $sort: { timestamp: 1 } },
+      // 3. Join with the 'analytics' collection to get the status for outgoing messages
+      {
+        $lookup: {
+          from: 'analytics', // The collection to join with
+          localField: 'messageId', // Field from the 'replies' collection
+          foreignField: 'wamid',   // Field from the 'analytics' collection
+          as: 'analyticsData'    // Name for the new array field
+        }
+      },
+      // 4. Reshape the data to include the status
+      {
+        $project: {
+          _id: 1, body: 1, timestamp: 1, direction: 1, mediaId: 1, mediaType: 1,
+          // Get the 'status' from the first item in the analyticsData array
+          status: { $arrayElemAt: ['$analyticsData.status', 0] }
+        }
+      }
+    ]);
+    
     res.status(200).json({ success: true, data: messages });
   } catch (error) {
     console.error(`Error fetching messages for ${req.params.phoneNumber}:`, error);

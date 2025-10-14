@@ -193,11 +193,19 @@ const processWebhook = async (req, res) => {
       try {
         await Analytics.findOneAndUpdate(
           { wamid: statusUpdate.id },
-          { status: statusUpdate.status }
+          { status: statusUpdate.status },
+          { new: true } // Return the updated document
         );
-        console.log(
-          `✅ Updated status for ${statusUpdate.id} to ${statusUpdate.status}`
-        );
+        if (updated) {
+                console.log(`✅ Updated status for ${statusUpdate.id} to ${statusUpdate.status}`);
+                // --- THIS IS THE KEY CHANGE ---
+                // Emit a real-time event to the frontend
+                io.emit('messageStatusUpdate', { 
+                    wamid: statusUpdate.id,
+                    status: statusUpdate.status,
+                    from: statusUpdate.recipient_id // The phone number of the conversation
+                });
+            }
       } catch (error) {
         console.error("❌ Error updating message status:", error);
       }
