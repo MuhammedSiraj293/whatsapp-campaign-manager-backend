@@ -62,6 +62,7 @@ const sendCampaign = async (campaignId) => {
 
   const analyticsWithPhones = await Analytics.find({
     campaign: { $in: campaignIds },
+    status: { $ne: 'failed' },
   }).populate("contact", "phoneNumber");
 
   const phoneNumbersWhoReceivedTemplate = new Set(
