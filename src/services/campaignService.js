@@ -54,27 +54,29 @@ const sendCampaign = async (campaignId) => {
   );
 
   // 2. Get contacts who have already received this template across any campaign
+  // --- THIS IS THE CORRECTED DEDUPLICATION LOGIC ---
   const campaignsWithSameTemplate = await Campaign.find({
     templateName: campaign.templateName,
   }).select("_id");
-
   const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
 
-  const analyticsWithPhones = await Analytics.find({
+  // Find analytics records for this template where the status was NOT 'failed'
+  const successfulSends = await Analytics.find({
     campaign: { $in: campaignIds },
-    status: { $ne: 'failed' },
-  }).populate("contact", "phoneNumber");
-
-  const phoneNumbersWhoReceivedTemplate = new Set(
-    analyticsWithPhones.map((a) => a.contact.phoneNumber)
+    status: { $ne: "failed" }, // $ne means "not equal to"
+  }).select("contact");
+  // This is now a list of contacts who have successfully received the template before
+  const contactsWhoReceivedTemplate = new Set(
+    successfulSends.map((a) => a.contact.toString())
   );
 
   console.log(
     `Found ${alreadySentContactIds.size} contacts who already received this campaign.`
   );
   console.log(
-    `Found ${phoneNumbersWhoReceivedTemplate.size} phone numbers who already received template "${campaign.templateName}".`
+    `Found ${contactsWhoReceivedTemplate.size} contacts who already successfully received template "${campaign.templateName}".`
   );
+  // --- END OF CORRECTION ---
 
   // ---------------------------------------
   // 🚀 Send messages
@@ -102,13 +104,13 @@ const sendCampaign = async (campaignId) => {
     }
 
     // Skip if already received this template
-    if (phoneNumbersWhoReceivedTemplate.has(phone)) {
+    if (contactsWhoReceivedTemplate.has(contactIdStr)) {
       console.log(
-        `Skipping ${phone}: already received template "${campaign.templateName}".`
+        `Skipping ${contact.phoneNumber}: already successfully received template "${campaign.templateName}".`
       );
       continue;
     }
-
+    
     let wamid = `failed-${contact._id}-${Date.now()}`;
     let status = "sent";
     let failureReason = null;
