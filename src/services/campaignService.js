@@ -55,26 +55,30 @@ const sendCampaign = async (campaignId) => {
 
   // 2. Get contacts who have already received this template across any campaign
   // --- THIS IS THE CORRECTED DEDUPLICATION LOGIC ---
-  const campaignsWithSameTemplate = await Campaign.find({
-    templateName: campaign.templateName,
-  }).select("_id");
-  const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
+  const campaignsWithSameTemplate = await Campaign.find({
+    templateName: campaign.templateName,
+  }).select("_id");
 
-  // Find analytics records for this template where the status was NOT 'failed'
-  const successfulSends = await Analytics.find({
-    campaign: { $in: campaignIds },
-    status: { $ne: "failed" }, // $ne means "not equal to"
-  }).select("contact");
-  // This is now a list of contacts who have successfully received the template before
-  const contactsWhoReceivedTemplate = new Set(
-    successfulSends.map((a) => a.contact.toString())
+  const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
+
+  const analyticsWithPhones = await Analytics.find({
+    campaign: { $in: campaignIds },
+    status: { $ne: 'failed' },
+  }).populate("contact", "phoneNumber");
+
+ // Filter out any records where the contact has been deleted
+  const phoneNumbersWhoReceivedTemplate = new Set(
+    analyticsWithPhones
+    .filter(a => a.contact && a.contact.phoneNumber) // ✅ Safety check ensures contact is not null
+    .map(a => a.contact.phoneNumber)
   );
+  // --- END OF CORRECTION ---
 
   console.log(
     `Found ${alreadySentContactIds.size} contacts who already received this campaign.`
   );
   console.log(
-    `Found ${contactsWhoReceivedTemplate.size} contacts who already successfully received template "${campaign.templateName}".`
+    `Found ${phoneNumbersWhoReceivedTemplate.size} contacts who already successfully received template "${campaign.templateName}".`
   );
   // --- END OF CORRECTION ---
 
@@ -103,13 +107,11 @@ const sendCampaign = async (campaignId) => {
       continue;
     }
 
-    // Skip if already received this template
-    if (contactsWhoReceivedTemplate.has(contactIdStr)) {
-      console.log(
-        `Skipping ${contact.phoneNumber}: already successfully received template "${campaign.templateName}".`
-      );
-      continue;
-    }
+// Skip if this phone number has already received this template
+    if (phoneNumbersWhoReceivedTemplate.has(phone)) {
+      console.log(`Skipping ${phone}: already received template "${campaign.templateName}".`);
+      continue;
+    }
     
     let wamid = `failed-${contact._id}-${Date.now()}`;
     let status = "sent";
