@@ -5,6 +5,8 @@ const Contact = require("../models/Contact");
 const Analytics = require("../models/Analytics");
 const Log = require("../models/Log");
 const Reply = require("../models/Reply");
+const PhoneNumber = require('../models/PhoneNumber'); // <-- 1. IMPORT PhoneNumber
+const WabaAccount = require('../models/WabaAccount'); // <-- 2. IMPORT WabaAccount
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
 
@@ -12,24 +14,27 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const sendCampaign = async (campaignId) => {
   const io = getIO();
-  const campaign = await Campaign.findById(campaignId);
+  const campaign = await Campaign.findById(campaignId)
+    .populate({
+      path: 'phoneNumber', // <-- 3. Populate the phone number
+      populate: {
+        path: 'wabaAccount' // <-- 4. Populate the parent WABA account
+      }
+    });
 
-  // Basic checks
-  if (!campaign) {
-    await Log.create({
-      level: "error",
-      message: `sendCampaign failed: Campaign with ID ${campaignId} not found.`,
-    });
-    throw new Error("Campaign not found.");
+  // --- NEW VALIDATION ---
+  if (!campaign) throw new Error('Campaign not found.');
+  if (!campaign.contactList) throw new Error('No contact list assigned.');
+  if (!campaign.phoneNumber) throw new Error('No "Send From" phone number assigned to this campaign.');
+  if (!campaign.phoneNumber.wabaAccount) throw new Error('WABA account for this phone number is missing or deleted.');
+
+  const { accessToken } = campaign.phoneNumber.wabaAccount;
+  const { phoneNumberId } = campaign.phoneNumber;
+  
+  if (!accessToken || !phoneNumberId) {
+      throw new Error('Invalid account credentials. Check WABA account and Phone Number setup.');
   }
-  if (!campaign.contactList) {
-    await Log.create({
-      level: "error",
-      message: `Campaign "${campaign.name}" has no contact list assigned.`,
-      campaign: campaignId,
-    });
-    throw new Error("No contact list is assigned to this campaign.");
-  }
+  // --- END NEW VALIDATION ---
 
   const contacts = await Contact.find({ contactList: campaign.contactList });
   if (contacts.length === 0) {
@@ -55,25 +60,23 @@ const sendCampaign = async (campaignId) => {
 
   // 2. Get contacts who have already received this template across any campaign
   // --- THIS IS THE CORRECTED DEDUPLICATION LOGIC ---
-  const campaignsWithSameTemplate = await Campaign.find({
-    templateName: campaign.templateName,
-  }).select("_id");
+  const campaignsWithSameTemplate = await Campaign.find({
+    templateName: campaign.templateName,
+  }).select("_id");
 
-  const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
+  const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
 
-  const analyticsWithPhones = await Analytics.find({
-    campaign: { $in: campaignIds },
-    status: { $ne: 'failed' },
-  }).populate("contact", "phoneNumber");
+  const analyticsWithPhones = await Analytics.find({
+    campaign: { $in: campaignIds },
+    status: { $ne: "failed" },
+  }).populate("contact", "phoneNumber");
 
- // Filter out any records where the contact has been deleted
-  const phoneNumbersWhoReceivedTemplate = new Set(
-    analyticsWithPhones
-    .filter(a => a.contact && a.contact.phoneNumber) // ✅ Safety check ensures contact is not null
-    .map(a => a.contact.phoneNumber)
-  );
-  // --- END OF CORRECTION ---
-
+  // Filter out any records where the contact has been deleted
+  const phoneNumbersWhoReceivedTemplate = new Set(
+    analyticsWithPhones
+      .filter((a) => a.contact && a.contact.phoneNumber) // ✅ Safety check ensures contact is not null
+      .map((a) => a.contact.phoneNumber)
+  ); // --- END OF CORRECTION ---
   console.log(
     `Found ${alreadySentContactIds.size} contacts who already received this campaign.`
   );
@@ -107,12 +110,14 @@ const sendCampaign = async (campaignId) => {
       continue;
     }
 
-// Skip if this phone number has already received this template
-    if (phoneNumbersWhoReceivedTemplate.has(phone)) {
-      console.log(`Skipping ${phone}: already received template "${campaign.templateName}".`);
-      continue;
-    }
-    
+    // Skip if this phone number has already received this template
+    if (phoneNumbersWhoReceivedTemplate.has(phone)) {
+      console.log(
+        `Skipping ${phone}: already received template "${campaign.templateName}".`
+      );
+      continue;
+    }
+
     let wamid = `failed-${contact._id}-${Date.now()}`;
     let status = "sent";
     let failureReason = null;
@@ -139,7 +144,9 @@ const sendCampaign = async (campaignId) => {
           headerImageUrl: campaign.headerImageUrl,
           bodyVariables: finalBodyVariables,
           buttons: campaign.buttons,
-        }
+        },
+        accessToken,      // Pass the dynamic token
+        phoneNumberId     // Pass the dynamic phone ID
       );
 
       if (response && response.messages && response.messages[0].id) {
