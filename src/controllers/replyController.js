@@ -1,11 +1,23 @@
 // backend/src/controllers/replyController.js
 
 const Reply = require('../models/Reply');
-const Campaign = require('../models/Campaign');
-const Analytics = require('../models/Analytics');
-const Contact = require('../models/Contact');
 const { sendTextMessage, sendMediaMessage } = require('../integrations/whatsappAPI');
 const { getIO } = require('../socketManager'); // <-- 1. IMPORT from the manager
+const PhoneNumber = require('../models/PhoneNumber'); // <-- 1. IMPORT
+const WabaAccount = require('../models/WabaAccount'); // <-- 1. IMPORT
+
+// --- NEW HELPER FUNCTION ---
+// Finds the first available account credentials to send replies from
+const getReplyCredentials = async () => {
+  const phoneNumber = await PhoneNumber.findOne().populate('wabaAccount');
+  if (!phoneNumber || !phoneNumber.wabaAccount) {
+    throw new Error('No WABA accounts are configured to send replies.');
+  }
+  return {
+    accessToken: phoneNumber.wabaAccount.accessToken,
+    phoneNumberId: phoneNumber.phoneNumberId,
+  };
+};
 
 const getConversations = async (req, res) => {
   try {
@@ -102,65 +114,71 @@ const markAsRead = async (req, res) => {
 };
 
 const sendReply = async (req, res) => {
-   const io = getIO(); // <-- 2. GET the io instance
+  const io = getIO();
   try {
     const { phoneNumber } = req.params;
     const { message } = req.body;
     if (!message) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Message body is required." });
+      return res.status(400).json({ success: false, error: 'Message body is required.' });
     }
-    const result = await sendTextMessage(phoneNumber, message);
+
+    // --- 2. GET DYNAMIC CREDENTIALS ---
+    const { accessToken, phoneNumberId } = await getReplyCredentials();
+    
+    // 3. USE DYNAMIC CREDENTIALS
+    const result = await sendTextMessage(phoneNumber, message, accessToken, phoneNumberId);
+
     if (result && result.messages && result.messages[0].id) {
       const newReply = new Reply({
         messageId: result.messages[0].id,
         from: phoneNumber,
         body: message,
         timestamp: new Date(),
-        direction: "outgoing",
+        direction: 'outgoing',
         read: true,
       });
       await newReply.save();
-      // --- THIS IS THE FIX ---
-      io.emit("newMessage", { from: phoneNumber, message: newReply });
+      io.emit('newMessage', { from: phoneNumber, message: newReply });
     }
     res.status(200).json({ success: true, data: result });
   } catch (error) {
-    res.status(500).json({ success: false, error: "Failed to send reply." });
+    console.error('Error sending reply:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to send reply.' });
   }
 };
 
 const sendMediaReply = async (req, res) => {
-   const io = getIO(); // <-- 2. GET the io instance
-  try {
-    const { phoneNumber } = req.params;
-    if (!req.file) {
-      return res
-        .status(400)
-        .json({ success: false, error: "No file uploaded." });
+    const io = getIO();
+    try {
+        const { phoneNumber } = req.params;
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No file uploaded.' });
+        }
+        
+        // --- 2. GET DYNAMIC CREDENTIALS ---
+        const { accessToken, phoneNumberId } = await getReplyCredentials();
+
+        // 3. USE DYNAMIC CREDENTIALS
+        const result = await sendMediaMessage(phoneNumber, req.file, accessToken, phoneNumberId);
+
+        if (result && result.sendResponse && result.sendResponse.messages[0].id) {
+            const newReply = new Reply({
+                messageId: result.sendResponse.messages[0].id,
+                from: phoneNumber,
+                timestamp: new Date(),
+                direction: 'outgoing',
+                read: true,
+                mediaType: req.file.mimetype.split('/')[0],
+                mediaId: result.mediaId,
+            });
+            await newReply.save();
+            io.emit('newMessage', { from: phoneNumber, message: newReply });
+        }
+        res.status(200).json({ success: true, data: result.sendResponse });
+    } catch (error) {
+        console.error('Error sending media reply:', error.message);
+        res.status(500).json({ success: false, error: 'Failed to send media reply.' });
     }
-    const result = await sendMediaMessage(phoneNumber, req.file);
-    if (result && result.sendResponse && result.sendResponse.messages[0].id) {
-      const newReply = new Reply({
-        messageId: result.sendResponse.messages[0].id,
-        from: phoneNumber,
-        timestamp: new Date(),
-        direction: "outgoing",
-        read: true,
-        mediaType: req.file.mimetype.split("/")[0],
-        mediaId: result.mediaId,
-      });
-      await newReply.save();
-      // --- THIS IS THE FIX ---
-      io.emit("newMessage", { from: phoneNumber, message: newReply });
-    }
-    res.status(200).json({ success: true, data: result.sendResponse });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to send media reply." });
-  }
 };
 
 module.exports = {
