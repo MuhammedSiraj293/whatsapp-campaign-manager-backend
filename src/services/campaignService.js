@@ -5,8 +5,6 @@ const Contact = require("../models/Contact");
 const Analytics = require("../models/Analytics");
 const Log = require("../models/Log");
 const Reply = require("../models/Reply");
-const PhoneNumber = require('../models/PhoneNumber'); // <-- 1. IMPORT PhoneNumber
-const WabaAccount = require('../models/WabaAccount'); // <-- 2. IMPORT WabaAccount
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
 
