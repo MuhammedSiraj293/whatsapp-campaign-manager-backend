@@ -33,12 +33,11 @@ const getConversations = async (req, res) => {
     const { recipientId } = req.params;
 
     const conversations = await Reply.aggregate([
-      // 1. Find replies that match the selected business phone number
       { $match: { recipientId: recipientId } },
       { $sort: { timestamp: -1 } },
       {
         $group: {
-          _id: "$from", // Group by customer phone number
+          _id: "$from",
           lastMessage: { $first: "$body" },
           lastMessageTimestamp: { $first: "$timestamp" },
           unreadCount: {
@@ -92,10 +91,8 @@ const getMessagesByNumber = async (req, res) => {
     const { phoneNumber, recipientId } = req.params;
 
     const messages = await Reply.aggregate([
-      // 1. Find messages for this specific conversation
       { $match: { from: phoneNumber, recipientId: recipientId } },
       { $sort: { timestamp: 1 } },
-      // 2. Join with Analytics to get message status
       {
         $lookup: {
           from: "analytics",
@@ -104,7 +101,6 @@ const getMessagesByNumber = async (req, res) => {
           as: "analyticsData",
         },
       },
-      // 3. Reshape the data
       {
         $project: {
           _id: 1,
@@ -137,12 +133,9 @@ const sendReply = async (req, res) => {
     const { phoneNumber, recipientId } = req.params;
     const { message } = req.body;
 
-    // 1. Get the correct credentials for this phone number
     const { accessToken, phoneNumberId } = await getCredentialsFromRecipientId(
       recipientId
     );
-
-    // 2. Send the message using these credentials
     const result = await sendTextMessage(
       phoneNumber,
       message,
@@ -150,18 +143,17 @@ const sendReply = async (req, res) => {
       phoneNumberId
     );
 
-    if (result && result.messages && result.messages[0].id) {
+    if (result?.messages?.[0]?.id) {
       const newReply = new Reply({
         messageId: result.messages[0].id,
         from: phoneNumber,
-        recipientId: recipientId, // Save the recipientId
+        recipientId: recipientId,
         body: message,
         timestamp: new Date(),
         direction: "outgoing",
         read: true,
       });
       await newReply.save();
-      // 3. Emit to the correct "room"
       io.emit("newMessage", {
         from: phoneNumber,
         recipientId: recipientId,
@@ -189,12 +181,9 @@ const sendMediaReply = async (req, res) => {
         .json({ success: false, error: "No file uploaded." });
     }
 
-    // 1. Get the correct credentials
     const { accessToken, phoneNumberId } = await getCredentialsFromRecipientId(
       recipientId
     );
-
-    // 2. Send the media using these credentials
     const result = await sendMediaMessage(
       phoneNumber,
       req.file,
@@ -202,11 +191,11 @@ const sendMediaReply = async (req, res) => {
       phoneNumberId
     );
 
-    if (result && result.sendResponse && result.sendResponse.messages[0].id) {
+    if (result?.sendResponse?.messages?.[0]?.id) {
       const newReply = new Reply({
         messageId: result.sendResponse.messages[0].id,
         from: phoneNumber,
-        recipientId: recipientId, // Save the recipientId
+        recipientId: recipientId,
         timestamp: new Date(),
         direction: "outgoing",
         read: true,
@@ -214,13 +203,13 @@ const sendMediaReply = async (req, res) => {
         mediaId: result.mediaId,
       });
       await newReply.save();
-      // 3. Emit to the correct "room"
       io.emit("newMessage", {
         from: phoneNumber,
         recipientId: recipientId,
         message: newReply,
       });
     }
+
     res.status(200).json({ success: true, data: result.sendResponse });
   } catch (error) {
     console.error("Error sending media reply:", error.message);
@@ -230,6 +219,7 @@ const sendMediaReply = async (req, res) => {
   }
 };
 
+// --- UPGRADED ---
 // @desc    Mark messages as read
 // @route   PATCH /api/replies/read/:phoneNumber/:recipientId
 const markAsRead = async (req, res) => {
@@ -248,7 +238,7 @@ const markAsRead = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Messages marked as read." });
   } catch (error) {
-    console.error(`Error marking messages as read:`, error);
+    console.error("Error marking messages as read:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };

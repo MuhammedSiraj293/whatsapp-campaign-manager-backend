@@ -1,7 +1,7 @@
 // backend/src/routes/replyRoutes.js
 
 const express = require('express');
-const multer = require('multer');
+const multer =require('multer');
 const { 
   getConversations, 
   getMessagesByNumber,
@@ -17,14 +17,21 @@ const router = express.Router();
 // All reply routes are protected
 router.use(protect);
 
-router.get('/conversations', getConversations);
+// --- NEW ROUTES ---
+// Get all conversations for a specific business phone number
+router.get('/conversations/:recipientId', getConversations);
 
-router.route('/conversations/:phoneNumber')
-  .get(getMessagesByNumber)
-  .post(sendReply);
+// Get the message history for a specific chat
+router.get('/messages/:phoneNumber/:recipientId', getMessagesByNumber);
 
-router.patch('/conversations/:phoneNumber/read', markAsRead);
+// Send a text reply
+router.post('/send/:phoneNumber/:recipientId', sendReply);
 
-router.post('/conversations/:phoneNumber/media', upload.single('file'), sendMediaReply);
+// Send a media reply
+router.post('/send-media/:phoneNumber/:recipientId', upload.single('file'), sendMediaReply);
+
+// Mark a conversation as read
+router.patch('/read/:phoneNumber/:recipientId', markAsRead);
+
 
 module.exports = router;
