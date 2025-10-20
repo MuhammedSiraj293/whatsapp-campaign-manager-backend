@@ -13,6 +13,13 @@ const ReplySchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // --- NEW FIELD ---
+    // The ID of *your* WABA phone number that received/sent the message
+    recipientId: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     body: {
       type: String,
       trim: true,

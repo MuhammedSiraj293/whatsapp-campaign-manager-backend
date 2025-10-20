@@ -1,9 +1,12 @@
 // backend/src/middleware/webhookHandler.js
 
+
 const Reply = require("../models/Reply");
 const Campaign = require("../models/Campaign");
 const Analytics = require("../models/Analytics");
 const Contact = require("../models/Contact");
+const PhoneNumber = require('../models/PhoneNumber'); // Import PhoneNumber
+const WabaAccount = require('../models/WabaAccount'); // Import WabaAccount
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { appendToSheet } = require("../integrations/googleSheets");
 const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
@@ -12,7 +15,6 @@ const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
-
   if (mode && token) {
     if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) {
       console.log("✅ Webhook verified");
@@ -26,23 +28,21 @@ const verifyWebhook = (req, res) => {
 };
 
 const processWebhook = async (req, res) => {
+  const io = getIO();
   const body = req.body;
-  const io = getIO(); // <-- 2. GET the io instance
 
   if (body.object === "whatsapp_business_account") {
     const value = body.entry?.[0]?.changes?.[0]?.value;
+    const recipientId = value?.metadata?.phone_number_id;
 
-    // --- Handle Incoming Messages ---
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
       try {
         let savedReply = null;
         let messageBody = "";
-
-        // --- 1. Find the campaign this message belongs to ---
         let campaignToCredit = null;
+
         if (message.context && message.context.id) {
-          // Find the original sent message and get its campaign
           const originalMessage = await Analytics.findOne({
             wamid: message.context.id,
           }).populate("campaign");
@@ -52,9 +52,10 @@ const processWebhook = async (req, res) => {
         let newReplyData = {
           messageId: message.id,
           from: message.from,
+          recipientId: recipientId,
           timestamp: new Date(message.timestamp * 1000),
           direction: "incoming",
-          campaign: campaignToCredit ? campaignToCredit._id : null, // Link to the campaign
+          campaign: campaignToCredit ? campaignToCredit._id : null,
         };
 
         switch (message.type) {
@@ -76,8 +77,9 @@ const processWebhook = async (req, res) => {
           case "voice":
             newReplyData.mediaId = message[message.type].id;
             newReplyData.mediaType = message.type;
-            if (message[message.type].caption)
+            if (message[message.type].caption) {
               newReplyData.body = message[message.type].caption;
+            }
             break;
           default:
             console.log(`Unsupported message type: ${message.type}`);
@@ -88,11 +90,14 @@ const processWebhook = async (req, res) => {
           const newReply = new Reply(newReplyData);
           savedReply = await newReply.save();
           console.log("✅ Incoming reply saved to DB.");
-          io.emit("newMessage", { from: message.from, message: savedReply });
+          io.emit("newMessage", {
+            from: message.from,
+            recipientId: recipientId,
+            message: savedReply,
+          });
         }
 
         if (campaignToCredit) {
-          // --- 2. Check if it's the FIRST reply for this specific campaign ---
           const incomingMessageCount = await Reply.countDocuments({
             from: message.from,
             campaign: campaignToCredit._id,
@@ -122,7 +127,7 @@ const processWebhook = async (req, res) => {
               dataRow
             );
           }
-          // Always increment the main reply count
+
           await Campaign.findByIdAndUpdate(campaignToCredit._id, {
             $inc: { replyCount: 1 },
           });
@@ -131,54 +136,82 @@ const processWebhook = async (req, res) => {
           );
         }
 
-        // --- THIS IS THE CORRECTED BOT LOGIC ---
+        // --- AUTO-REPLY LOGIC (Original Responses) ---
         if (messageBody) {
           const messageBodyLower = messageBody.toLowerCase();
-          let autoReplyText = null; // Declare the variable once, outside the blocks
+          let autoReplyText = null;
 
-          if (messageBodyLower.includes("marbella")) {
-            autoReplyText =
-              "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
-          } else if (
-            messageBodyLower.includes("rise") ||
-            messageBodyLower.includes("yes, i am interested")
-          ) {
-            autoReplyText =
-              "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
-          } else if (messageBodyLower.includes("not interested")) {
-            autoReplyText =
-              "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
-          } else if (messageBodyLower.includes("stop")) {
+          if (messageBodyLower === "stop") {
             autoReplyText =
               "Your preference has been noted, and you will no longer receive messages from us. We value your choice and remain available when you wish to engage with us again in the future.";
+            await Contact.findOneAndUpdate(
+              { phoneNumber: message.from },
+              { isSubscribed: false }
+            );
           } else {
-            const incomingMessageCount = await Reply.countDocuments({
-              from: message.from,
+            const contact = await Contact.findOne({
+              phoneNumber: message.from,
             });
-            if (incomingMessageCount === 1) {
+            if (contact && !contact.isSubscribed) {
+              contact.isSubscribed = true;
+              await contact.save();
+              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
+            }
+
+            if (messageBodyLower.includes("marbella")) {
               autoReplyText =
-                "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
+                "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
+            } else if (
+              messageBodyLower.includes("rise") ||
+              messageBodyLower.includes("yes, i am interested")
+            ) {
+              autoReplyText =
+                "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
+            } else if (messageBodyLower.includes("not interested")) {
+              autoReplyText =
+                "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+            } else {
+              const incomingMessageCount = await Reply.countDocuments({
+                from: message.from,
+              });
+              if (incomingMessageCount === 1) {
+                autoReplyText =
+                  "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
+              }
             }
           }
 
-          // If a reply text was determined, send it, save it, and emit it.
           if (autoReplyText) {
-            console.log(`🤖 Sending auto-reply to ${message.from}...`);
-            const result = await sendTextMessage(message.from, autoReplyText);
-            if (result && result.messages && result.messages[0].id) {
-              const newAutoReply = new Reply({
-                messageId: result.messages[0].id,
-                from: message.from,
-                body: autoReplyText,
-                timestamp: new Date(),
-                direction: "outgoing",
-                read: true,
-              });
-              await newAutoReply.save();
-              io.emit("newMessage", {
-                from: message.from,
-                message: newAutoReply,
-              });
+            const phoneNumber = await PhoneNumber.findOne({
+              phoneNumberId: recipientId,
+            }).populate("wabaAccount");
+            if (phoneNumber && phoneNumber.wabaAccount) {
+              const { accessToken } = phoneNumber.wabaAccount;
+              console.log(`🤖 Sending auto-reply to ${message.from}...`);
+              const result = await sendTextMessage(
+                message.from,
+                autoReplyText,
+                accessToken,
+                recipientId
+              );
+
+              if (result && result.messages && result.messages[0].id) {
+                const newAutoReply = new Reply({
+                  messageId: result.messages[0].id,
+                  from: message.from,
+                  recipientId: recipientId,
+                  body: autoReplyText,
+                  timestamp: new Date(),
+                  direction: "outgoing",
+                  read: true,
+                });
+                await newAutoReply.save();
+                io.emit("newMessage", {
+                  from: message.from,
+                  recipientId: recipientId,
+                  message: newAutoReply,
+                });
+              }
             }
           }
         }
@@ -187,14 +220,14 @@ const processWebhook = async (req, res) => {
       }
     }
 
-    // Handle Message Status Updates
+    // Handle status updates (unchanged)
     if (value && value.statuses && value.statuses[0]) {
       const statusUpdate = value.statuses[0];
       try {
         const updated = await Analytics.findOneAndUpdate(
           { wamid: statusUpdate.id },
           { status: statusUpdate.status },
-          { new: true } // Return the updated document
+          { new: true }
         );
         if (updated) {
           console.log(
@@ -210,6 +243,7 @@ const processWebhook = async (req, res) => {
         console.error("❌ Error updating message status:", error);
       }
     }
+
     res.sendStatus(200);
   } else {
     res.sendStatus(404);
