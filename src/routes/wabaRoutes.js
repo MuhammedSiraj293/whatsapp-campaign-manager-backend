@@ -1,5 +1,5 @@
 // backend/src/routes/wabaRoutes.js
-
+    
 const express = require('express');
 const {
   getAllWabaAccounts,
@@ -8,28 +8,32 @@ const {
   deleteWabaAccount,
   deletePhoneNumber,
 } = require('../controllers/wabaController');
-
+    
 const { protect, authorize } = require('../middleware/authMiddleware');
-
+    
 const router = express.Router();
-
-// All routes in this file are for admins only
+    
+// All routes in this file are protected and require a login
 router.use(protect);
-router.use(authorize('admin'));
-
+    
 // Routes for managing the main WABA accounts
 router.route('/accounts')
-  .get(getAllWabaAccounts)
-  .post(addWabaAccount);
-
+  // Allow BOTH admin and manager to GET the list of accounts
+  .get(authorize('admin', 'manager'), getAllWabaAccounts)
+  // Only allow ADMIN to create a new account
+  .post(authorize('admin'), addWabaAccount);
+    
 router.route('/accounts/:id')
-  .delete(deleteWabaAccount);
-
+  // Only allow ADMIN to delete an account
+  .delete(authorize('admin'), deleteWabaAccount);
+    
 // Routes for managing individual phone numbers
 router.route('/phones')
-  .post(addPhoneNumber);
-
+  // Only allow ADMIN to create a new phone number
+  .post(authorize('admin'), addPhoneNumber);
+      
 router.route('/phones/:id')
-  .delete(deletePhoneNumber);
-
+  // Only allow ADMIN to delete a phone number
+  .delete(authorize('admin'), deletePhoneNumber);
+    
 module.exports = router;
