@@ -150,20 +150,25 @@ const sendCampaign = async (campaignId) => {
       if (response && response.messages && response.messages[0].id) {
         wamid = response.messages[0].id;
 
+        // --- THIS IS THE FIX ---
+        // Save the outgoing campaign message to the 'replies' collection
         const campaignMessage = new Reply({
-          messageId: wamid,
-          from: contact.phoneNumber,
-          body: campaign.message,
-          timestamp: new Date(),
-          direction: "outgoing",
-          read: true,
-          campaign: campaign._id,
+            messageId: wamid,
+            from: contact.phoneNumber,
+            recipientId: phoneNumberId, // Save which number sent it
+            body: campaign.message,
+            timestamp: new Date(),
+            direction: 'outgoing',
+            read: true,
+            campaign: campaign._id,
         });
         await campaignMessage.save();
-
-        io.emit("newMessage", {
-          from: contact.phoneNumber,
-          message: campaignMessage,
+        
+        // Emit an event so the frontend chat updates instantly
+        io.emit('newMessage', { 
+            from: contact.phoneNumber, 
+            recipientId: phoneNumberId, 
+            message: campaignMessage 
         });
       }
       successCount++;
