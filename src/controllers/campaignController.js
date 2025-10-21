@@ -102,34 +102,41 @@ const executeCampaign = async (req, res) => {
 };
 
 // --- 4. UPGRADED TEMPLATE FETCHER ---
+// --- THIS IS THE UPGRADED FUNCTION ---
 const getMessageTemplates = async (req, res) => {
-  try {
-    // Find the *first* WABA account in the database to get credentials
-    const wabaAccount = await WabaAccount.findOne();
-    if (!wabaAccount) {
-      return res
-        .status(404)
-        .json({ success: false, error: "No WABA accounts configured." });
+    try {
+        // 1. Find ALL WABA accounts, not just one
+        const wabaAccounts = await WabaAccount.find();
+        if (!wabaAccounts || wabaAccounts.length === 0) {
+            return res.status(404).json({ success: false, error: 'No WABA accounts configured.' });
+        }
+        
+        let allTemplates = [];
+
+        // 2. Loop through each account and fetch its templates
+        for (const account of wabaAccounts) {
+            const url = `https://graph.facebook.com/v20.0/${account.businessAccountId}/message_templates`;
+            const headers = { 'Authorization': `Bearer ${account.accessToken}` };
+
+            try {
+                const response = await axios.get(url, { headers });
+                const approvedTemplates = response.data.data
+                    .filter(t => t.status === 'APPROVED' && t.components.some(c => c.type === 'BODY'));
+                
+                allTemplates = allTemplates.concat(approvedTemplates);
+            } catch (fetchError) {
+                // Log an error for this specific account but continue to the next one
+                console.error(`Failed to fetch templates for WABA ${account.accountName}: ${fetchError.message}`);
+            }
+        }
+        
+        // 3. Return the combined list of all templates
+        res.status(200).json({ success: true, data: allTemplates });
+
+    } catch (error) {
+        console.error('Error fetching message templates:', error.message);
+        res.status(500).json({ success: false, error: 'Failed to fetch message templates.' });
     }
-
-    const url = `https://graph.facebook.com/v20.0/${wabaAccount.businessAccountId}/message_templates`;
-    const headers = { Authorization: `Bearer ${wabaAccount.accessToken}` };
-
-    const response = await axios.get(url, { headers });
-    const approvedTemplates = response.data.data.filter(
-      (t) =>
-        t.status === "APPROVED" && t.components.some((c) => c.type === "BODY")
-    );
-    res.status(200).json({ success: true, data: approvedTemplates });
-  } catch (error) {
-    console.error(
-      "Error fetching message templates:",
-      error.response ? error.response.data : error.message
-    );
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch message templates." });
-  }
 };
 // --- NEW DELETE FUNCTION ---
 // @desc    Delete a campaign
