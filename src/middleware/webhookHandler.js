@@ -34,10 +34,6 @@ const processWebhook = async (req, res) => {
   if (body.object === "whatsapp_business_account") {
     const value = body.entry?.[0]?.changes?.[0]?.value;
     const recipientId = value?.metadata?.phone_number_id;
-    if (!recipientId) {
-        console.log('Webhook received payload without metadata.phone_number_id. Ignoring.');
-        return res.sendStatus(200);
-    }
 
     // --- Handle Incoming Messages ---
     if (value && value.messages && value.messages[0]) {
