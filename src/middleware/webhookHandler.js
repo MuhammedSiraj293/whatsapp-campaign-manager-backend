@@ -9,7 +9,7 @@ const PhoneNumber = require('../models/PhoneNumber'); // Import PhoneNumber
 const WabaAccount = require('../models/WabaAccount'); // Import WabaAccount
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { appendToSheet } = require("../integrations/googleSheets");
-const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
+// const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
 
 const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
@@ -28,13 +28,18 @@ const verifyWebhook = (req, res) => {
 };
 
 const processWebhook = async (req, res) => {
-  const io = getIO();
+  const io = req.io; // <-- Get the io instance from the request object
   const body = req.body;
 
   if (body.object === "whatsapp_business_account") {
     const value = body.entry?.[0]?.changes?.[0]?.value;
     const recipientId = value?.metadata?.phone_number_id;
+    if (!recipientId) {
+        console.log('Webhook received payload without metadata.phone_number_id. Ignoring.');
+        return res.sendStatus(200);
+    }
 
+    // --- Handle Incoming Messages ---
     if (value && value.messages && value.messages[0]) {
       const message = value.messages[0];
       try {
