@@ -8,7 +8,7 @@ const PhoneNumber = require("../models/PhoneNumber"); // Import PhoneNumber
 const WabaAccount = require("../models/WabaAccount"); // Import WabaAccount
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { appendToSheet } = require("../integrations/googleSheets");
-// const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
+const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
 
 const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
