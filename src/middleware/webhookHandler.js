@@ -27,7 +27,7 @@ const verifyWebhook = (req, res) => {
 };
 
 const processWebhook = async (req, res) => {
-  const io = req.io; // <-- Get the io instance from the request object
+  const io = getIO();// <-- Get the io instance from the request object
   const body = req.body;
 
   if (body.object === "whatsapp_business_account") {
