@@ -173,9 +173,75 @@ const exportLeadsToSheet = async (req, res) => {
   }
 };
 
+// --- NEW FUNCTION TO GET STATS GROUPED BY TEMPLATE ---
+// @desc    Get aggregated stats for all templates
+// @route   GET /api/analytics/templates
+const getTemplateAnalytics = async (req, res) => {
+  try {
+    const stats = await Analytics.aggregate([
+      // 1. Join with the 'campaigns' collection to get template names
+      {
+        $lookup: {
+          from: Campaign.collection.name,
+          localField: 'campaign',
+          foreignField: '_id',
+          as: 'campaignData'
+        }
+      },
+      // 2. Deconstruct the campaignData array
+      { $unwind: '$campaignData' },
+      // 3. Group by the template name and count statuses
+      {
+        $group: {
+          _id: '$campaignData.templateName', // Group by template name
+          totalSent: { $sum: 1 }, // Count all messages
+          delivered: {
+            $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] }
+          },
+          read: {
+            $sum: { $cond: [{ $eq: ['$status', 'read'] }, 1, 0] }
+          },
+          failed: {
+            $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] }
+          }
+        }
+      },
+      // 4. Join with the 'campaigns' collection again to get reply counts
+      {
+        $lookup: {
+            from: Campaign.collection.name,
+            localField: '_id',
+            foreignField: 'templateName',
+            as: 'campaigns'
+        }
+      },
+      // 5. Reshape the data
+      {
+        $project: {
+          _id: 0,
+          templateName: '$_id',
+          totalSent: 1,
+          delivered: 1,
+          read: 1,
+          failed: 1,
+          replies: { $sum: '$campaigns.replyCount' } // Sum replies from all campaigns using this template
+        }
+      },
+      { $sort: { totalSent: -1 } } // Sort by most sent
+    ]);
+
+    res.status(200).json({ success: true, data: stats });
+
+  } catch (error) {
+    console.error('Error fetching template analytics:', error);
+    res.status(500).json({ success: false, error: 'Server Error' });
+  }
+};
+
 module.exports = {
   getStats,
   getCampaignAnalytics,
   exportCampaignAnalytics,
   exportLeadsToSheet,
+  getTemplateAnalytics,
 };
