@@ -163,7 +163,7 @@ const processWebhook = async (req, res) => {
           // 2. Handle "stop" and "re-subscribe" logic
           if (messageBodyLower === "stop") {
             autoReplyText =
-              "You have been unsubscribed. You will no longer receive marketing messages from us.";
+              "You have been unsubscribed. You will no longer receive messages from us.";
             await Contact.findOneAndUpdate(
               { phoneNumber: message.from },
               { isSubscribed: false }
@@ -175,6 +175,8 @@ const processWebhook = async (req, res) => {
             if (contact && !contact.isSubscribed) {
               contact.isSubscribed = true;
               await contact.save();
+               autoReplyText =
+              "Hello and welcome back to Capital Avenue! How can we help you";
               console.log(`✅ Contact ${message.from} has been re-subscribed.`);
             }
             // 3. Handle normal keyword logic
