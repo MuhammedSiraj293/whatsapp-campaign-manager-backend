@@ -110,7 +110,8 @@ const processWebhook = async (req, res) => {
           });
         }
 
-       // --- THIS IS THE NEW DUAL-SYSTEM LEAD ROUTING ---
+
+// --- DUAL-SYSTEM LEAD ROUTING ---
         if (campaignToCredit && messageBody) {
           const incomingMessageCount = await Reply.countDocuments({ 
               from: message.from, 
@@ -118,7 +119,6 @@ const processWebhook = async (req, res) => {
               direction: 'incoming' 
           });
 
-          // Only process this as a "new lead" if it's the first incoming reply for this campaign
           if (incomingMessageCount === 1) {
             console.log(`✨ New lead for campaign "${campaignToCredit.name}".`);
             const contact = await Contact.findOne({ phoneNumber: message.from });
@@ -130,32 +130,28 @@ const processWebhook = async (req, res) => {
             ]];
             const headerRow = ['Timestamp', 'From', 'Name', 'Message'];
 
-            // SYSTEM 1: Check for a campaign-specific sheet ID
+            // SYSTEM 1: Campaign-specific sheet
             if (campaignToCredit.spreadsheetId) {
               console.log(`System 1: Sending lead to campaign-specific sheet: ${campaignToCredit.spreadsheetId}`);
-              // We clear and append to this sheet
               await clearSheet(campaignToCredit.spreadsheetId, 'Sheet1!A:D');
               await appendToSheet(campaignToCredit.spreadsheetId, "Sheet1!A1", [headerRow, ...dataRow]);
             
-            // SYSTEM 2: No specific ID, so use the Master Sheet
+            // SYSTEM 2: Master Sheet
             } else {
               console.log("System 2: No campaign sheet ID. Looking for Master Sheet...");
-              // Find the phone number and WABA account to get the Master Sheet ID
               const phoneNumber = await PhoneNumber.findOne({ phoneNumberId: recipientId }).populate('wabaAccount');
               
               if (phoneNumber && phoneNumber.wabaAccount && phoneNumber.wabaAccount.masterSpreadsheetId) {
                 const masterSheetId = phoneNumber.wabaAccount.masterSpreadsheetId;
-                const templateName = campaignToCredit.templateName; // This is our tab name
+                const templateName = campaignToCredit.templateName;
 
                 const sheetId = await findSheetIdByName(masterSheetId, templateName);
                 if (!sheetId) {
-                  // Tab doesn't exist, so create it and add the header row
                   console.log(`Creating new tab: "${templateName}"`);
                   await createSheet(masterSheetId, templateName);
                   await addHeaderRow(masterSheetId, templateName, headerRow);
                 }
                 
-                // Now, append the lead to the correct tab
                 console.log(`Appending lead to Master Sheet, tab: "${templateName}"`);
                 await appendToSheet(masterSheetId, `${templateName}!A1`, dataRow);
               } else {
@@ -163,7 +159,6 @@ const processWebhook = async (req, res) => {
               }
             }
           }
-          // Always increment the reply count
           await Campaign.findByIdAndUpdate(campaignToCredit._id, { $inc: { replyCount: 1 } });
           console.log(`✅ Incremented reply count for campaign: ${campaignToCredit._id}`);
         }

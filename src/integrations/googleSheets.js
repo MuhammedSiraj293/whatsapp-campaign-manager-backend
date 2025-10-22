@@ -1,16 +1,23 @@
 // backend/src/integrations/googleSheets.js
-    
+
 const { google } = require('googleapis');
-const path = require('path');
-    
-const KEY_FILE_PATH = path.join(__dirname, '../config/credentials.json');
+
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
-    
+
+// --- Load credentials from environment variable ---
+const credentialsJson = process.env.GOOGLE_CREDENTIALS_JSON;
+if (!credentialsJson) {
+  throw new Error('GOOGLE_CREDENTIALS_JSON environment variable not set.');
+}
+
+const credentials = JSON.parse(credentialsJson);
+
+// --- Set up Google Auth ---
 const auth = new google.auth.GoogleAuth({
-  keyFile: KEY_FILE_PATH,
+  credentials,
   scopes: SCOPES,
 });
-    
+
 const sheets = google.sheets({ version: 'v4', auth });
 
 // --- HELPER FUNCTION to get sheet properties ---
