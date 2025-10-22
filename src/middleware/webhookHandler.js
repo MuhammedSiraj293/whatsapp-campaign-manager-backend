@@ -27,7 +27,7 @@ const verifyWebhook = (req, res) => {
 };
 
 const processWebhook = async (req, res) => {
-  const io = getIO();// <-- Get the io instance from the request object
+  const io = getIO(); // <-- Get the io instance from the request object
   const body = req.body;
 
   if (body.object === "whatsapp_business_account") {
@@ -105,25 +105,28 @@ const processWebhook = async (req, res) => {
 
         // --- NEW SUBSCRIBE/UNSUBSCRIBE LOGIC ---
         if (messageBody) {
-            const messageBodyLower = messageBody.toLowerCase().trim();
-            const contact = await Contact.findOne({ phoneNumber: message.from });
+          const messageBodyLower = messageBody.toLowerCase().trim();
+          const contact = await Contact.findOne({ phoneNumber: message.from });
 
-            if (contact) {
-                // If the user texts "stop", unsubscribe them.
-                if (messageBodyLower === 'stop') {
-                    contact.isSubscribed = false;
-                    await contact.save();
-                    console.log(`🚫 Contact ${message.from} has unsubscribed.`);
-                    await sendTextMessage(message.from, 'You have been unsubscribed from our marketing lists.');
-                    // Stop further processing for "stop" messages
-                    return res.sendStatus(200); 
-                } else if (!contact.isSubscribed) {
-                    // If they are unsubscribed and send any other message, re-subscribe them.
-                    contact.isSubscribed = true;
-                    await contact.save();
-                    console.log(`✅ Contact ${message.from} has been re-subscribed.`);
-                }
+          if (contact) {
+            // If the user texts "stop", unsubscribe them.
+            if (messageBodyLower === "stop") {
+              await sendTextMessage(
+                message.from,
+                "You have been unsubscribed from our marketing lists."
+              );
+              contact.isSubscribed = false;
+              await contact.save();
+              console.log(`🚫 Contact ${message.from} has unsubscribed.`);
+              // Stop further processing for "stop" messages
+              return res.sendStatus(200);
+            } else if (!contact.isSubscribed) {
+              // If they are unsubscribed and send any other message, re-subscribe them.
+              contact.isSubscribed = true;
+              await contact.save();
+              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
             }
+          }
         }
         // --- END OF SUBSCRIBE/UNSUBSCRIBE LOGIC ---
 
@@ -171,26 +174,26 @@ const processWebhook = async (req, res) => {
           const messageBodyLower = messageBody.toLowerCase();
           let autoReplyText = null;
 
-            if (messageBodyLower.includes("marbella")) {
+          if (messageBodyLower.includes("marbella")) {
+            autoReplyText =
+              "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
+          } else if (
+            messageBodyLower.includes("rise") ||
+            messageBodyLower.includes("yes, i am interested")
+          ) {
+            autoReplyText =
+              "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
+          } else if (messageBodyLower.includes("not interested")) {
+            autoReplyText =
+              "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+          } else {
+            const incomingMessageCount = await Reply.countDocuments({
+              from: message.from,
+            });
+            if (incomingMessageCount === 1) {
               autoReplyText =
-                "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
-            } else if (
-              messageBodyLower.includes("rise") ||
-              messageBodyLower.includes("yes, i am interested")
-            ) {
-              autoReplyText =
-                "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
-            } else if (messageBodyLower.includes("not interested")) {
-              autoReplyText =
-                "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
-            } else {
-              const incomingMessageCount = await Reply.countDocuments({
-                from: message.from,
-              });
-              if (incomingMessageCount === 1) {
-                autoReplyText =
-                  "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
-              }
+                "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
+            }
           }
 
           if (autoReplyText) {
