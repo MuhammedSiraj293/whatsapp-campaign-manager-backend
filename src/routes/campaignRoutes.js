@@ -5,6 +5,7 @@ const {
   getCampaigns,
   createCampaign,
   executeCampaign,
+  getCampaignsByWaba, // <-- 1. IMPORT NEW FUNCTION
   getMessageTemplates,
   getRecipientCount,
   deleteCampaign,
@@ -19,8 +20,15 @@ router.route('/')
   .get(protect, getCampaigns)
   .post(protect, authorize('admin', 'manager'), createCampaign);
 
-// This route handles fetching templates
-router.get('/templates', protect, getMessageTemplates);
+// --- 2. NEW ROUTES ---
+// Get campaigns for a SPECIFIC WABA
+router.get('/waba/:wabaId', protect, authorize('admin', 'manager'), getCampaignsByWaba);
+
+// Get templates for a SPECIFIC WABA
+router.get('/templates/:wabaId', protect, authorize('admin', 'manager'), getMessageTemplates);
+// Get all templates (for the create campaign page)
+router.get('/templates', protect, authorize('admin', 'manager'), getMessageTemplates);
+// --- END NEW ROUTES ---
 
 // This route gets the recipient count for a specific campaign
 router.get('/:id/recipients/count', protect, getRecipientCount);

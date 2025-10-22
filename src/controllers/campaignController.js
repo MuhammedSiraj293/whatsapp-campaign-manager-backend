@@ -101,19 +101,55 @@ const executeCampaign = async (req, res) => {
   }
 };
 
+// --- NEW FUNCTION ---
+// @desc    Get all campaigns for a specific WabaAccount
+// @route   GET /api/campaigns/waba/:wabaId
+const getCampaignsByWaba = async (req, res) => {
+  try {
+    const { wabaId } = req.params;
+
+    // Find all phone numbers associated with this WABA
+    const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId }).select('_id');
+    const phoneNumberIds = phoneNumbers.map(p => p._id);
+
+    // Find all campaigns that use one of those phone numbers
+    const campaigns = await Campaign.find({ phoneNumber: { $in: phoneNumberIds } })
+      .sort({ createdAt: -1 })
+      .populate('contactList', 'name')
+      .populate('phoneNumber', 'phoneNumberName');
+      
+    res.status(200).json({ success: true, count: campaigns.length, data: campaigns });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Server Error' });
+  }
+};
 // --- 4. UPGRADED TEMPLATE FETCHER ---
 // --- THIS IS THE UPGRADED FUNCTION ---
+// --- UPGRADED FUNCTION ---
+// @desc    Get templates, either for all accounts or a specific one
+// @route   GET /api/campaigns/templates
+// @route   GET /api/campaigns/templates/:wabaId
 const getMessageTemplates = async (req, res) => {
     try {
-        // 1. Find ALL WABA accounts, not just one
-        const wabaAccounts = await WabaAccount.find();
-        if (!wabaAccounts || wabaAccounts.length === 0) {
-            return res.status(404).json({ success: false, error: 'No WABA accounts configured.' });
+        const { wabaId } = req.params;
+        let wabaAccounts;
+
+        if (wabaId) {
+            // If an ID is provided, fetch only that account
+            wabaAccounts = await WabaAccount.find({ _id: wabaId });
+            if (wabaAccounts.length === 0) {
+                 return res.status(404).json({ success: false, error: 'WABA account not found.' });
+            }
+        } else {
+            // Fetch all WABA accounts
+            wabaAccounts = await WabaAccount.find();
+            if (!wabaAccounts || wabaAccounts.length === 0) {
+                return res.status(404).json({ success: false, error: 'No WABA accounts configured.' });
+            }
         }
         
         let allTemplates = [];
 
-        // 2. Loop through each account and fetch its templates
         for (const account of wabaAccounts) {
             const url = `https://graph.facebook.com/v20.0/${account.businessAccountId}/message_templates`;
             const headers = { 'Authorization': `Bearer ${account.accessToken}` };
@@ -121,16 +157,15 @@ const getMessageTemplates = async (req, res) => {
             try {
                 const response = await axios.get(url, { headers });
                 const approvedTemplates = response.data.data
-                    .filter(t => t.status === 'APPROVED' && t.components.some(c => c.type === 'BODY'));
+                    .filter(t => t.status === 'APPROVED' && t.components.some(c => c.type === 'BODY'))
+                    .map(t => ({ ...t, wabaAccountId: account._id })); // Add account ID to template
                 
                 allTemplates = allTemplates.concat(approvedTemplates);
             } catch (fetchError) {
-                // Log an error for this specific account but continue to the next one
                 console.error(`Failed to fetch templates for WABA ${account.accountName}: ${fetchError.message}`);
             }
         }
         
-        // 3. Return the combined list of all templates
         res.status(200).json({ success: true, data: allTemplates });
 
     } catch (error) {
@@ -164,6 +199,7 @@ module.exports = {
   getRecipientCount,
   createCampaign,
   executeCampaign,
+  getCampaignsByWaba,
   getMessageTemplates,
   deleteCampaign,
 };
