@@ -7,7 +7,6 @@ const Contact = require("../models/Contact");
 const PhoneNumber = require("../models/PhoneNumber"); // Import PhoneNumber
 const WabaAccount = require("../models/WabaAccount"); // Import WabaAccount
 const { sendTextMessage } = require("../integrations/whatsappAPI");
-const { appendToSheet } = require("../integrations/googleSheets");
 const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
 // Import all our new Google Sheet functions
 const { 
