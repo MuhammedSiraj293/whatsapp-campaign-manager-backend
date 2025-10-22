@@ -4,7 +4,8 @@ const {
   getCampaignAnalytics,
   exportCampaignAnalytics,
   exportLeadsToSheet,
-  getTemplateAnalytics // <-- 1. IMPORT
+  getTemplateAnalytics, // <-- 1. IMPORT
+  getAnalyticsForTemplate, // <-- 1. IMPORT NEW FUNCTION
 } = require("../controllers/analyticsController");
 const { protect } = require("../middleware/authMiddleware");
 
@@ -13,8 +14,10 @@ const router = express.Router();
 router.get("/stats", protect, getStats);
 // --- 2. NEW ROUTE FOR TEMPLATE STATS ---
 router.get('/templates', getTemplateAnalytics);
+router.get('/template/:templateName', getAnalyticsForTemplate);
+
 router.get("/:campaignId", protect, getCampaignAnalytics);
 router.get("/:campaignId/export", protect, exportCampaignAnalytics);
-// --- 2. NEW ROUTE FOR GOOGLE SHEETS EXPORT ---
+// --- 3. NEW ROUTE FOR GOOGLE SHEETS EXPORT ---
 router.post("/:campaignId/export-sheet", exportLeadsToSheet);
 module.exports = router;

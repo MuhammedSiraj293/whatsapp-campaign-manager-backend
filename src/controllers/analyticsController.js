@@ -238,10 +238,68 @@ const getTemplateAnalytics = async (req, res) => {
   }
 };
 
+// --- NEW FUNCTION TO GET STATS FOR A SINGLE TEMPLATE ---
+// @desc    Get aggregated stats for a *single* template
+// @route   GET /api/analytics/template/:templateName
+const getAnalyticsForTemplate = async (req, res) => {
+  try {
+    const { templateName } = req.params;
+
+    // 1. Find all campaigns that use this template
+    const campaigns = await Campaign.find({ templateName: templateName });
+    if (!campaigns || campaigns.length === 0) {
+      return res.status(404).json({ success: false, error: 'No campaigns found with this template name.' });
+    }
+
+    const campaignIds = campaigns.map(c => c._id);
+
+    // 2. Run all count queries in parallel for these campaigns
+    const [totalSent, delivered, read, failed] = await Promise.all([
+        Analytics.countDocuments({ campaign: { $in: campaignIds } }),
+        Analytics.countDocuments({ campaign: { $in: campaignIds }, status: 'delivered' }),
+        Analytics.countDocuments({ campaign: { $in: campaignIds }, status: 'read' }),
+        Analytics.countDocuments({ campaign: { $in: campaignIds }, status: 'failed' }),
+    ]);
+
+    // 3. Calculate total replies by summing up replyCount from all found campaigns
+    const totalReplies = campaigns.reduce((acc, campaign) => acc + (campaign.replyCount || 0), 0);
+
+    if (totalSent === 0) {
+        return res.status(200).json({ success: true, data: {
+            templateName: templateName,
+            total: 0, delivered: 0, read: 0, failed: 0, replies: 0,
+            deliveryRate: '0%', readRate: '0%', replyRate: '0%',
+        }});
+    }
+
+    // 4. Calculate rates
+    const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + '%';
+    const readRate = ((read / totalSent) * 100).toFixed(1) + '%';
+    const replyRate = ((totalReplies / totalSent) * 100).toFixed(1) + '%';
+
+    res.status(200).json({ success: true, data: {
+        templateName: templateName,
+        total: totalSent, // Renamed "totalSent" to "total" as requested
+        delivered,
+        read,
+        failed,
+        replies: totalReplies,
+        deliveryRate,
+        readRate,
+        replyRate,
+    }});
+
+  } catch (error) {
+    console.error('Error fetching single template analytics:', error);
+    res.status(500).json({ success: false, error: 'Server Error' });
+  }
+};
+
 module.exports = {
   getStats,
   getCampaignAnalytics,
   exportCampaignAnalytics,
   exportLeadsToSheet,
   getTemplateAnalytics,
+  getAnalyticsForTemplate,
 };
