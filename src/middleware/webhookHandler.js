@@ -103,33 +103,6 @@ const processWebhook = async (req, res) => {
           });
         }
 
-        // --- NEW SUBSCRIBE/UNSUBSCRIBE LOGIC ---
-        if (messageBody) {
-          const messageBodyLower = messageBody.toLowerCase().trim();
-          const contact = await Contact.findOne({ phoneNumber: message.from });
-
-          if (contact) {
-            // If the user texts "stop", unsubscribe them.
-            if (messageBodyLower === "stop") {
-              await sendTextMessage(
-                message.from,
-                "You have been unsubscribed from our marketing lists."
-              );
-              contact.isSubscribed = false;
-              await contact.save();
-              console.log(`🚫 Contact ${message.from} has unsubscribed.`);
-              // Stop further processing for "stop" messages
-              return res.sendStatus(200);
-            } else if (!contact.isSubscribed) {
-              // If they are unsubscribed and send any other message, re-subscribe them.
-              contact.isSubscribed = true;
-              await contact.save();
-              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
-            }
-          }
-        }
-        // --- END OF SUBSCRIBE/UNSUBSCRIBE LOGIC ---
-
         if (campaignToCredit) {
           const incomingMessageCount = await Reply.countDocuments({
             from: message.from,
@@ -174,25 +147,56 @@ const processWebhook = async (req, res) => {
           const messageBodyLower = messageBody.toLowerCase();
           let autoReplyText = null;
 
-          if (messageBodyLower.includes("marbella")) {
+          // --- THIS IS THE KEY CHANGE ---
+          // 1. Find the credentials for this specific phone number FIRST
+          const phoneNumber = await PhoneNumber.findOne({
+            phoneNumberId: recipientId,
+          }).populate("wabaAccount");
+          if (!phoneNumber || !phoneNumber.wabaAccount) {
+            console.error(
+              `❌ Could not find credentials for recipientId ${recipientId}. Aborting auto-reply.`
+            );
+            return res.sendStatus(200);
+          }
+          const { accessToken } = phoneNumber.wabaAccount;
+
+          // 2. Handle "stop" and "re-subscribe" logic
+          if (messageBodyLower === "stop") {
             autoReplyText =
-              "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
-          } else if (
-            messageBodyLower.includes("rise") ||
-            messageBodyLower.includes("yes, i am interested")
-          ) {
-            autoReplyText =
-              "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
-          } else if (messageBodyLower.includes("not interested")) {
-            autoReplyText =
-              "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+              "You have been unsubscribed. You will no longer receive marketing messages from us.";
+            await Contact.findOneAndUpdate(
+              { phoneNumber: message.from },
+              { isSubscribed: false }
+            );
           } else {
-            const incomingMessageCount = await Reply.countDocuments({
-              from: message.from,
+            const contact = await Contact.findOne({
+              phoneNumber: message.from,
             });
-            if (incomingMessageCount === 1) {
+            if (contact && !contact.isSubscribed) {
+              contact.isSubscribed = true;
+              await contact.save();
+              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
+            }
+            if (messageBodyLower.includes("marbella")) {
               autoReplyText =
-                "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
+                "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
+            } else if (
+              messageBodyLower.includes("rise") ||
+              messageBodyLower.includes("yes, i am interested")
+            ) {
+              autoReplyText =
+                "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
+            } else if (messageBodyLower.includes("not interested")) {
+              autoReplyText =
+                "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+            } else {
+              const incomingMessageCount = await Reply.countDocuments({
+                from: message.from,
+              });
+              if (incomingMessageCount === 1) {
+                autoReplyText =
+                  "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
+              }
             }
           }
 
