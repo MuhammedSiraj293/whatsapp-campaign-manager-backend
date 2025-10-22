@@ -177,13 +177,8 @@ const processWebhook = async (req, res) => {
               await contact.save();
               console.log(`✅ Contact ${message.from} has been re-subscribed.`);
             }
-            if (messageBodyLower.includes("marbella")) {
-              autoReplyText =
-                "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
-            } else if (
-              messageBodyLower.includes("rise") ||
-              messageBodyLower.includes("yes, i am interested")
-            ) {
+            // 3. Handle normal keyword logic
+            if (messageBodyLower.includes("yes, i am interested")) {
               autoReplyText =
                 "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
             } else if (messageBodyLower.includes("not interested")) {
@@ -200,37 +195,34 @@ const processWebhook = async (req, res) => {
             }
           }
 
+          // 4. Send the auto-reply (if any) using the correct credentials
           if (autoReplyText) {
-            const phoneNumber = await PhoneNumber.findOne({
-              phoneNumberId: recipientId,
-            }).populate("wabaAccount");
-            if (phoneNumber && phoneNumber.wabaAccount) {
-              const { accessToken } = phoneNumber.wabaAccount;
-              console.log(`🤖 Sending auto-reply to ${message.from}...`);
-              const result = await sendTextMessage(
-                message.from,
-                autoReplyText,
-                accessToken,
-                recipientId
-              );
+            console.log(
+              `🤖 Sending auto-reply to ${message.from} from ${recipientId}...`
+            );
+            const result = await sendTextMessage(
+              message.from,
+              autoReplyText,
+              accessToken,
+              recipientId
+            );
 
-              if (result && result.messages && result.messages[0].id) {
-                const newAutoReply = new Reply({
-                  messageId: result.messages[0].id,
-                  from: message.from,
-                  recipientId: recipientId,
-                  body: autoReplyText,
-                  timestamp: new Date(),
-                  direction: "outgoing",
-                  read: true,
-                });
-                await newAutoReply.save();
-                io.emit("newMessage", {
-                  from: message.from,
-                  recipientId: recipientId,
-                  message: newAutoReply,
-                });
-              }
+            if (result && result.messages && result.messages[0].id) {
+              const newAutoReply = new Reply({
+                messageId: result.messages[0].id,
+                from: message.from,
+                recipientId: recipientId,
+                body: autoReplyText,
+                timestamp: new Date(),
+                direction: "outgoing",
+                read: true,
+              });
+              await newAutoReply.save();
+              io.emit("newMessage", {
+                from: message.from,
+                recipientId: recipientId,
+                message: newAutoReply,
+              });
             }
           }
         }
