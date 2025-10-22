@@ -103,6 +103,30 @@ const processWebhook = async (req, res) => {
           });
         }
 
+        // --- NEW SUBSCRIBE/UNSUBSCRIBE LOGIC ---
+        if (messageBody) {
+            const messageBodyLower = messageBody.toLowerCase().trim();
+            const contact = await Contact.findOne({ phoneNumber: message.from });
+
+            if (contact) {
+                // If the user texts "stop", unsubscribe them.
+                if (messageBodyLower === 'stop') {
+                    contact.isSubscribed = false;
+                    await contact.save();
+                    console.log(`🚫 Contact ${message.from} has unsubscribed.`);
+                    await sendTextMessage(message.from, 'You have been unsubscribed from our marketing lists.');
+                    // Stop further processing for "stop" messages
+                    return res.sendStatus(200); 
+                } else if (!contact.isSubscribed) {
+                    // If they are unsubscribed and send any other message, re-subscribe them.
+                    contact.isSubscribed = true;
+                    await contact.save();
+                    console.log(`✅ Contact ${message.from} has been re-subscribed.`);
+                }
+            }
+        }
+        // --- END OF SUBSCRIBE/UNSUBSCRIBE LOGIC ---
+
         if (campaignToCredit) {
           const incomingMessageCount = await Reply.countDocuments({
             from: message.from,
@@ -147,23 +171,6 @@ const processWebhook = async (req, res) => {
           const messageBodyLower = messageBody.toLowerCase();
           let autoReplyText = null;
 
-          if (messageBodyLower === "stop") {
-            autoReplyText =
-              "Your preference has been noted, and you will no longer receive messages from us. We value your choice and remain available when you wish to engage with us again in the future.";
-            await Contact.findOneAndUpdate(
-              { phoneNumber: message.from },
-              { isSubscribed: false }
-            );
-          } else {
-            const contact = await Contact.findOne({
-              phoneNumber: message.from,
-            });
-            if (contact && !contact.isSubscribed) {
-              contact.isSubscribed = true;
-              await contact.save();
-              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
-            }
-
             if (messageBodyLower.includes("marbella")) {
               autoReplyText =
                 "Your interest has been noted. will contact you shortly.Thank you for contacting us.";
@@ -184,7 +191,6 @@ const processWebhook = async (req, res) => {
                 autoReplyText =
                   "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
               }
-            }
           }
 
           if (autoReplyText) {

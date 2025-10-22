@@ -34,7 +34,7 @@ const sendCampaign = async (campaignId) => {
   }
   // --- END NEW VALIDATION ---
 
-  const contacts = await Contact.find({ contactList: campaign.contactList });
+  const contacts = await Contact.find({ contactList: campaign.contactList, isSubscribed: true });
   if (contacts.length === 0) {
     await Log.create({
       level: "info",
