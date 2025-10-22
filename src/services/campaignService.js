@@ -12,29 +12,37 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const sendCampaign = async (campaignId) => {
   const io = getIO();
-  const campaign = await Campaign.findById(campaignId)
-    .populate({
-      path: 'phoneNumber', // <-- 3. Populate the phone number
-      populate: {
-        path: 'wabaAccount' // <-- 4. Populate the parent WABA account
-      }
-    });
+  const campaign = await Campaign.findById(campaignId).populate({
+    path: "phoneNumber", // <-- 3. Populate the phone number
+    populate: {
+      path: "wabaAccount", // <-- 4. Populate the parent WABA account
+    },
+  });
 
   // --- NEW VALIDATION ---
-  if (!campaign) throw new Error('Campaign not found.');
-  if (!campaign.contactList) throw new Error('No contact list assigned.');
-  if (!campaign.phoneNumber) throw new Error('No "Send From" phone number assigned to this campaign.');
-  if (!campaign.phoneNumber.wabaAccount) throw new Error('WABA account for this phone number is missing or deleted.');
+  if (!campaign) throw new Error("Campaign not found.");
+  if (!campaign.contactList) throw new Error("No contact list assigned.");
+  if (!campaign.phoneNumber)
+    throw new Error('No "Send From" phone number assigned to this campaign.');
+  if (!campaign.phoneNumber.wabaAccount)
+    throw new Error(
+      "WABA account for this phone number is missing or deleted."
+    );
 
   const { accessToken } = campaign.phoneNumber.wabaAccount;
   const { phoneNumberId } = campaign.phoneNumber;
-  
+
   if (!accessToken || !phoneNumberId) {
-      throw new Error('Invalid account credentials. Check WABA account and Phone Number setup.');
+    throw new Error(
+      "Invalid account credentials. Check WABA account and Phone Number setup."
+    );
   }
   // --- END NEW VALIDATION ---
 
-  const contacts = await Contact.find({ contactList: campaign.contactList, isSubscribed: true });
+  const contacts = await Contact.find({
+    contactList: campaign.contactList,
+    isSubscribed: true,
+  });
   if (contacts.length === 0) {
     await Log.create({
       level: "info",
@@ -143,8 +151,8 @@ const sendCampaign = async (campaignId) => {
           bodyVariables: finalBodyVariables,
           buttons: campaign.buttons,
         },
-        accessToken,      // Pass the dynamic token
-        phoneNumberId     // Pass the dynamic phone ID
+        accessToken, // Pass the dynamic token
+        phoneNumberId // Pass the dynamic phone ID
       );
 
       if (response && response.messages && response.messages[0].id) {
@@ -153,22 +161,22 @@ const sendCampaign = async (campaignId) => {
         // --- THIS IS THE FIX ---
         // Save the outgoing campaign message to the 'replies' collection
         const campaignMessage = new Reply({
-            messageId: wamid,
-            from: contact.phoneNumber,
-            recipientId: phoneNumberId, // Save which number sent it
-            body: campaign.message,
-            timestamp: new Date(),
-            direction: 'outgoing',
-            read: true,
-            campaign: campaign._id,
+          messageId: wamid,
+          from: contact.phoneNumber,
+          recipientId: phoneNumberId, // Save which number sent it
+          body: campaign.message,
+          timestamp: new Date(),
+          direction: "outgoing",
+          read: true,
+          campaign: campaign._id,
         });
         await campaignMessage.save();
-        
+
         // Emit an event so the frontend chat updates instantly
-        io.emit('newMessage', { 
-            from: contact.phoneNumber, 
-            recipientId: phoneNumberId, 
-            message: campaignMessage 
+        io.emit("newMessage", {
+          from: contact.phoneNumber,
+          recipientId: phoneNumberId,
+          message: campaignMessage,
         });
       }
       successCount++;

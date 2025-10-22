@@ -103,17 +103,17 @@ const processWebhook = async (req, res) => {
           });
         }
 
-        if (campaignToCredit) {
+        // --- THIS IS THE NEW DUAL-SYSTEM LEAD ROUTING ---
+        if (campaignToCredit && messageBody) {
           const incomingMessageCount = await Reply.countDocuments({
             from: message.from,
             campaign: campaignToCredit._id,
             direction: "incoming",
           });
 
-          if (incomingMessageCount === 1 && campaignToCredit.spreadsheetId) {
-            console.log(
-              `✨ New lead for campaign "${campaignToCredit.name}". Appending to Google Sheet...`
-            );
+          // Only process this as a "new lead" if it's the first incoming reply for this campaign
+          if (incomingMessageCount === 1) {
+            console.log(`✨ New lead for campaign "${campaignToCredit.name}".`);
             const contact = await Contact.findOne({
               phoneNumber: message.from,
             });
@@ -127,13 +127,65 @@ const processWebhook = async (req, res) => {
                 messageBody,
               ],
             ];
-            await appendToSheet(
-              campaignToCredit.spreadsheetId,
-              "Sheet1!A1",
-              dataRow
-            );
-          }
+            const headerRow = ["Timestamp", "From", "Name", "Message"];
 
+            // SYSTEM 1: Check for a campaign-specific sheet ID
+            if (campaignToCredit.spreadsheetId) {
+              console.log(
+                `System 1: Sending lead to campaign-specific sheet: ${campaignToCredit.spreadsheetId}`
+              );
+              await clearSheet(campaignToCredit.spreadsheetId, "Sheet1!A:D");
+              await appendToSheet(campaignToCredit.spreadsheetId, "Sheet1!A1", [
+                headerRow,
+                ...dataRow,
+              ]);
+
+              // SYSTEM 2: No specific ID, so use the Master Sheet
+            } else {
+              console.log(
+                "System 2: No campaign sheet ID. Looking for Master Sheet..."
+              );
+              const phoneNumber = await PhoneNumber.findOne({
+                phoneNumberId: recipientId,
+              }).populate("wabaAccount");
+
+              if (
+                phoneNumber &&
+                phoneNumber.wabaAccount &&
+                phoneNumber.wabaAccount.masterSpreadsheetId
+              ) {
+                const masterSheetId =
+                  phoneNumber.wabaAccount.masterSpreadsheetId;
+                const templateName = campaignToCredit.templateName; // This is our tab name
+
+                const sheetId = await findSheetIdByName(
+                  masterSheetId,
+                  templateName
+                );
+                if (!sheetId) {
+                  // Tab doesn't exist, so create it and add the header row
+                  console.log(`Creating new tab: "${templateName}"`);
+                  await createSheet(masterSheetId, templateName);
+                  await addHeaderRow(masterSheetId, templateName, headerRow);
+                }
+
+                // Now, append the lead to the correct tab
+                console.log(
+                  `Appending lead to Master Sheet, tab: "${templateName}"`
+                );
+                await appendToSheet(
+                  masterSheetId,
+                  `${templateName}!A1`,
+                  dataRow
+                );
+              } else {
+                console.log(
+                  `No Master Sheet ID configured for this WABA. Lead not exported.`
+                );
+              }
+            }
+          }
+          // Always increment the reply count
           await Campaign.findByIdAndUpdate(campaignToCredit._id, {
             $inc: { replyCount: 1 },
           });
@@ -175,8 +227,8 @@ const processWebhook = async (req, res) => {
             if (contact && !contact.isSubscribed) {
               contact.isSubscribed = true;
               await contact.save();
-               autoReplyText =
-              "Hello and welcome back to Capital Avenue! How can we help you";
+              autoReplyText =
+                "Hello and welcome back to Capital Avenue! How can we help you";
               console.log(`✅ Contact ${message.from} has been re-subscribed.`);
             }
             // 3. Handle normal keyword logic
