@@ -4,7 +4,7 @@ const express = require('express');
 const {
   getAllWabaAccounts,
   addWabaAccount,
-  updateWabaAccount, // <-- 1. IMPORT
+  updateWabaAccount,
   addPhoneNumber,
   deleteWabaAccount,
   deletePhoneNumber,
@@ -14,24 +14,31 @@ const { protect, authorize } = require('../middleware/authMiddleware');
     
 const router = express.Router();
     
-// All routes in this file are for admins only
+// All routes in this file are protected and require a login
 router.use(protect);
-router.use(authorize('admin'));
     
+// --- THIS IS THE KEY CHANGE ---
 // Routes for managing the main WABA accounts
 router.route('/accounts')
+  // Allow ALL logged-in roles (viewer, manager, admin) to GET the list
   .get(getAllWabaAccounts)
-  .post(addWabaAccount);
+  // Only allow ADMIN to create a new account
+  .post(authorize('admin'), addWabaAccount);
     
 router.route('/accounts/:id')
-  .put(updateWabaAccount) // <-- 2. ADD THE NEW UPDATE ROUTE
-  .delete(deleteWabaAccount);
-    
+  // Only allow ADMIN to update an account
+  .put(authorize('admin'), updateWabaAccount)
+  // Only allow ADMIN to delete an account
+  .delete(authorize('admin'), deleteWabaAccount);
+// --- END OF CHANGE ---
+
 // Routes for managing individual phone numbers
 router.route('/phones')
-  .post(addPhoneNumber);
+  // Only allow ADMIN to create a new phone number
+  .post(authorize('admin'), addPhoneNumber);
       
 router.route('/phones/:id')
-  .delete(deletePhoneNumber);
+  // Only allow ADMIN to delete a phone number
+  .delete(authorize('admin'), deletePhoneNumber);
     
 module.exports = router;
