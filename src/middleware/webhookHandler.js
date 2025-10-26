@@ -182,9 +182,9 @@ const processWebhook = async (req, res) => {
           const { accessToken } = phoneNumber.wabaAccount;
 
           // 2. Handle "stop" and "re-subscribe" logic
-          if (messageBodyLower === "stop") {
+          if (messageBodyLower.includes("stop")) {
             autoReplyText =
-              "You have been unsubscribed. You will no longer receive messages from us.";
+              "You’ve been unsubscribed. You won’t receive further messages, but you can reach out anytime if you need assistance.";
             await Contact.findOneAndUpdate(
               { phoneNumber: message.from },
               { isSubscribed: false }
@@ -203,7 +203,7 @@ const processWebhook = async (req, res) => {
             // 3. Handle normal keyword logic
             if (messageBodyLower.includes("yes, i am interested")) {
               autoReplyText =
-                "Your interest has been noted. will contact you shortly. Thank you for contacting us.";
+                "Your interest has been noted. We will contact you shortly. Thank you for your response.";
             } else if (messageBodyLower.includes("not interested")) {
               autoReplyText =
                 "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
