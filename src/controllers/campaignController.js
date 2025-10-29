@@ -4,6 +4,7 @@ const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const WabaAccount = require("../models/WabaAccount");
 const PhoneNumber = require("../models/PhoneNumber"); // <-- 1. IMPORT
+const Log = require('../models/Log'); // <-- 1. IMPORT THE LOG MODEL
 const { sendCampaign } = require("../services/campaignService");
 const axios = require("axios");
 // const wabaConfig = require('../config/wabaConfig');

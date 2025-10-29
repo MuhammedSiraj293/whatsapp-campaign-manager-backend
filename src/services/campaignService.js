@@ -3,7 +3,7 @@
 const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const Analytics = require("../models/Analytics");
-const Log = require("../models/Log");
+const Log = require('../models/Log'); // <-- 1. IMPORT THE LOG MODEL
 const Reply = require("../models/Reply");
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
