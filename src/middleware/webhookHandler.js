@@ -9,13 +9,13 @@ const WabaAccount = require("../models/WabaAccount"); // Import WabaAccount
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
 // Import all our new Google Sheet functions
-const { 
-  appendToSheet, 
+const {
+  appendToSheet,
   clearSheet,
-  findSheetIdByName, 
-  createSheet, 
-  addHeaderRow 
-} = require('../integrations/googleSheets');
+  findSheetIdByName,
+  createSheet,
+  addHeaderRow,
+} = require("../integrations/googleSheets");
 
 const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
@@ -110,57 +110,91 @@ const processWebhook = async (req, res) => {
           });
         }
 
-
-// --- DUAL-SYSTEM LEAD ROUTING ---
+        // --- DUAL-SYSTEM LEAD ROUTING ---
         if (campaignToCredit && messageBody) {
-          const incomingMessageCount = await Reply.countDocuments({ 
-              from: message.from, 
-              campaign: campaignToCredit._id,
-              direction: 'incoming' 
+          const incomingMessageCount = await Reply.countDocuments({
+            from: message.from,
+            campaign: campaignToCredit._id,
+            direction: "incoming",
           });
 
           if (incomingMessageCount === 1) {
             console.log(`✨ New lead for campaign "${campaignToCredit.name}".`);
-            const contact = await Contact.findOne({ phoneNumber: message.from });
-            const dataRow = [[
-                new Date(message.timestamp * 1000).toLocaleString("en-US", { timeZone: "Asia/Dubai" }),
+            const contact = await Contact.findOne({
+              phoneNumber: message.from,
+            });
+            const dataRow = [
+              [
+                new Date(message.timestamp * 1000).toLocaleString("en-US", {
+                  timeZone: "Asia/Dubai",
+                }),
                 message.from,
                 contact ? contact.name : "Unknown",
                 messageBody,
-            ]];
-            const headerRow = ['Timestamp', 'From', 'Name', 'Message'];
+              ],
+            ];
+            const headerRow = ["Timestamp", "From", "Name", "Message"];
 
             // SYSTEM 1: Campaign-specific sheet
             if (campaignToCredit.spreadsheetId) {
-              console.log(`System 1: Sending lead to campaign-specific sheet: ${campaignToCredit.spreadsheetId}`);
-              await clearSheet(campaignToCredit.spreadsheetId, 'Sheet1!A:D');
-              await appendToSheet(campaignToCredit.spreadsheetId, "Sheet1!A1", [headerRow, ...dataRow]);
-            
-            // SYSTEM 2: Master Sheet
+              console.log(
+                `System 1: Sending lead to campaign-specific sheet: ${campaignToCredit.spreadsheetId}`
+              );
+              await clearSheet(campaignToCredit.spreadsheetId, "Sheet1!A:D");
+              await appendToSheet(campaignToCredit.spreadsheetId, "Sheet1!A1", [
+                headerRow,
+                ...dataRow,
+              ]);
+
+              // SYSTEM 2: Master Sheet
             } else {
-              console.log("System 2: No campaign sheet ID. Looking for Master Sheet...");
-              const phoneNumber = await PhoneNumber.findOne({ phoneNumberId: recipientId }).populate('wabaAccount');
-              
-              if (phoneNumber && phoneNumber.wabaAccount && phoneNumber.wabaAccount.masterSpreadsheetId) {
-                const masterSheetId = phoneNumber.wabaAccount.masterSpreadsheetId;
+              console.log(
+                "System 2: No campaign sheet ID. Looking for Master Sheet..."
+              );
+              const phoneNumber = await PhoneNumber.findOne({
+                phoneNumberId: recipientId,
+              }).populate("wabaAccount");
+
+              if (
+                phoneNumber &&
+                phoneNumber.wabaAccount &&
+                phoneNumber.wabaAccount.masterSpreadsheetId
+              ) {
+                const masterSheetId =
+                  phoneNumber.wabaAccount.masterSpreadsheetId;
                 const templateName = campaignToCredit.templateName;
 
-                const sheetId = await findSheetIdByName(masterSheetId, templateName);
+                const sheetId = await findSheetIdByName(
+                  masterSheetId,
+                  templateName
+                );
                 if (!sheetId) {
                   console.log(`Creating new tab: "${templateName}"`);
                   await createSheet(masterSheetId, templateName);
                   await addHeaderRow(masterSheetId, templateName, headerRow);
                 }
-                
-                console.log(`Appending lead to Master Sheet, tab: "${templateName}"`);
-                await appendToSheet(masterSheetId, `${templateName}!A1`, dataRow);
+
+                console.log(
+                  `Appending lead to Master Sheet, tab: "${templateName}"`
+                );
+                await appendToSheet(
+                  masterSheetId,
+                  `${templateName}!A1`,
+                  dataRow
+                );
               } else {
-                console.log(`No Master Sheet ID configured for this WABA. Lead not exported.`);
+                console.log(
+                  `No Master Sheet ID configured for this WABA. Lead not exported.`
+                );
               }
             }
           }
-          await Campaign.findByIdAndUpdate(campaignToCredit._id, { $inc: { replyCount: 1 } });
-          console.log(`✅ Incremented reply count for campaign: ${campaignToCredit._id}`);
+          await Campaign.findByIdAndUpdate(campaignToCredit._id, {
+            $inc: { replyCount: 1 },
+          });
+          console.log(
+            `✅ Incremented reply count for campaign: ${campaignToCredit._id}`
+          );
         }
 
         // --- AUTO-REPLY LOGIC (Original Responses) ---
@@ -182,9 +216,12 @@ const processWebhook = async (req, res) => {
           const { accessToken } = phoneNumber.wabaAccount;
 
           // 2. Handle "stop" and "re-subscribe" logic
-          if (messageBodyLower.includes("stop")) {
+          if (
+            messageBodyLower.includes("stop") ||
+            messageBodyLower.includes("إيقاف")
+          ) {
             autoReplyText =
-              "You’ve been unsubscribed. You won’t receive further messages, but you can reach out anytime if you need assistance.";
+              "You’ve been unsubscribed. won’t receive further messages, but you can reach out anytime if you need assistance.";
             await Contact.findOneAndUpdate(
               { phoneNumber: message.from },
               { isSubscribed: false }
@@ -207,12 +244,10 @@ const processWebhook = async (req, res) => {
             } else if (messageBodyLower.includes("نعم، مهتم")) {
               autoReplyText =
                 ".تم تسجيل اهتمامك. سنتواصل معك قريبًا. شكرًا على ردك";
-            }
-            else if (messageBodyLower.includes("not interested")) {
+            } else if (messageBodyLower.includes("not interested")) {
               autoReplyText =
                 "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
-            }
-             else {
+            } else {
               const incomingMessageCount = await Reply.countDocuments({
                 from: message.from,
               });
