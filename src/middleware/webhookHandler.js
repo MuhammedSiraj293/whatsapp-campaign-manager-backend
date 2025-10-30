@@ -204,10 +204,15 @@ const processWebhook = async (req, res) => {
             if (messageBodyLower.includes("yes, i am interested")) {
               autoReplyText =
                 "Your interest has been noted. We will contact you shortly. Thank you for your response.";
-            } else if (messageBodyLower.includes("not interested")) {
+            } else if (messageBodyLower.includes("نعم، مهتم")) {
+              autoReplyText =
+                ".تم تسجيل اهتمامك. سنتواصل معك قريبًا. شكرًا على ردك";
+            }
+            else if (messageBodyLower.includes("not interested")) {
               autoReplyText =
                 "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
-            } else {
+            }
+             else {
               const incomingMessageCount = await Reply.countDocuments({
                 from: message.from,
               });
