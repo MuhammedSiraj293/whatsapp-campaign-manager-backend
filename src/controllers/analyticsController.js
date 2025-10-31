@@ -259,11 +259,12 @@ const getAnalyticsForTemplate = async (req, res) => {
     const campaignIds = campaigns.map(c => c._id);
 
     // 2. Run all count queries in parallel for these campaigns
-    const [totalSent, delivered, read, failed] = await Promise.all([
+    const [totalSent, delivered, read, failed, totalDelivered] = await Promise.all([
         Analytics.countDocuments({ campaign: { $in: campaignIds } }),
         Analytics.countDocuments({ campaign: { $in: campaignIds }, status: 'delivered' }),
         Analytics.countDocuments({ campaign: { $in: campaignIds }, status: 'read' }),
         Analytics.countDocuments({ campaign: { $in: campaignIds }, status: 'failed' }),
+        Analytics.countDocuments({ campaign: campaignIds, status: { $in: ['delivered', 'read'] }})
     ]);
 
     // 3. Calculate total replies by summing up replyCount from all found campaigns
@@ -281,6 +282,7 @@ const getAnalyticsForTemplate = async (req, res) => {
     const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + '%';
     const readRate = ((read / totalSent) * 100).toFixed(1) + '%';
     const replyRate = ((totalReplies / totalSent) * 100).toFixed(1) + '%';
+    const totalDeliveryRate = ((totalDelivered / totalSent) * 100).toFixed(1) + '%';
 
     res.status(200).json({ success: true, data: {
         templateName: templateName,
@@ -288,10 +290,12 @@ const getAnalyticsForTemplate = async (req, res) => {
         delivered,
         read,
         failed,
+        totalDelivered, // 👈 added
         replies: totalReplies,
         deliveryRate,
         readRate,
         replyRate,
+        totalDeliveryRate, // 👈 added
     }});
 
   } catch (error) {
