@@ -45,13 +45,15 @@ const getCampaignAnalytics = async (req, res) => {
             Analytics.countDocuments({ campaign: campaignId }),
             Analytics.countDocuments({ campaign: campaignId, status: 'delivered' }),
             Analytics.countDocuments({ campaign: campaignId, status: 'read' }),
-            Analytics.countDocuments({ campaign: campaignId, status: 'failed' }), // <-- ADDED FAILED COUNT
+            Analytics.countDocuments({ campaign: campaignId, status: 'failed' }), 
+            Analytics.countDocuments({ campaign: campaignId, status: { $in: ['delivered', 'read'] }
+            }),// <-- ADDED FAILED COUNT
         ]);
 
         if (totalSent === 0) {
             return res.status(200).json({ success: true, data: {
-                name: campaign.name, totalSent: 0, delivered: 0, read: 0, failed: 0,
-                replies: campaign.replyCount || 0, deliveryRate: '0%', readRate: '0%', replyRate: '0%', failedRate: '0%', 
+                name: campaign.name, totalSent: 0, delivered: 0, read: 0, failed: 0, totalDelivered: 0,
+                replies: campaign.replyCount || 0, deliveryRate: '0%', readRate: '0%', replyRate: '0%', failedRate: '0%', totalDeliveryRate: '0%',
             }});
         }
 
@@ -59,6 +61,7 @@ const getCampaignAnalytics = async (req, res) => {
         const readRate = ((read / totalSent) * 100).toFixed(1) + '%';
         const replyRate = ((campaign.replyCount / totalSent) * 100).toFixed(1) + '%';
         const failedRate = ((failed / totalSent) * 100).toFixed(1) + '%'; // <-- Added failedRat
+        const totalDeliveryRate = ((totalDelivered / totalSent) * 100).toFixed(1) + '%';
 
         res.status(200).json({ success: true, data: {
             name: campaign.name,
@@ -66,11 +69,13 @@ const getCampaignAnalytics = async (req, res) => {
             delivered,
             read,
             failed, // <-- ADDED FAILED COUNT TO RESPONSE
+            totalDelivered, // 👈 added
             replies: campaign.replyCount || 0,
             deliveryRate,
             readRate,
             replyRate,
             failedRate,
+            totalDeliveryRate, // 👈 added
         }});
 
     } catch (error) {
