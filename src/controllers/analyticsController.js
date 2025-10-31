@@ -41,7 +41,7 @@ const getCampaignAnalytics = async (req, res) => {
 
         // --- THIS IS THE KEY CHANGE ---
         // Run all count queries in parallel for better performance
-        const [totalSent, delivered, read, failed] = await Promise.all([
+        const [totalSent, delivered, read, failed, totalDelivered] = await Promise.all([
             Analytics.countDocuments({ campaign: campaignId }),
             Analytics.countDocuments({ campaign: campaignId, status: 'delivered' }),
             Analytics.countDocuments({ campaign: campaignId, status: 'read' }),
