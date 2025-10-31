@@ -202,13 +202,14 @@ const sendCampaign = async (campaignId) => {
     await sleep(1000);
   }
 
-  // Find the campaign again to update its status to 'sent'
+ // --- THIS IS THE KEY CHANGE ---
+  // Find the campaign again to update its status and set the sentAt timestamp
   const finalCampaign = await Campaign.findById(campaignId);
   if (finalCampaign) {
     finalCampaign.status = "sent";
+    finalCampaign.sentAt = new Date(); // <-- Set the exact sent time
     await finalCampaign.save();
   }
-
   await Log.create({
     level: "success",
     message: `Campaign "${campaign.name}" finished. Success: ${successCount}, Failures: ${failureCount}.`,

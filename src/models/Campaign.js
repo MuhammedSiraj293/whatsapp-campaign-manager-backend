@@ -39,9 +39,12 @@ const CampaignSchema = new mongoose.Schema(
       ref: "PhoneNumber",
       required: [true, "Please select a phone number to send from."],
     },
+    sentAt: {
+      type: Date,
+    },
   },
   {
-    timestamps: true,
+    timestamps: true, 
   }
 );
 
