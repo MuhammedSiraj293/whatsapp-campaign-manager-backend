@@ -123,12 +123,23 @@ const processWebhook = async (req, res) => {
             const contact = await Contact.findOne({
               phoneNumber: message.from,
             });
+            // --- THIS IS THE KEY CHANGE ---
+            const formattedDate = new Date(
+              message.timestamp * 1000
+            ).toLocaleString("en-US", {
+              timeZone: "Asia/Dubai",
+              year: "numeric",
+              month: "numeric",
+              day: "numeric",
+              hour: "2-digit", // Force 2-digit hour
+              minute: "2-digit", // Force 2-digit minute
+              second: "2-digit", // Force 2-digit second
+              hour12: true, // This forces 12-hour AM/PM format
+            });
+
             const dataRow = [
               [
-                new Date(message.timestamp * 1000).toLocaleString("en-US", {
-                  timeZone: "Asia/Dubai",
-                   hour12: true,
-                }),
+                formattedDate,
                 message.from,
                 contact ? contact.name : "Unknown",
                 messageBody,
