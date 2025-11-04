@@ -79,22 +79,6 @@ const addHeaderRow = async (spreadsheetId, sheetName, headers) => {
     }
 };
 
-// --- ✅ FUNCTION: Generate timestamp in Abu Dhabi timezone with AM/PM ---
-const getAbuDhabiTimestamp = () => {
-  const options = {
-    timeZone: 'Asia/Dubai',
-    hour12: true,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  };
-  // Format like "11/01/2025, 03:38:43 PM"
-  return new Date().toLocaleString('en-US', options);
-};
-
 // --- (Unchanged) ---
 const appendToSheet = async (spreadsheetId, range, values) => {
   try {
@@ -133,5 +117,4 @@ module.exports = {
   findSheetIdByName, // <-- NEW
   createSheet,       // <-- NEW
   addHeaderRow,      // <-- NEW
-  getAbuDhabiTimestamp,
 };
