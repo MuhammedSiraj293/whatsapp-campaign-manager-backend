@@ -127,6 +127,7 @@ const processWebhook = async (req, res) => {
               [
                 new Date(message.timestamp * 1000).toLocaleString("en-US", {
                   timeZone: "Asia/Dubai",
+                   hour12: true,
                 }),
                 message.from,
                 contact ? contact.name : "Unknown",
