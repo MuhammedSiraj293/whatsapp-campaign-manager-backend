@@ -124,27 +124,27 @@ const processWebhook = async (req, res) => {
               phoneNumber: message.from,
             });
             // --- THIS IS THE KEY CHANGE ---
-            const formattedDate = new Date(
-              message.timestamp * 1000
-            ).toLocaleString("en-US", {
-              timeZone: "Asia/Dubai",
-              year: "numeric",
-              month: "numeric",
-              day: "numeric",
-              hour: "2-digit", // Force 2-digit hour
-              minute: "2-digit", // Force 2-digit minute
-              second: "2-digit", // Force 2-digit second
-              hour12: true, // This forces 12-hour AM/PM format
-            });
+            // --- THIS IS THE KEY CHANGE ---
+            // We explicitly define the 12-hour format
+            const timestampOptions = {
+                timeZone: "Asia/Dubai",
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true // This forces AM/PM
+            };
+            const formattedDate = new Date(message.timestamp * 1000).toLocaleString("en-US", timestampOptions);
 
-            const dataRow = [
-              [
+            const dataRow = [[
                 formattedDate,
                 message.from,
                 contact ? contact.name : "Unknown",
                 messageBody,
-              ],
-            ];
+            ]];
+            // --- END OF CHANGE ---
             const headerRow = ["Timestamp", "From", "Name", "Message"];
 
             // SYSTEM 1: Campaign-specific sheet
