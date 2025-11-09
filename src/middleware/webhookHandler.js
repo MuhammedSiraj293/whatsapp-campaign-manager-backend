@@ -139,7 +139,7 @@ const processWebhook = async (req, res) => {
             const formattedDate = new Date(message.timestamp * 1000).toLocaleString("en-US", timestampOptions);
 
             const dataRow = [[
-                formattedDate,
+              `'${formattedDate}`,
                 message.from,
                 contact ? contact.name : "Unknown",
                 messageBody,
