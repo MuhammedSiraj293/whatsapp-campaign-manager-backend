@@ -205,7 +205,7 @@ const sendCampaign = async (campaignId) => {
       failureReason: failureReason,
     });
 
-    await sleep(3000);
+    await sleep(1000);
   }
 
   // --- THIS IS THE KEY CHANGE ---
