@@ -3,7 +3,7 @@
 const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const Analytics = require("../models/Analytics");
-const Log = require('../models/Log'); // <-- 1. IMPORT THE LOG MODEL
+const Log = require("../models/Log"); // <-- 1. IMPORT THE LOG MODEL
 const Reply = require("../models/Reply");
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
@@ -49,7 +49,13 @@ const sendCampaign = async (campaignId) => {
       message: `Campaign "${campaign.name}" has no contacts in its list.`,
       campaign: campaignId,
     });
-    throw new Error("The assigned contact list is empty.");
+    campaign.status = "sent";
+    campaign.sentAt = new Date();
+    await campaign.save();
+    io.emit("campaignsUpdated"); // <-- EMIT EVENT
+    return {
+      message: `Campaign "${campaign.name}" sent. No subscribed contacts found.`,
+    };
   }
 
   // ---------------------------------------
@@ -202,7 +208,7 @@ const sendCampaign = async (campaignId) => {
     await sleep(1000);
   }
 
- // --- THIS IS THE KEY CHANGE ---
+  // --- THIS IS THE KEY CHANGE ---
   // Find the campaign again to update its status and set the sentAt timestamp
   const finalCampaign = await Campaign.findById(campaignId);
   if (finalCampaign) {
@@ -215,7 +221,7 @@ const sendCampaign = async (campaignId) => {
     message: `Campaign "${campaign.name}" finished. Success: ${successCount}, Failures: ${failureCount}.`,
     campaign: campaignId,
   });
-
+  io.emit("campaignsUpdated"); // <-- EMIT EVENT
   return {
     message: `Campaign "${campaign.name}" sent.`,
     totalRecipients: contacts.length,

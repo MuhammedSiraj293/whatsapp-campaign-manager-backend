@@ -2,6 +2,7 @@
 
 const Contact = require("../models/Contact");
 const ContactList = require("../models/ContactList");
+const { getIO } = require("../socketManager"); // <-- 1. IMPORT getIO
 
 // Helper function to extract named variables from a row
 const extractVariables = (row) => {
@@ -82,6 +83,7 @@ const bulkAddContacts = async (req, res) => {
 
   try {
     await Contact.insertMany(processedContacts, { ordered: false });
+    getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
     res.status(201).json({
       success: true,
       message: `${contacts.length} contacts were processed successfully.`,
@@ -138,7 +140,7 @@ const deleteContactList = async (req, res) => {
     }
 
     await list.deleteOne(); // This triggers the 'pre' hook in the model
-
+    getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });

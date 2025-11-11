@@ -6,6 +6,7 @@ const WabaAccount = require("../models/WabaAccount");
 const PhoneNumber = require("../models/PhoneNumber"); // <-- 1. IMPORT
 const Log = require('../models/Log'); // <-- 1. IMPORT THE LOG MODEL
 const { sendCampaign } = require("../services/campaignService");
+const { getIO } = require('../socketManager');
 const axios = require("axios");
 // const wabaConfig = require('../config/wabaConfig');
 
@@ -82,6 +83,7 @@ const createCampaign = async (req, res) => {
     };
 
     const campaign = await Campaign.create(campaignData);
+    getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
     res.status(201).json({ success: true, data: campaign });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
@@ -109,6 +111,7 @@ const executeCampaign = async (req, res) => {
 
     campaign.status = "sending";
     await campaign.save(); // 2. Log that manual send started
+    getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
 
     await Log.create({
       level: "info",
@@ -128,6 +131,7 @@ const executeCampaign = async (req, res) => {
         if (failedCampaign && failedCampaign.status !== "sent") {
           failedCampaign.status = "failed";
           await failedCampaign.save();
+          getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
         }
         await Log.create({
           level: "error",
@@ -152,24 +156,64 @@ const executeCampaign = async (req, res) => {
 // @route   GET /api/campaigns/waba/:wabaId
 // --- NEW FUNCTION ---
 // @desc    Get all campaigns for a specific WabaAccount
+// --- THIS FUNCTION IS UPGRADED ---
+// It now calculates the contact count in the database
 const getCampaignsByWaba = async (req, res) => {
   try {
     const { wabaId } = req.params;
-    const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId }).select(
-      "_id"
-    );
-    const phoneNumberIds = phoneNumbers.map((p) => p._id);
-    const campaigns = await Campaign.find({
-      phoneNumber: { $in: phoneNumberIds },
-    })
-      .sort({ createdAt: -1 })
-      .populate("contactList", "name")
-      .populate("phoneNumber", "phoneNumberName");
-    res
-      .status(200)
-      .json({ success: true, count: campaigns.length, data: campaigns });
+    const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId }).select('_id');
+    const phoneNumberIds = phoneNumbers.map(p => p._id);
+
+    const campaigns = await Campaign.aggregate([
+      // 1. Find campaigns for the selected phone numbers
+      { $match: { phoneNumber: { $in: phoneNumberIds } } },
+      { $sort: { createdAt: -1 } },
+      // 2. Join with the 'contactlists' collection
+      {
+        $lookup: {
+          from: 'contactlists',
+          localField: 'contactList',
+          foreignField: '_id',
+          as: 'contactListData'
+        }
+      },
+      // 3. Join with the 'phonenumbers' collection
+      {
+        $lookup: {
+          from: 'phonenumbers',
+          localField: 'phoneNumber',
+          foreignField: '_id',
+          as: 'phoneNumberData'
+        }
+      },
+      // 4. Get the count of contacts
+      {
+        $lookup: {
+          from: 'contacts',
+          localField: 'contactList',
+          foreignField: 'contactList',
+          as: 'contacts'
+        }
+      },
+      // 5. Reshape the data to what the frontend expects
+      {
+        $project: {
+          name: 1,
+          message: 1,
+          status: 1,
+          createdAt: 1,
+          scheduledFor: 1,
+          sentAt: 1,
+          contactList: { _id: { $arrayElemAt: ['$contactListData._id', 0] }, name: { $arrayElemAt: ['$contactListData.name', 0] } },
+          phoneNumber: { _id: { $arrayElemAt: ['$phoneNumberData._id', 0] }, phoneNumberName: { $arrayElemAt: ['$phoneNumberData.phoneNumberName', 0] } },
+          contactCount: { $size: '$contacts' } // <-- Calculate the count here
+        }
+      }
+    ]);
+      
+    res.status(200).json({ success: true, count: campaigns.length, data: campaigns });
   } catch (error) {
-    res.status(500).json({ success: false, error: "Server Error" });
+    res.status(500).json({ success: false, error: 'Server Error' });
   }
 };
 // --- 4. UPGRADED TEMPLATE FETCHER ---
@@ -237,7 +281,7 @@ const deleteCampaign = async (req, res) => {
     }
 
     await campaign.deleteOne();
-
+    getIO().emit('campaignsUpdated');
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });
