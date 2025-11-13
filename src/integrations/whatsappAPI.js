@@ -179,9 +179,96 @@ const getMediaUrl = async (mediaId, accessToken) => {
     }
 };
 
+/**
+ * Sends an interactive button message.
+ * @param {string} to - Recipient's phone number.
+ * @param {string} text - The body text of the message.
+ * @param {Array<object>} buttons - An array of button objects, e.g., [{ id: 'btn_1', title: 'Yes' }, { id: 'btn_2', title: 'No' }]
+ */
+const sendButtonMessage = async (to, text, buttons, accessToken, phoneNumberId) => {
+  const url = `https://graph.facebook.com/${API_VERSION}/${phoneNumberId}/messages`;
+  const data = {
+    messaging_product: 'whatsapp',
+    to: to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: {
+        text: text,
+      },
+      action: {
+        buttons: buttons.map(btn => ({
+          type: 'reply',
+          reply: {
+            id: btn.id,
+            title: btn.title,
+          },
+        })),
+      },
+    },
+  };
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${accessToken}`,
+  };
+  try {
+    const response = await axios.post(url, data, { headers });
+    return response.data;
+  } catch (error) {
+    console.error('❌ Error sending WhatsApp button message:', error.response ? error.response.data : error.message);
+    throw new Error('Failed to send WhatsApp button message.');
+  }
+};
+
+/**
+ * Sends an interactive list message.
+ * @param {string} to - Recipient's phone number.
+ * @param {string} text - The body text of the message.
+ * @param {string} buttonText - The text on the button that opens the list (e.g., "Main Menu").
+ * @param {Array<object>} sections - An array of sections, each with a title and rows.
+ */
+const sendListMessage = async (to, text, buttonText, sections, accessToken, phoneNumberId) => {
+  const url = `https://graph.facebook.com/${API_VERSION}/${phoneNumberId}/messages`;
+  const data = {
+    messaging_product: 'whatsapp',
+    to: to,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: {
+        text: text,
+      },
+      action: {
+        button: buttonText,
+        sections: sections.map(section => ({
+          title: section.title,
+          rows: section.rows.map(row => ({
+            id: row.id,
+            title: row.title,
+            description: row.description || undefined,
+          })),
+        })),
+      },
+    },
+  };
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${accessToken}`,
+  };
+  try {
+    const response = await axios.post(url, data, { headers });
+    return response.data;
+  } catch (error) {
+    console.error('❌ Error sending WhatsApp list message:', error.response ? error.response.data : error.message);
+    throw new Error('Failed to send WhatsApp list message.');
+  }
+};
+
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
   sendMediaMessage,
   getMediaUrl,
+  sendButtonMessage, // <-- NEW
+  sendListMessage,   // <-- NEW
 };

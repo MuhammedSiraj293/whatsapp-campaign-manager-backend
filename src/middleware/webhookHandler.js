@@ -284,7 +284,7 @@ const processWebhook = async (req, res) => {
                 "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
             }
             // 4. If no keywords match, pass to the bot
-            else {
+            else if (message.type === 'text' || message.type === 'interactive') {
               // This is NOT a keyword.
               // Let the bot service handle it (it will check if it's a new or ongoing chat).
               console.log("No keyword matched. Passing to botService...");
