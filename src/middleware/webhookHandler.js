@@ -127,23 +127,27 @@ const processWebhook = async (req, res) => {
             // --- THIS IS THE KEY CHANGE ---
             // We explicitly define the 12-hour format
             const timestampOptions = {
-                timeZone: "Asia/Dubai",
-                year: 'numeric',
-                month: 'numeric',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true // This forces AM/PM
+              timeZone: "Asia/Dubai",
+              year: "numeric",
+              month: "numeric",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: true, // This forces AM/PM
             };
-            const formattedDate = new Date(message.timestamp * 1000).toLocaleString("en-US", timestampOptions);
+            const formattedDate = new Date(
+              message.timestamp * 1000
+            ).toLocaleString("en-US", timestampOptions);
 
-            const dataRow = [[
-              `'${formattedDate}`,
+            const dataRow = [
+              [
+                `'${formattedDate}`,
                 message.from,
                 contact ? contact.name : "Unknown",
                 messageBody,
-            ]];
+              ],
+            ];
             // --- END OF CHANGE ---
             const headerRow = ["Timestamp", "From", "Name", "Message"];
 
@@ -250,7 +254,11 @@ const processWebhook = async (req, res) => {
               console.log(`✅ Contact ${message.from} has been re-subscribed.`);
             }
             // 3. Handle normal keyword logic
-            if (messageBodyLower.includes("yes, i am interested")) {
+            if (
+              messageBodyLower === "yes" ||
+              messageBodyLower.includes("yes, i am interested") ||
+              /\byes\b/i.test(messageBodyLower)
+            ) {
               autoReplyText =
                 "Your interest has been noted. We will contact you shortly. Thank you for your response.";
             } else if (messageBodyLower.includes("نعم، مهتم")) {
