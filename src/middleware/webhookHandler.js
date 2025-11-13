@@ -6,6 +6,7 @@ const Analytics = require("../models/Analytics");
 const Contact = require("../models/Contact");
 const PhoneNumber = require("../models/PhoneNumber"); // Import PhoneNumber
 const WabaAccount = require("../models/WabaAccount"); // Import WabaAccount
+const Enquiry = require("../models/Enquiry");
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager"); // <-- 1. IMPORT from the manager
 // Import all our new Google Sheet functions
@@ -16,6 +17,9 @@ const {
   createSheet,
   addHeaderRow,
 } = require("../integrations/googleSheets");
+
+// --- 1. IMPORT THE NEW BOT SERVICE ---
+const { handleBotConversation } = require("../services/botService");
 
 const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
@@ -55,13 +59,30 @@ const processWebhook = async (req, res) => {
         let messageBody = "";
         let campaignToCredit = null;
 
+        // --- 2. Find credentials for this WABA ---
+        // THIS IS THE ONLY PLACE we need to fetch this.
+        const phoneNumber = await PhoneNumber.findOne({
+          phoneNumberId: recipientId,
+        }).populate("wabaAccount");
+        if (!phoneNumber || !phoneNumber.wabaAccount) {
+          console.error(
+            `❌ Could not find credentials for recipientId ${recipientId}. Aborting.`
+          );
+          return res.sendStatus(200);
+        }
+        const credentials = {
+          accessToken: phoneNumber.wabaAccount.accessToken,
+        };
+
+        // Check if this is a reply to a campaign
+        // 2. Check if this is a reply to a campaign
         if (message.context && message.context.id) {
           const originalMessage = await Analytics.findOne({
             wamid: message.context.id,
           }).populate("campaign");
           if (originalMessage) campaignToCredit = originalMessage.campaign;
         }
-
+        // 3. Save the incoming message to the chat history
         let newReplyData = {
           messageId: message.id,
           from: message.from,
@@ -71,6 +92,7 @@ const processWebhook = async (req, res) => {
           campaign: campaignToCredit ? campaignToCredit._id : null,
         };
 
+        // ... (switch case for message types)
         switch (message.type) {
           case "text":
             messageBody = message.text.body;
@@ -112,6 +134,8 @@ const processWebhook = async (req, res) => {
 
         // --- DUAL-SYSTEM LEAD ROUTING ---
         if (campaignToCredit && messageBody) {
+          console.log("Processing as a CAMPAIGN reply.");
+
           const incomingMessageCount = await Reply.countDocuments({
             from: message.from,
             campaign: campaignToCredit._id,
@@ -123,7 +147,6 @@ const processWebhook = async (req, res) => {
             const contact = await Contact.findOne({
               phoneNumber: message.from,
             });
-            // --- THIS IS THE KEY CHANGE ---
             // --- THIS IS THE KEY CHANGE ---
             // We explicitly define the 12-hour format
             const timestampOptions = {
@@ -167,10 +190,9 @@ const processWebhook = async (req, res) => {
               console.log(
                 "System 2: No campaign sheet ID. Looking for Master Sheet..."
               );
-              const phoneNumber = await PhoneNumber.findOne({
-                phoneNumberId: recipientId,
-              }).populate("wabaAccount");
 
+              // --- CORRECTION 1: REMOVED REDUNDANT DB CALL ---
+              // We already have 'phoneNumber' from line 63.
               if (
                 phoneNumber &&
                 phoneNumber.wabaAccount &&
@@ -218,20 +240,10 @@ const processWebhook = async (req, res) => {
           const messageBodyLower = messageBody.toLowerCase();
           let autoReplyText = null;
 
-          // --- THIS IS THE KEY CHANGE ---
-          // 1. Find the credentials for this specific phone number FIRST
-          const phoneNumber = await PhoneNumber.findOne({
-            phoneNumberId: recipientId,
-          }).populate("wabaAccount");
-          if (!phoneNumber || !phoneNumber.wabaAccount) {
-            console.error(
-              `❌ Could not find credentials for recipientId ${recipientId}. Aborting auto-reply.`
-            );
-            return res.sendStatus(200);
-          }
-          const { accessToken } = phoneNumber.wabaAccount;
+          // --- CORRECTION 2: REDUNDANT DB CALL already removed ---
+          // We are using 'phoneNumber' and 'credentials' from earlier.
 
-          // 2. Handle "stop" and "re-subscribe" logic
+          // 1. Handle "stop" and "re-subscribe" logic
           if (
             messageBodyLower.includes("stop") ||
             messageBodyLower.includes("إيقاف")
@@ -246,6 +258,8 @@ const processWebhook = async (req, res) => {
             const contact = await Contact.findOne({
               phoneNumber: message.from,
             });
+
+            // 2. Handle "re-subscribe" logic
             if (contact && !contact.isSubscribed) {
               contact.isSubscribed = true;
               await contact.save();
@@ -254,7 +268,8 @@ const processWebhook = async (req, res) => {
               console.log(`✅ Contact ${message.from} has been re-subscribed.`);
             }
             // 3. Handle normal keyword logic
-            if (
+            // --- CORRECTION 4: Added 'else if' to prevent fall-through ---
+            else if (
               messageBodyLower === "yes" ||
               messageBodyLower.includes("yes, i am interested") ||
               /\byes\b/i.test(messageBodyLower)
@@ -267,18 +282,33 @@ const processWebhook = async (req, res) => {
             } else if (messageBodyLower.includes("not interested")) {
               autoReplyText =
                 "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
-            } else {
-              const incomingMessageCount = await Reply.countDocuments({
-                from: message.from,
-              });
-              if (incomingMessageCount === 1) {
-                autoReplyText =
-                  "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
+            }
+            // 4. If no keywords match, pass to the bot
+            else {
+              // This is NOT a keyword.
+              // Let the bot service handle it (it will check if it's a new or ongoing chat).
+              console.log("No keyword matched. Passing to botService...");
+              const botReply = await handleBotConversation(
+                message,
+                messageBody,
+                recipientId,
+                credentials // Use credentials from line 76
+              );
+              if (botReply) {
+                // The bot already saved the reply, just emit it
+                io.emit("newMessage", {
+                  from: message.from,
+                  recipientId: recipientId,
+                  message: botReply,
+                });
               }
             }
+            // --- END OF CORRECTION 4 ---
           }
 
-          // 4. Send the auto-reply (if any) using the correct credentials
+          // 5. Send the auto-reply (if any) using the correct credentials
+          // This will *only* run if a keyword was matched ("stop", "yes", etc.)
+          // It will *not* run if the bot was called.
           if (autoReplyText) {
             console.log(
               `🤖 Sending auto-reply to ${message.from} from ${recipientId}...`
@@ -286,7 +316,7 @@ const processWebhook = async (req, res) => {
             const result = await sendTextMessage(
               message.from,
               autoReplyText,
-              accessToken,
+              credentials.accessToken, // Use credentials from line 76
               recipientId
             );
 
