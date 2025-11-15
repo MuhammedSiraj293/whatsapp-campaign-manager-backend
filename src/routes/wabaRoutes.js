@@ -8,6 +8,7 @@ const {
   addPhoneNumber,
   deleteWabaAccount,
   deletePhoneNumber,
+  updatePhoneNumber,
 } = require('../controllers/wabaController');
     
 const { protect, authorize } = require('../middleware/authMiddleware');
@@ -39,6 +40,7 @@ router.route('/phones')
       
 router.route('/phones/:id')
   // Only allow ADMIN to delete a phone number
+  .put(authorize('admin'), updatePhoneNumber)
   .delete(authorize('admin'), deletePhoneNumber);
     
 module.exports = router;

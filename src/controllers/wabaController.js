@@ -114,6 +114,30 @@ const deletePhoneNumber = async (req, res) => {
         res.status(500).json({ success: false, error: 'Server Error' });
     }
 };
+
+// --- ADD THIS NEW FUNCTION ---
+// @desc    Update a Phone Number (e.g., to assign a bot)
+// @route   PUT /api/waba/phones/:id
+const updatePhoneNumber = async (req, res) => {
+    try {
+        // Only update the 'activeBotFlow' field
+        const { activeBotFlow } = req.body;
+
+        const phone = await PhoneNumber.findById(req.params.id);
+        if (!phone) {
+            return res.status(404).json({ success: false, error: 'Phone number not found' });
+        }
+
+        // Set to new ID or null if "None" is selected
+        phone.activeBotFlow = activeBotFlow || null; 
+        await phone.save();
+
+        res.status(200).json({ success: true, data: phone });
+    } catch (error) {
+        console.error('Error updating phone number:', error);
+        res.status(500).json({ success: false, error: 'Server Error' });
+    }
+};
     
 module.exports = {
   getAllWabaAccounts,
@@ -122,4 +146,5 @@ module.exports = {
   addPhoneNumber,
   deleteWabaAccount,
   deletePhoneNumber,
+  updatePhoneNumber, // <-- ADD THIS LINE
 };
