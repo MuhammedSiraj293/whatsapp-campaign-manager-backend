@@ -62,6 +62,10 @@ app.get('/', (req, res) => {
   res.send('✅ Backend server is live and connected to MongoDB!');
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'UP', timestamp: new Date().toISOString() });
+});
+
 // Mount The Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
