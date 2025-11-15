@@ -4,7 +4,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const http = require('http');
-const socketManager = require('./socketManager'); // <-- 1. IMPORT the manager
+const socketManager = require('./socketManager');
 
 // Load environment variables first
 dotenv.config();
@@ -21,8 +21,8 @@ const contactRoutes = require('./routes/contactRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const logRoutes = require('./routes/logRoutes');
-const userRoutes = require('./routes/userRoutes'); // <-- 1. IMPORT NEW ROUTES
-const wabaRoutes = require('./routes/wabaRoutes'); // <-- 1. IMPORT NEW ROUTES
+const userRoutes = require('./routes/userRoutes');
+const wabaRoutes = require('./routes/wabaRoutes');
 const enquiryRoutes = require('./routes/enquiryRoutes');
 const botFlowRoutes = require('./routes/botFlowRoutes'); // <-- 1. IMPORT NEW ROUTES
 
@@ -44,7 +44,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// --- 2. INITIALIZE Socket.IO using the manager ---
+// Initialize Socket.IO using the manager
 const io = socketManager.init(httpServer, { origin: allowedOrigins });
 
 io.on('connection', (socket) => {
@@ -62,11 +62,7 @@ app.get('/', (req, res) => {
   res.send('✅ Backend server is live and connected to MongoDB!');
 });
 
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'UP', timestamp: new Date().toISOString() });
-});
-
-// Mount The Routes (no middleware needed here anymore)
+// Mount The Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/replies', replyRoutes);
@@ -75,9 +71,9 @@ app.use('/api/contacts', contactRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/logs', logRoutes);
-app.use('/api/users', userRoutes); // <-- 2. USE THE NEW ROUTES
-app.use('/api/waba', wabaRoutes); 
-app.use('/api/enquiries', enquiryRoutes); // <-- 2. USE THE NEW ROUTES
+app.use('/api/users', userRoutes);
+app.use('/api/waba', wabaRoutes);
+app.use('/api/enquiries', enquiryRoutes);
 app.use('/api/bot-flows', botFlowRoutes); // <-- 2. USE THE NEW ROUTES
 
 httpServer.listen(PORT, () => {
