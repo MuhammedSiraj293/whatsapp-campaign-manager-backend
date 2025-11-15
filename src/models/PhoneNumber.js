@@ -27,7 +27,7 @@ const PhoneNumberSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'BotFlow', // Links to the BotFlow model
     default: null,
-  },
+  }, 
 }, {
   timestamps: true,
 });
