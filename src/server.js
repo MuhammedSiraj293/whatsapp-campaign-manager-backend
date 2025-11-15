@@ -24,6 +24,7 @@ const logRoutes = require('./routes/logRoutes');
 const userRoutes = require('./routes/userRoutes'); // <-- 1. IMPORT NEW ROUTES
 const wabaRoutes = require('./routes/wabaRoutes'); // <-- 1. IMPORT NEW ROUTES
 const enquiryRoutes = require('./routes/enquiryRoutes');
+const botFlowRoutes = require('./routes/botFlowRoutes'); // <-- 1. IMPORT NEW ROUTES
 
 connectDB();
 
@@ -77,6 +78,7 @@ app.use('/api/logs', logRoutes);
 app.use('/api/users', userRoutes); // <-- 2. USE THE NEW ROUTES
 app.use('/api/waba', wabaRoutes); 
 app.use('/api/enquiries', enquiryRoutes); // <-- 2. USE THE NEW ROUTES
+app.use('/api/bot-flows', botFlowRoutes); // <-- 2. USE THE NEW ROUTES
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
