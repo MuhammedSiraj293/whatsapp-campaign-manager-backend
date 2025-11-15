@@ -1,13 +1,15 @@
 // backend/src/models/Enquiry.js
-    
+
 const mongoose = require('mongoose');
-    
+
 const EnquirySchema = new mongoose.Schema({
+  // Customer's phone number
   phoneNumber: {
     type: String,
     required: true,
-    unique: true,
+    unique: true, // Only one active enquiry per phone number
   },
+  // The business phone number (recipientId) they contacted
   recipientId: {
     type: String,
     required: true,
@@ -36,13 +38,12 @@ const EnquirySchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
-  // --- THIS IS THE CHANGE ---
-  // We change the state to be a "node" in our bot flow.
-  // "START" will be the keyword for a new conversation.
+  // Tracks the bot's progress
   conversationState: {
     type: String,
-    default: 'START', // No longer 'awaiting_name'
+    default: 'awaiting_name', // The first step
   },
+  // 'pending', 'contacted', 'closed'
   status: {
     type: String,
     default: 'pending',
@@ -50,7 +51,7 @@ const EnquirySchema = new mongoose.Schema({
 }, {
   timestamps: true,
 });
-    
+
 EnquirySchema.index({ phoneNumber: 1, recipientId: 1 });
-    
+
 module.exports = mongoose.model('Enquiry', EnquirySchema);

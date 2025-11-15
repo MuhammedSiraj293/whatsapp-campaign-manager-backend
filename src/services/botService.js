@@ -12,7 +12,7 @@ const {
 // Helper function to replace variables like {{name}}
 const fillTemplate = (text, enquiry) => {
   return text
-    .replace("{{name}}", enquiry.name || "friend")
+    .replace("{{name}}", enquiry.name || "")
     .replace("{{projectName}}", enquiry.projectName || "our project");
 };
 
@@ -167,7 +167,7 @@ const handleBotConversation = async (
     enquiry.conversationState = "END"; // Stop the bot
     await enquiry.save();
   }
-
+ 
   return null;
 };
 
