@@ -1,5 +1,5 @@
 // backend/src/services/botFlow.js
-
+ 
 const botFlow = {
   // This is the default state for any new enquiry
   START: {
@@ -13,7 +13,7 @@ const botFlow = {
     ],
   },
 
-  // This is the main hub, similar to the Tawzea bot
+  // This is the main hub, similar to the  bot
   main_menu: {
     type: 'list',
     text: 'Please select an option from the list below.',

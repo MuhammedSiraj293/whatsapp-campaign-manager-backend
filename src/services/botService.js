@@ -1,190 +1,175 @@
 // backend/src/services/botService.js
-
-const Enquiry = require("../models/Enquiry");
-const Reply = require("../models/Reply");
-const botFlow = require("./botFlow"); // <-- 1. Import the "flow map"
-const {
-  sendTextMessage,
-  sendButtonMessage,
-  sendListMessage,
-} = require("../integrations/whatsappAPI");
-
-// Helper function to replace variables like {{name}}
+    
+const Enquiry = require('../models/Enquiry');
+const Reply = require('../models/Reply');
+const BotFlow = require('../models/BotFlow');
+const BotNode = require('../models/BotNode');
+const PhoneNumber = require('../models/PhoneNumber');
+const { 
+  sendTextMessage, 
+  sendButtonMessage, 
+  sendListMessage 
+} = require('../integrations/whatsappAPI');
+    
+/**
+ * Helper to replace variables in a message, e.g., {{name}}
+ */
 const fillTemplate = (text, enquiry) => {
+  if (!text) return '';
   return text
-    .replace("{{name}}", enquiry.name || "")
-    .replace("{{projectName}}", enquiry.projectName || "our project");
+    .replace(/{{name}}/gi, enquiry.name || 'friend')
+    .replace(/{{projectName}}/gi, enquiry.projectName || 'our project')
+    .replace(/{{email}}/gi, enquiry.email || '')
+    .replace(/{{budget}}/gi, enquiry.budget || '')
+    .replace(/{{bedrooms}}/gi, enquiry.bedrooms || '');
 };
 
-// Helper to send the correct message type
-const sendMessageNode = (to, node, enquiry, accessToken, phoneNumberId) => {
-  const text = fillTemplate(node.text, enquiry);
-
-  switch (node.type) {
-    case "text":
+/**
+ * Helper to send the correct message type based on the node
+ */
+const sendMessageNode = async (to, node, enquiry, accessToken, phoneNumberId) => {
+  const text = fillTemplate(node.messageText, enquiry);
+  
+  switch (node.messageType) {
+    case 'text':
       return sendTextMessage(to, text, accessToken, phoneNumberId);
-    case "buttons":
-      return sendButtonMessage(
-        to,
-        text,
-        node.buttons,
-        accessToken,
-        phoneNumberId
-      );
-    case "list":
-      return sendListMessage(
-        to,
-        text,
-        node.buttonText,
-        node.sections,
-        accessToken,
-        phoneNumberId
-      );
+    case 'buttons':
+      const buttons = node.buttons.map(btn => ({ id: btn.nextNodeId, title: btn.title }));
+      return sendButtonMessage(to, text, buttons, accessToken, phoneNumberId);
+    case 'list':
+      const sections = node.listSections.map(sec => ({
+        title: sec.title,
+        rows: sec.rows.map(row => ({
+          id: row.nextNodeId,
+          title: row.title,
+          description: row.description || undefined,
+        })),
+      }));
+      return sendListMessage(to, text, node.listButtonText, sections, accessToken, phoneNumberId);
     default:
-      console.error(`Unknown node type: ${node.type}`);
+      console.error(`Unknown node type: ${node.messageType}`);
       return null;
   }
 };
 
 /**
- * Handles an incoming message for the conversational bot.
+ * Helper to find the next node based on user's reply
  */
-const handleBotConversation = async (
-  message,
-  messageBody,
-  recipientId,
-  credentials
-) => {
+const getNextNodeKey = (message, currentNode) => {
+  if (message.type === 'interactive' && message.interactive.button_reply) {
+    // User clicked a button, the ID *is* the next node key
+    return message.interactive.button_reply.id;
+  }
+  if (message.type === 'interactive' && message.interactive.list_reply) {
+    // User selected from a list, the ID *is* the next node key
+    return message.interactive.list_reply.id;
+  }
+  if (currentNode.messageType === 'text' && currentNode.nextNodeId) {
+    // User sent text in reply to a question, follow the simple path
+    return currentNode.nextNodeId;
+  }
+  // If no logic matches (e.g., user types "hello" in the middle of a flow),
+  // we can default to a "main_menu" node if one exists, or just end.
+  return 'main_menu'; // We'll assume a 'main_menu' node exists as a fallback
+};
+
+/**
+ * Main Bot Engine: Handles an incoming message
+ */
+const handleBotConversation = async (message, messageBody, recipientId, credentials) => {
   const { accessToken } = credentials;
   const customerPhone = message.from;
-  let nextNodeKey = null;
-  let autoReplyText = null;
 
-  // 1. Find or create the user's enquiry session
-  let enquiry = await Enquiry.findOne({
-    phoneNumber: customerPhone,
-    recipientId: recipientId,
+  // 1. Find the Phone Number doc to get the active bot flow
+  const phoneNumberDoc = await PhoneNumber.findOne({ phoneNumberId: recipientId });
+  if (!phoneNumberDoc || !phoneNumberDoc.activeBotFlow) {
+    console.log(`🤖 Bot disabled for ${recipientId}. No active flow.`);
+    return null;
+  }
+  const botFlowId = phoneNumberDoc.activeBotFlow;
+
+  // 2. Find or create the user's enquiry session
+  let enquiry = await Enquiry.findOne({ 
+    phoneNumber: customerPhone, 
+    recipientId: recipientId 
   });
-
+  
+  let currentNodeKey;
+  
   if (!enquiry) {
+    // This is the VERY FIRST message from a new user
+    const flow = await BotFlow.findById(botFlowId);
+    const startNode = await BotNode.findById(flow.startNode);
+    
     enquiry = await Enquiry.create({
       phoneNumber: customerPhone,
       recipientId: recipientId,
-      conversationState: "START", // Default start state
+      conversationState: startNode.nodeId, // e.g., "START"
     });
+    currentNodeKey = startNode.nodeId;
+  } else {
+    // This is a follow-up message
+    currentNodeKey = enquiry.conversationState;
   }
 
-  // 2. Decide what to do based on the user's message
-  const currentState = enquiry.conversationState || "START";
-  const currentNode = botFlow[currentState];
-
-  // Check if the user clicked a button
-  if (message.type === "interactive" && message.interactive.button_reply) {
-    const buttonId = message.interactive.button_reply.id;
-    if (buttonId.startsWith("goto_")) {
-      nextNodeKey = buttonId.replace("goto_", ""); // e.g., "goto_main_menu" -> "main_menu"
-    }
-  }
-  // Check if the user clicked a list item
-  else if (message.type === "interactive" && message.interactive.list_reply) {
-    const listId = message.interactive.list_reply.id;
-    if (listId.startsWith("flow_")) {
-      nextNodeKey = listId; // e.g., "flow_contact"
-    }
-  }
-  // Check if this is the very first message from a WordPress URL
-  else if (
-    currentState === "START" &&
-    messageBody.includes("thecapitalavenue.com")
-  ) {
-    const projectName = parseProjectFromUrl(messageBody);
-    enquiry.pageUrl = messageBody;
-    enquiry.projectName = projectName;
-
-    if (projectName === "General Enquiry") {
-      nextNodeKey = "website_enquiry_start";
-    } else {
-      nextNodeKey = "property_enquiry_start";
-    }
-  }
-  // Check if the user is in a state that is waiting for text input
-  else if (currentNode.nextState) {
-    // Save the data
-    switch (currentState) {
-      case "website_awaiting_name":
-      case "property_awaiting_name":
-        enquiry.name = messageBody;
-        break;
-      case "property_awaiting_budget":
-        enquiry.budget = messageBody;
-        break;
-      case "property_awaiting_bedrooms":
-        enquiry.bedrooms = messageBody;
-        break;
-      case "website_awaiting_email":
-      case "property_awaiting_email":
-        enquiry.email = messageBody.toLowerCase().trim();
-        break;
-    }
-    nextNodeKey = currentNode.nextState;
-  }
-  // If no logic matches, default to the main menu
-  else {
-    nextNodeKey = "main_menu";
+  // 3. Find the user's current node in the flow
+  const currentNode = await BotNode.findOne({ botFlow: botFlowId, nodeId: currentNodeKey });
+  if (!currentNode) {
+    console.error(`❌ Bot error: Could not find node "${currentNodeKey}" in flow "${botFlowId}"`);
+    return null;
   }
 
-  // 3. Get the next message from the flow map
-  const nextNode = botFlow[nextNodeKey];
-  if (nextNode) {
-    // Send the message for the new state
-    const result = await sendMessageNode(
-      customerPhone,
-      nextNode,
-      enquiry,
-      accessToken,
-      recipientId
-    );
+  // 4. If the current node was a question, save the answer
+  if (currentNode.messageType === 'text' && currentNode.saveToField) {
+    const field = currentNode.saveToField; // e.g., "name", "email"
+    enquiry[field] = messageBody;
+  }
 
-    // Update the user's state
-    enquiry.conversationState = nextNodeKey;
+  // 5. Determine the next node to go to
+  const nextNodeKey = getNextNodeKey(message, currentNode);
+  
+  if (nextNodeKey === 'END') {
+    enquiry.conversationState = 'END'; // Stop the bot
     await enquiry.save();
-
-    // 4. Save the bot's reply to the chat history
-    if (result && result.messages && result.messages[0].id) {
-      const newAutoReply = new Reply({
-        messageId: result.messages[0].id,
-        from: customerPhone,
-        recipientId: recipientId,
-        body: fillTemplate(nextNode.text, enquiry),
-        timestamp: new Date(),
-        direction: "outgoing",
-        read: true,
-      });
-      await newAutoReply.save();
-      return newAutoReply; // Return the saved reply
-    }
-  } else if (nextNodeKey === "END") {
-    enquiry.conversationState = "END"; // Stop the bot
-    await enquiry.save();
+    console.log(`🤖 Bot flow ended for ${customerPhone}.`);
+    return null;
   }
- 
+
+  // 6. Fetch the next node from the database
+  const nextNode = await BotNode.findOne({ botFlow: botFlowId, nodeId: nextNodeKey });
+  if (!nextNode) {
+     console.error(`❌ Bot error: Could not find next node "${nextNodeKey}" in flow "${botFlowId}"`);
+     // Fallback: send them to the start
+     const startNode = await BotNode.findOne({ botFlow: botFlowId, nodeId: 'START' });
+     await sendMessageNode(customerPhone, startNode, enquiry, accessToken, recipientId);
+     enquiry.conversationState = 'START';
+     await enquiry.save();
+     return null;
+  }
+
+  // 7. Send the new message from the next node
+  const botReply = await sendMessageNode(customerPhone, nextNode, enquiry, accessToken, recipientId);
+  
+  // 8. Update the user's state to the new node
+  enquiry.conversationState = nextNodeKey;
+  await enquiry.save();
+
+  // 9. Save the bot's reply to the chat history
+  if (botReply && botReply.messages && botReply.messages[0].id) {
+    const newAutoReply = new Reply({
+      messageId: botReply.messages[0].id,
+      from: customerPhone,
+      recipientId: recipientId,
+      body: fillTemplate(nextNode.messageText, enquiry),
+      timestamp: new Date(),
+      direction: 'outgoing',
+      read: true,
+    });
+    await newAutoReply.save();
+    return newAutoReply; // Return the saved reply
+  }
+  
   return null;
-};
-
-// Helper function to parse the project name from a URL
-const parseProjectFromUrl = (url) => {
-  try {
-    const path = new URL(url).pathname;
-    if (path.startsWith("/properties/")) {
-      const projectName = path.split("/")[2];
-      return projectName
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-    }
-    return "General Enquiry";
-  } catch (error) {
-    return "General Enquiry";
-  }
 };
 
 module.exports = {

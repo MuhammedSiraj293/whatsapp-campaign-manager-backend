@@ -1,7 +1,7 @@
 // backend/src/models/PhoneNumber.js
-
+    
 const mongoose = require('mongoose');
-
+    
 const PhoneNumberSchema = new mongoose.Schema({
   // A user-friendly name, e.g., "Sales Line" or "Marketing Number"
   phoneNumberName: {
@@ -21,8 +21,15 @@ const PhoneNumberSchema = new mongoose.Schema({
     ref: 'WabaAccount',
     required: true,
   },
+  // --- NEW FIELD ---
+  // Links this specific phone number to an active bot flow
+  activeBotFlow: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'BotFlow', // Links to the BotFlow model
+    default: null,
+  },
 }, {
   timestamps: true,
 });
-
+    
 module.exports = mongoose.model('PhoneNumber', PhoneNumberSchema);
