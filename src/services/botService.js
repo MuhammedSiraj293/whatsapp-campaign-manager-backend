@@ -291,81 +291,56 @@ const handleBotConversation = async (
   }
 
   // ------------- New enquiry (first message) -------------
-  if (!enquiry) {
-    const flow = await BotFlow.findById(botFlowId);
-    const startNode = await BotNode.findById(flow.startNode);
+// 0️⃣ FIRST — Auto-detect project URL before anything else
 
-    // Create session
-    enquiry = await Enquiry.create({
-      phoneNumber: customerPhone,
-      recipientId: recipientId,
-      conversationState: startNode.nodeId,
-    });
+// 1️⃣ If no enquiry exists yet → create NEW enquiry
+if (!enquiry) {
+  const flow = await BotFlow.findById(botFlowId);
+  const startNode = await BotNode.findById(flow.startNode);
 
-    // 1️⃣ Send START node
-    await sendMessageNode(
+  // Create enquiry (include project if detected)
+  enquiry = await Enquiry.create({
+    phoneNumber: customerPhone,
+    recipientId: recipientId,
+    projectName: autoProject || null,
+    pageUrl: autoProject ? messageBody : null,
+    conversationState: startNode.nodeId,
+  });
+
+  // Send START node
+  await sendMessageNode(customerPhone, startNode, enquiry, accessToken, recipientId);
+
+  // 45-minute follow-up message
+  setTimeout(async () => {
+    const fresh = await Enquiry.findOne({ phoneNumber: customerPhone, recipientId });
+    if (fresh?.agentContacted) return;
+
+    await sendButtonMessage(
       customerPhone,
-      startNode,
-      enquiry,
+      "👋 Just checking in...\n\nDid someone from Capital Avenue contact you?",
+      [
+        { id: "followup_yes", title: "Yes" },
+        { id: "followup_no", title: "No" },
+      ],
       accessToken,
       recipientId
     );
+  }, 45 * 60 * 1000);
 
-    // 2️⃣ Schedule follow-up (45 minutes)
-    setTimeout(async () => {
-      try {
-        const freshEnquiry = await Enquiry.findOne({
-          phoneNumber: customerPhone,
-          recipientId,
-        });
-
-        if (!freshEnquiry) return;
-        if (freshEnquiry.agentContacted) return;
-        if (freshEnquiry.conversationState === "END") return;
-
-        await sendButtonMessage(
-          customerPhone,
-          "👋 Just checking in...\n\nDid someone from Capital Avenue contact you?",
-          [
-            { id: "followup_yes", title: "Yes" },
-            { id: "followup_no", title: "No" },
-          ],
-          accessToken,
-          recipientId
-        );
-      } catch (err) {
-        console.error("Error in follow-up timeout:", err);
-      }
-    }, 45 * 60 * 1000);
-
-    // 3️⃣ Auto-jump to FIRST node
-    if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
-      const firstNode = await BotNode.findOne({
-        botFlow: botFlowId,
-        nodeId: startNode.nextNodeId,
-      });
-
-      if (firstNode) {
-        await sendMessageNode(
-          customerPhone,
-          firstNode,
-          enquiry,
-          accessToken,
-          recipientId
-        );
-
-        enquiry.conversationState = firstNode.nodeId;
-        await enquiry.save();
-
-        return null; // STOP MAIN FLOW
-      }
+  // Auto-send FIRST node if defined
+  if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
+    const firstNode = await BotNode.findOne({ botFlow: botFlowId, nodeId: startNode.nextNodeId });
+    if (firstNode) {
+      await sendMessageNode(customerPhone, firstNode, enquiry, accessToken, recipientId);
+      enquiry.conversationState = firstNode.nodeId;
+      await enquiry.save();
+      return null;
     }
-
-    // Start node has no next → fallback
-    currentNodeKey = startNode.nodeId;
-  } else {
-    currentNodeKey = enquiry.conversationState;
   }
+
+  currentNodeKey = startNode.nodeId;
+}
+
 
   /*
   ===========================================
