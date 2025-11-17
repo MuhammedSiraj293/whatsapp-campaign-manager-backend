@@ -291,56 +291,74 @@ const handleBotConversation = async (
   }
 
   // ------------- New enquiry (first message) -------------
-// 0️⃣ FIRST — Auto-detect project URL before anything else
+  // 0️⃣ FIRST — Auto-detect project URL before anything else
+  const autoProjectFirstMessage = extractProjectFromUrl(messageBody);
 
-// 1️⃣ If no enquiry exists yet → create NEW enquiry
-if (!enquiry) {
-  const flow = await BotFlow.findById(botFlowId);
-  const startNode = await BotNode.findById(flow.startNode);
+  // 1️⃣ If no enquiry exists yet → create NEW enquiry
+  if (!enquiry) {
+    const flow = await BotFlow.findById(botFlowId);
+    const startNode = await BotNode.findById(flow.startNode);
 
-  // Create enquiry (include project if detected)
-  enquiry = await Enquiry.create({
-    phoneNumber: customerPhone,
-    recipientId: recipientId,
-    projectName: autoProject || null,
-    pageUrl: autoProject ? messageBody : null,
-    conversationState: startNode.nodeId,
-  });
+    // Create enquiry (include project if detected)
+    enquiry = await Enquiry.create({
+      phoneNumber: customerPhone,
+      recipientId: recipientId,
+      projectName: autoProjectFirstMessage || null,
+      pageUrl: autoProjectFirstMessage ? messageBody : null,
+      conversationState: startNode.nodeId,
+    });
 
-  // Send START node
-  await sendMessageNode(customerPhone, startNode, enquiry, accessToken, recipientId);
-
-  // 45-minute follow-up message
-  setTimeout(async () => {
-    const fresh = await Enquiry.findOne({ phoneNumber: customerPhone, recipientId });
-    if (fresh?.agentContacted) return;
-
-    await sendButtonMessage(
+    // Send START node
+    await sendMessageNode(
       customerPhone,
-      "👋 Just checking in...\n\nDid someone from Capital Avenue contact you?",
-      [
-        { id: "followup_yes", title: "Yes" },
-        { id: "followup_no", title: "No" },
-      ],
+      startNode,
+      enquiry,
       accessToken,
       recipientId
     );
-  }, 45 * 60 * 1000);
 
-  // Auto-send FIRST node if defined
-  if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
-    const firstNode = await BotNode.findOne({ botFlow: botFlowId, nodeId: startNode.nextNodeId });
-    if (firstNode) {
-      await sendMessageNode(customerPhone, firstNode, enquiry, accessToken, recipientId);
-      enquiry.conversationState = firstNode.nodeId;
-      await enquiry.save();
-      return null;
+    // 45-minute follow-up message
+    setTimeout(async () => {
+      const fresh = await Enquiry.findOne({
+        phoneNumber: customerPhone,
+        recipientId,
+      });
+      if (fresh?.agentContacted) return;
+
+      await sendButtonMessage(
+        customerPhone,
+        "👋 Just checking in...\n\nDid someone from Capital Avenue contact you?",
+        [
+          { id: "followup_yes", title: "Yes" },
+          { id: "followup_no", title: "No" },
+        ],
+        accessToken,
+        recipientId
+      );
+    }, 45 * 60 * 1000);
+
+    // Auto-send FIRST node if defined
+    if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
+      const firstNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: startNode.nextNodeId,
+      });
+      if (firstNode) {
+        await sendMessageNode(
+          customerPhone,
+          firstNode,
+          enquiry,
+          accessToken,
+          recipientId
+        );
+        enquiry.conversationState = firstNode.nodeId;
+        await enquiry.save();
+        return null;
+      }
     }
+
+    currentNodeKey = startNode.nodeId;
   }
-
-  currentNodeKey = startNode.nodeId;
-}
-
 
   /*
   ===========================================
