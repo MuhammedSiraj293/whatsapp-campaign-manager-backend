@@ -11,6 +11,48 @@ const {
   sendListMessage 
 } = require('../integrations/whatsappAPI');
     
+const isValidEmail = (email) => {
+  if (!email) return false;
+
+  // UNIVERSAL EMAIL REGEX (RFC compliant simplified)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  return emailRegex.test(email.trim());
+};
+
+const extractProjectFromUrl = (text) => {
+  if (!text) return null;
+
+  // Detect URL
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  const found = text.match(urlRegex);
+
+    if (!found) return null;
+
+  try {
+    const url = new URL(found[0]);
+
+    // Example URL: /properties/bloom-marbella
+    const parts = url.pathname.split("/").filter(Boolean);
+
+    // Find "properties" then take next segment
+    const propIndex = parts.indexOf("properties");
+
+    if (propIndex !== -1 && parts[propIndex + 1]) {
+      const slug = parts[propIndex + 1]; // bloom-marbella
+
+      // Convert slug → Title
+      return slug
+        .replace(/-/g, " ")       // bloom marbella
+        .replace(/\b\w/g, c => c.toUpperCase()); // Bloom Marbella
+    }
+
+    return null;
+  } catch (err) {
+    return null;
+  }
+};
+
 /**
  * Helper to replace variables in a message, e.g., {{name}}
  */
@@ -111,7 +153,35 @@ const handleBotConversation = async (message, messageBody, recipientId, credenti
     // This is a follow-up message
     currentNodeKey = enquiry.conversationState;
   }
+/*
+  ===========================================
+   ✅ STEP 2 — INSERT THIS BLOCK HERE
+   Auto-detect project URL and save name
+===========================================
+*/
 
+const autoProject = extractProjectFromUrl(messageBody);
+
+if (autoProject) {
+  // Save detected project
+  enquiry.projectName = autoProject;
+  await enquiry.save();
+  // Respond to user
+  // await sendTextMessage(
+  //   customerPhone,
+  //   `📌 Got it! You are interested in *${autoProject}*.\nHow can I help you with this project?`,
+  //   accessToken,
+  //   recipientId
+  // );
+  // STOP bot flow here
+  return null;
+}
+
+/*  
+===========================================
+          END OF STEP 2 INSERT
+===========================================
+*/
   // 3. Find the user's current node in the flow
   const currentNode = await BotNode.findOne({ botFlow: botFlowId, nodeId: currentNodeKey });
   if (!currentNode) {
@@ -120,10 +190,52 @@ const handleBotConversation = async (message, messageBody, recipientId, credenti
   }
 
   // 4. If the current node was a question, save the answer
-  if (currentNode.messageType === 'text' && currentNode.saveToField) {
-    const field = currentNode.saveToField; // e.g., "name", "email"
-    enquiry[field] = messageBody;
+// 4. If the current node was a question, save the answer
+if (currentNode.messageType === 'text' && currentNode.saveToField) {
+  const field = currentNode.saveToField.toLowerCase(); // normalize
+  const userInput = messageBody.trim();
+
+  // 0. Skip option
+  if (userInput.toLowerCase() === "skip") {
+    // User chose to skip
+    enquiry[field] = ""; // Clear or leave empty
+    await enquiry.save();
+
+    // Move to next node immediately
+    const nextNodeKey = currentNode.nextNodeId;
+    enquiry.conversationState = nextNodeKey;
+    await enquiry.save();
+
+    return await sendMessageNode(customerPhone, 
+      await BotNode.findOne({ botFlow: currentNode.botFlow, nodeId: nextNodeKey }),
+      enquiry,
+      accessToken,
+      recipientId
+    );
   }
+
+
+  // 1. Email validation
+  if (field === "email") {
+    const formattedEmail = userInput.toLowerCase();
+
+    if (!isValidEmail(formattedEmail)) {
+      await sendTextMessage(
+        customerPhone,
+        "Invalid email. Please enter a valid email address (example: name@example.com)\n\nOr type *skip* to continue without email.",
+        accessToken,
+        recipientId
+      );
+      return null; // repeat same node
+    }
+    // Save valid email
+    enquiry["email"] = formattedEmail;
+  } 
+  else {
+    // 2. Normal field
+    enquiry[currentNode.saveToField] = userInput;
+  }
+}
 
   // 5. Determine the next node to go to
   const nextNodeKey = getNextNodeKey(message, currentNode);
