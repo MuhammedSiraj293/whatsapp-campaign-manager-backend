@@ -365,12 +365,12 @@ const handleBotConversation = async (
    ✅ STEP 2 — Auto-detect project URL and save name
   ===========================================
   */
-  const autoProject = extractProjectFromUrl(messageBody);
-  if (autoProject) {
-    enquiry.projectName = autoProject;
-    await enquiry.save();
-    return null;
-  }
+  // const autoProject = extractProjectFromUrl(messageBody);
+  // if (autoProject) {
+  //   enquiry.projectName = autoProject;
+  //   await enquiry.save();
+  //   return null;
+  // }
   /*
   ===========================================
             END OF STEP 2
