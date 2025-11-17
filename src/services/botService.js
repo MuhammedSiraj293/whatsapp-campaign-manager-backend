@@ -20,6 +20,51 @@ const isValidEmail = (email) => {
   return emailRegex.test(email.trim());
 };
 
+// Handle follow-up buttons
+if (
+  message.type === "interactive" &&
+  message.interactive?.button_reply &&
+  (
+    message.interactive.button_reply.id === "followup_yes" ||
+    message.interactive.button_reply.id === "followup_no"
+  )
+) {
+
+  const replyId = message.interactive.button_reply.id;
+
+  if (replyId === "followup_yes") {
+    // Mark enquiry as resolved
+    enquiry.agentContacted = true;
+    await enquiry.save();
+
+    await sendTextMessage(
+      customerPhone,
+      "Thank you for confirming! We are glad our team contacted you.",
+      accessToken,
+      recipientId
+    );
+
+    return null; // Stop bot here
+  }
+
+  if (replyId === "followup_no") {
+    // Mark agent follow-up required
+    enquiry.agentContacted = false;
+    enquiry.needsImmediateAttention = true;
+    await enquiry.save();
+
+    await sendTextMessage(
+      customerPhone,
+      "Thank you for your feedback. I will notify our team immediately so they can contact you.",
+      accessToken,
+      recipientId
+    );
+
+    return null;
+  }
+}
+
+
 const extractProjectFromUrl = (text) => {
   if (!text) return null;
 
@@ -138,30 +183,70 @@ const handleBotConversation = async (message, messageBody, recipientId, credenti
   
   let currentNodeKey;
   
-  if (!enquiry) {
-    // This is the VERY FIRST message from a new user
-    const flow = await BotFlow.findById(botFlowId);
-    const startNode = await BotNode.findById(flow.startNode);
-    
-    enquiry = await Enquiry.create({
+if (!enquiry) {
+  const flow = await BotFlow.findById(botFlowId);
+  const startNode = await BotNode.findById(flow.startNode);
+
+  // Create session
+  enquiry = await Enquiry.create({
+    phoneNumber: customerPhone,
+    recipientId: recipientId,
+    conversationState: startNode.nodeId,
+  });
+
+  // 1️⃣ Send START node
+  await sendMessageNode(customerPhone, startNode, enquiry, accessToken, recipientId);
+
+  // 2️⃣ Schedule follow-up (BEFORE return)
+  setTimeout(async () => {
+    const freshEnquiry = await Enquiry.findOne({
       phoneNumber: customerPhone,
-      recipientId: recipientId,
-      conversationState: startNode.nodeId, // e.g., "START"
+      recipientId,
     });
-    currentNodeKey = startNode.nodeId;
-  } else {
-    // This is a follow-up message
-    currentNodeKey = enquiry.conversationState;
+
+    if (freshEnquiry?.agentContacted) return;
+
+    await sendButtonMessage(
+      customerPhone,
+      "👋 Just checking in...\n\nDid someone from Capital Avenue contact you?",
+      [
+        { id: "followup_yes", title: "Yes" },
+        { id: "followup_no", title: "No" },
+      ],
+      accessToken,
+      recipientId
+    );
+  }, 45 * 60 * 1000);
+
+  // 3️⃣ Auto-jump to FIRST node
+  if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
+    const firstNode = await BotNode.findOne({
+      botFlow: botFlowId,
+      nodeId: startNode.nextNodeId,
+    });
+
+    if (firstNode) {
+      await sendMessageNode(customerPhone, firstNode, enquiry, accessToken, recipientId);
+
+      enquiry.conversationState = firstNode.nodeId;
+      await enquiry.save();
+
+      return null; // STOP MAIN FLOW
+    }
   }
+
+  // Start node has no next → fallback
+  currentNodeKey = startNode.nodeId;
+}
+
+
 /*
   ===========================================
    ✅ STEP 2 — INSERT THIS BLOCK HERE
    Auto-detect project URL and save name
 ===========================================
 */
-
 const autoProject = extractProjectFromUrl(messageBody);
-
 if (autoProject) {
   // Save detected project
   enquiry.projectName = autoProject;
@@ -176,7 +261,6 @@ if (autoProject) {
   // STOP bot flow here
   return null;
 }
-
 /*  
 ===========================================
           END OF STEP 2 INSERT
