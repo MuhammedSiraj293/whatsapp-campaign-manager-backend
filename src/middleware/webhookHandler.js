@@ -341,7 +341,6 @@ const processWebhook = async (req, res) => {
             // BOT HANDLES ONLY NON-CAMPAIGN
              if (
               !isCampaignReply &&
-              totalIncoming === 1 &&
               (message.type === "text" || message.type === "interactive")
             ) {
               if (credentials?.accessToken) {
