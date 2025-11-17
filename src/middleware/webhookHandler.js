@@ -332,11 +332,6 @@ const processWebhook = async (req, res) => {
               direction: "incoming",
             });
 
-            // First-ever non-campaign message → Welcome
-            if (!isCampaignReply && totalIncoming === 1) {
-              autoReplyText =
-                "Hello and welcome to Capital Avenue! How can we help you today?";
-            }
 
             // BOT HANDLES ONLY NON-CAMPAIGN
             else if (
