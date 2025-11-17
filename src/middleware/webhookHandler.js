@@ -327,13 +327,19 @@ const processWebhook = async (req, res) => {
            * C4) No keyword → Welcome / Bot
            * IMPORTANT: Bot ONLY for NON-CAMPAIGN
            * ------------------------------ */
-            const totalIncoming = await Reply.countDocuments({
-              from: message.from,
-              direction: "incoming",
-            });
-            
+            // const totalIncoming = await Reply.countDocuments({
+            //   from: message.from,
+            //   direction: "incoming",
+            // });
+
+            // // First-ever non-campaign message → Welcome
+            // if (!isCampaignReply && totalIncoming === 1) {
+            //   autoReplyText =
+            //     "Hello and welcome to Capital Avenue! How can we help you today?";
+            // }
+
             // BOT HANDLES ONLY NON-CAMPAIGN
-            if (
+            else if (
               !isCampaignReply &&
               totalIncoming === 1 &&
               (message.type === "text" || message.type === "interactive")
