@@ -1,28 +1,29 @@
 // backend/src/services/botService.js
 
-const Enquiry = require('../models/Enquiry');
-const Reply = require('../models/Reply');
-const BotFlow = require('../models/BotFlow');
-const BotNode = require('../models/BotNode');
-const PhoneNumber = require('../models/PhoneNumber');
-const { 
-  sendTextMessage, 
-  sendButtonMessage, 
-  sendListMessage 
-} = require('../integrations/whatsappAPI');
+const Enquiry = require("../models/Enquiry");
+const Reply = require("../models/Reply");
+const BotFlow = require("../models/BotFlow");
+const BotNode = require("../models/BotNode");
+const PhoneNumber = require("../models/PhoneNumber");
+const {
+  sendTextMessage,
+  sendButtonMessage,
+  sendListMessage,
+} = require("../integrations/whatsappAPI");
 
-/* --------------------------------------------------------------
-   Email Validator
-----------------------------------------------------------------*/
+/**
+ * Basic email validator
+ */
 const isValidEmail = (email) => {
   if (!email) return false;
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email.trim());
 };
 
-/* --------------------------------------------------------------
-   Extract Project Name from URL
-----------------------------------------------------------------*/
+/**
+ * Extract project name from URL like:
+ * https://thecapitalavenue.com/properties/bloom-marbella -> Bloom Marbella
+ */
 const extractProjectFromUrl = (text) => {
   if (!text) return null;
 
@@ -32,21 +33,23 @@ const extractProjectFromUrl = (text) => {
 
   try {
     const url = new URL(found[0]);
-    const parts = url.pathname.split('/').filter(Boolean);
+    const parts = url.pathname.split("/").filter(Boolean); // ['properties','bloom-marbella']
     const propIndex = parts.indexOf("properties");
 
     if (propIndex !== -1 && parts[propIndex + 1]) {
-      const slug = parts[propIndex + 1];
-      return slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const slug = parts[propIndex + 1]; // bloom-marbella
+      return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); // Bloom Marbella
     }
-  } catch (e) {}
 
-  return null;
+    return null;
+  } catch (err) {
+    return null;
+  }
 };
 
-/* --------------------------------------------------------------
-   Template Variable Filler ({{name}}, {{projectName}}, etc)
-----------------------------------------------------------------*/
+/**
+ * Helper to replace variables in a message, e.g., {{name}}
+ */
 const fillTemplate = (text, enquiry) => {
   if (!text) return "";
   return text
@@ -57,35 +60,50 @@ const fillTemplate = (text, enquiry) => {
     .replace(/{{bedrooms}}/gi, enquiry.bedrooms || "");
 };
 
-/* --------------------------------------------------------------
-   Send Text / Buttons / List Based on Node Type
-----------------------------------------------------------------*/
-const sendMessageNode = async (to, node, enquiry, accessToken, phoneNumberId) => {
+/**
+ * Helper to send the correct message type based on the node
+ */
+const sendMessageNode = async (
+  to,
+  node,
+  enquiry,
+  accessToken,
+  phoneNumberId
+) => {
   if (!node) return null;
+
   const text = fillTemplate(node.messageText, enquiry);
 
   switch (node.messageType) {
     case "text":
       return sendTextMessage(to, text, accessToken, phoneNumberId);
 
-    case "buttons":
-      return sendButtonMessage(
-        to,
-        text,
-        node.buttons.map(btn => ({ id: btn.nextNodeId, title: btn.title })),
-        accessToken,
-        phoneNumberId
-      );
+    case "buttons": {
+      const buttons = (node.buttons || []).map((btn) => ({
+        id: btn.nextNodeId,
+        title: btn.title,
+      }));
+      return sendButtonMessage(to, text, buttons, accessToken, phoneNumberId);
+    }
 
-    case "list":
+    case "list": {
+      const sections = (node.listSections || []).map((sec) => ({
+        title: sec.title,
+        rows: (sec.rows || []).map((row) => ({
+          id: row.nextNodeId,
+          title: row.title,
+          description: row.description || undefined,
+        })),
+      }));
       return sendListMessage(
         to,
         text,
         node.listButtonText,
-        node.listSections,
+        sections,
         accessToken,
         phoneNumberId
       );
+    }
 
     default:
       console.error(`Unknown node type: ${node.messageType}`);
@@ -93,75 +111,99 @@ const sendMessageNode = async (to, node, enquiry, accessToken, phoneNumberId) =>
   }
 };
 
-/* --------------------------------------------------------------
-   Jump to Next Node
-----------------------------------------------------------------*/
+/**
+ * Helper to find the next node based on user's reply
+ */
 const getNextNodeKey = (message, currentNode) => {
-  if (message.type === "interactive" && message.interactive?.button_reply)
+  if (message.type === "interactive" && message.interactive?.button_reply) {
+    // User clicked a button, the ID *is* the next node key
     return message.interactive.button_reply.id;
+  }
 
-  if (message.type === "interactive" && message.interactive?.list_reply)
+  if (message.type === "interactive" && message.interactive?.list_reply) {
+    // User selected from a list, the ID *is* the next node key
     return message.interactive.list_reply.id;
+  }
 
-  if (currentNode.messageType === "text" && currentNode.nextNodeId)
+  if (currentNode.messageType === "text" && currentNode.nextNodeId) {
+    // User sent text in reply to a question, follow the simple path
     return currentNode.nextNodeId;
+  }
 
-  return "main_menu";
+  // If no logic matches (e.g., user types "hello" in the middle of a flow),
+  // we can default to a "main_menu" node if one exists, or just end.
+  return "main_menu"; // We'll assume a 'main_menu' node exists as a fallback
 };
 
-/* --------------------------------------------------------------
-   MAIN BOT ENGINE
-----------------------------------------------------------------*/
-const handleBotConversation = async (message, messageBody, recipientId, credentials) => {
+/**
+ * Main Bot Engine: Handles an incoming message
+ */
+const handleBotConversation = async (
+  message,
+  messageBody,
+  recipientId,
+  credentials
+) => {
   const { accessToken } = credentials;
   const customerPhone = message.from;
 
-  /* ---------------- 1) Load BotFlow ---------------- */
-  const phoneNumberDoc = await PhoneNumber.findOne({ phoneNumberId: recipientId });
-  if (!phoneNumberDoc || !phoneNumberDoc.activeBotFlow) return null;
-
+  // 1. Find the Phone Number doc to get the active bot flow
+  const phoneNumberDoc = await PhoneNumber.findOne({
+    phoneNumberId: recipientId,
+  });
+  if (!phoneNumberDoc || !phoneNumberDoc.activeBotFlow) {
+    console.log(`🤖 Bot disabled for ${recipientId}. No active flow.`);
+    return null;
+  }
   const botFlowId = phoneNumberDoc.activeBotFlow;
 
-  /* ---------------- 2) Load Enquiry ---------------- */
+  // 2. Find or create the user's enquiry session
   let enquiry = await Enquiry.findOne({
     phoneNumber: customerPhone,
-    recipientId
+    recipientId: recipientId,
   });
 
-  /* --------------------------------------------------------------
-     2A) Follow-Up Button Handler (MUST RUN AFTER LOADING ENQUIRY)
-  ----------------------------------------------------------------*/
+  let currentNodeKey;
+
+  /* -----------------------------------------
+   * FOLLOW-UP BUTTON HANDLER (YES / NO)
+   * ---------------------------------------*/
   if (
     message.type === "interactive" &&
     message.interactive?.button_reply &&
-    ["followup_yes", "followup_no"].includes(message.interactive.button_reply.id)
+    (message.interactive.button_reply.id === "followup_yes" ||
+      message.interactive.button_reply.id === "followup_no")
   ) {
-    if (!enquiry) return null;
+    // If somehow no enquiry found, just ignore
+    if (!enquiry) {
+      console.warn("Follow-up button clicked but no enquiry found.");
+      return null;
+    }
 
-    const reply = message.interactive.button_reply.id;
+    const replyId = message.interactive.button_reply.id;
 
-    if (reply === "followup_yes") {
+    if (replyId === "followup_yes") {
       enquiry.agentContacted = true;
       await enquiry.save();
 
       await sendTextMessage(
         customerPhone,
-        "🙏 Thank you for confirming!",
+        "Thank you for confirming! We are glad our team contacted you.",
         accessToken,
         recipientId
       );
 
-      return null;
+      return null; // Stop bot here
     }
 
-    if (reply === "followup_no") {
+    if (replyId === "followup_no") {
       enquiry.agentContacted = false;
       enquiry.needsImmediateAttention = true;
       await enquiry.save();
 
       await sendTextMessage(
         customerPhone,
-        "💬 Thank you for your feedback. I will inform our agent immediately.",
+        "Thank you for your feedback. I will notify our team immediately so they can contact you.",
         accessToken,
         recipientId
       );
@@ -170,188 +212,249 @@ const handleBotConversation = async (message, messageBody, recipientId, credenti
     }
   }
 
-  /* --------------------------------------------------------------
-     2B) **COOLDOWN LOGIC — 1 HOUR LOCK**
-  ----------------------------------------------------------------*/
-  if (enquiry && enquiry.status === "completed") {
-    const oneHour = 1000 * 60 * 60;
-    const now = Date.now();
-
-    const diff = enquiry.completedAt
-      ? now - enquiry.completedAt.getTime()
-      : oneHour + 1;
-
-    if (diff < oneHour) {
-      await sendTextMessage(
-        customerPhone,
-        "⏳ Your enquiry is already completed.\nOur expert will contact you shortly.\n\nYou can start a new enquiry after 1 hour.",
-        accessToken,
-        recipientId
-      );
-      return null;
-    }
-
-    // Old enquiry > 1 hour → remove it, start new
-    await Enquiry.deleteOne({ _id: enquiry._id });
-    enquiry = null;
+  // If conversation already ended, don't restart the flow
+  if (enquiry && enquiry.conversationState === "END") {
+    console.log(
+      `🤖 Enquiry for ${customerPhone} already ended. Ignoring message.`
+    );
+    return null;
   }
 
-  let currentNodeKey;
-
-  /* --------------------------------------------------------------
-     3) NEW USER FLOW (START + FIRST NODE + FOLLOW-UP)
-  ----------------------------------------------------------------*/
+  // --- New enquiry (first message) ---
   if (!enquiry) {
     const flow = await BotFlow.findById(botFlowId);
     const startNode = await BotNode.findById(flow.startNode);
 
+    // Create session
     enquiry = await Enquiry.create({
       phoneNumber: customerPhone,
-      recipientId,
+      recipientId: recipientId,
       conversationState: startNode.nodeId,
-      status: "active",
-      completedAt: null
     });
 
-    // Send START node
-    await sendMessageNode(customerPhone, startNode, enquiry, accessToken, recipientId);
+    // 1️⃣ Send START node
+    await sendMessageNode(
+      customerPhone,
+      startNode,
+      enquiry,
+      accessToken,
+      recipientId
+    );
 
-    // 45-minute follow-up
+    // 2️⃣ Schedule follow-up (BEFORE return)
     setTimeout(async () => {
-      const fresh = await Enquiry.findOne({ phoneNumber: customerPhone, recipientId });
+      try {
+        const freshEnquiry = await Enquiry.findOne({
+          phoneNumber: customerPhone,
+          recipientId,
+        });
 
-      if (!fresh || fresh.agentContacted || fresh.status === "completed") return;
+        // If agent already contacted or enquiry ended → do nothing
+        if (
+          !freshEnquiry ||
+          freshEnquiry.agentContacted ||
+          freshEnquiry.conversationState === "END"
+        ) {
+          return;
+        }
 
-      await sendButtonMessage(
-        customerPhone,
-        "👋 Just checking in...\nDid someone from Capital Avenue contact you?",
-        [
-          { id: "followup_yes", title: "Yes" },
-          { id: "followup_no", title: "No" }
-        ],
-        accessToken,
-        recipientId
-      );
-    }, 45 * 60 * 1000);
-
-    // Auto jump to first question
-    if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
-      const firstNode = await BotNode.findOne({
-        botFlow: botFlowId,
-        nodeId: startNode.nextNodeId
-      });
-
-      if (firstNode) {
-        await sendMessageNode(customerPhone, firstNode, enquiry, accessToken, recipientId);
-        enquiry.conversationState = firstNode.nodeId;
-        await enquiry.save();
-        return null;
-      }
-    }
-
-    currentNodeKey = startNode.nodeId;
-  } else {
-    currentNodeKey = enquiry.conversationState;
-  }
-
-  /* --------------------------------------------------------------
-     4) PROJECT URL DETECTION
-  ----------------------------------------------------------------*/
-  const project = extractProjectFromUrl(messageBody);
-  if (project) {
-    enquiry.projectName = project;
-    await enquiry.save();
-    return null;
-  }
-
-  /* --------------------------------------------------------------
-     5) Load current node
-  ----------------------------------------------------------------*/
-  const currentNode = await BotNode.findOne({ botFlow: botFlowId, nodeId: currentNodeKey });
-  if (!currentNode) return null;
-
-  /* --------------------------------------------------------------
-     6) Handle Input for Text Nodes (Skip, Email, Normal)
-  ----------------------------------------------------------------*/
-  if (currentNode.messageType === "text" && currentNode.saveToField) {
-    const field = currentNode.saveToField.toLowerCase();
-    const userInput = (messageBody || "").trim();
-
-    /* skip option */
-    if (userInput.toLowerCase() === "skip") {
-      enquiry[field] = "";
-      await enquiry.save();
-    }
-
-    /* email validation */
-    else if (field === "email") {
-      const email = userInput.toLowerCase();
-
-      if (!isValidEmail(email)) {
-        await sendTextMessage(
+        await sendButtonMessage(
           customerPhone,
-          "Invalid email. Please enter a valid email address (example: name@example.com)\n\nOr type *skip* to continue.",
+          "👋 Just checking in...\n\nDid someone from Capital Avenue contact you?",
+          [
+            { id: "followup_yes", title: "Yes" },
+            { id: "followup_no", title: "No" },
+          ],
           accessToken,
           recipientId
         );
-        return null;
+      } catch (err) {
+        console.error("Error in follow-up timeout:", err);
       }
+    }, 45 * 60 * 1000);
 
-      enquiry.email = email;
-      await enquiry.save();
+    // 3️⃣ Auto-jump to FIRST node
+    if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
+      const firstNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: startNode.nextNodeId,
+      });
+
+      if (firstNode) {
+        await sendMessageNode(
+          customerPhone,
+          firstNode,
+          enquiry,
+          accessToken,
+          recipientId
+        );
+
+        enquiry.conversationState = firstNode.nodeId;
+        await enquiry.save();
+
+        return null; // STOP MAIN FLOW
+      }
     }
 
-    /* normal field */
-    else {
-      enquiry[currentNode.saveToField] = userInput;
-      await enquiry.save();
-    }
+    // Start node has no next → fallback
+    currentNodeKey = startNode.nodeId;
+  } else {
+    // Existing enquiry
+    currentNodeKey = enquiry.conversationState;
   }
 
-  /* --------------------------------------------------------------
-     7) Determine Next Node
-  ----------------------------------------------------------------*/
-  const nextNodeKey = getNextNodeKey(message, currentNode);
+  /*
+    ===========================================
+     ✅ STEP 2 — Auto-detect project URL and save name
+    ===========================================
+  */
+  if (typeof messageBody === "string" && messageBody.trim()) {
+    const autoProject = extractProjectFromUrl(messageBody);
+    if (autoProject) {
+      enquiry.projectName = autoProject;
+      await enquiry.save();
+      // No reply (silent store)
+      return null;
+    }
+  }
+  /*  
+    ===========================================
+              END OF STEP 2
+    ===========================================
+  */
 
-  /* END node handling */
-  if (nextNodeKey === "END") {
-    enquiry.status = "completed";
-    enquiry.completedAt = new Date();
-    enquiry.conversationState = "END";
-    await enquiry.save();
+  // 3. Find the user's current node in the flow
+  const currentNode = await BotNode.findOne({
+    botFlow: botFlowId,
+    nodeId: currentNodeKey,
+  });
+  if (!currentNode) {
+    console.error(
+      `❌ Bot error: Could not find node "${currentNodeKey}" in flow "${botFlowId}"`
+    );
     return null;
   }
 
-  /* Load next node */
-  const nextNode = await BotNode.findOne({ botFlow: botFlowId, nodeId: nextNodeKey });
-  if (!nextNode) return null;
+  // 4. If the current node was a question, save the answer
+  if (currentNode.messageType === "text" && currentNode.saveToField) {
+    const field = currentNode.saveToField.toLowerCase(); // normalize
+    const userInput = (messageBody || "").trim();
 
-  /* --------------------------------------------------------------
-     8) Send it
-  ----------------------------------------------------------------*/
-  const botReply = await sendMessageNode(customerPhone, nextNode, enquiry, accessToken, recipientId);
+    // 0. Skip option
+    if (userInput.toLowerCase() === "skip") {
+      // User chose to skip
+      enquiry[field] = ""; // Clear or leave empty
+      await enquiry.save();
 
+      // Move to next node immediately
+      const nextNodeKey = currentNode.nextNodeId;
+      enquiry.conversationState = nextNodeKey;
+      await enquiry.save();
+
+      return await sendMessageNode(
+        customerPhone,
+        await BotNode.findOne({
+          botFlow: currentNode.botFlow,
+          nodeId: nextNodeKey,
+        }),
+        enquiry,
+        accessToken,
+        recipientId
+      );
+    }
+
+    // 1. Email validation
+    if (field === "email") {
+      const formattedEmail = userInput.toLowerCase();
+
+      if (!isValidEmail(formattedEmail)) {
+        await sendTextMessage(
+          customerPhone,
+          "Invalid email. Please enter a valid email address (example: name@example.com)\n\nOr type *skip* to continue without email.",
+          accessToken,
+          recipientId
+        );
+        return null; // repeat same node
+      }
+      // Save valid email
+      enquiry.email = formattedEmail;
+    } else {
+      // 2. Normal fields
+      enquiry[currentNode.saveToField] = userInput;
+    }
+
+    await enquiry.save();
+  }
+
+  // 5. Determine the next node to go to
+  const nextNodeKey = getNextNodeKey(message, currentNode);
+
+  if (nextNodeKey === "END") {
+    enquiry.conversationState = "END"; // Stop the bot
+    await enquiry.save();
+    console.log(`🤖 Bot flow ended for ${customerPhone}.`);
+    return null;
+  }
+
+  // 6. Fetch the next node from the database
+  const nextNode = await BotNode.findOne({
+    botFlow: botFlowId,
+    nodeId: nextNodeKey,
+  });
+  if (!nextNode) {
+    console.error(
+      `❌ Bot error: Could not find next node "${nextNodeKey}" in flow "${botFlowId}"`
+    );
+    // Fallback: send them to the start
+    const startNode = await BotNode.findOne({
+      botFlow: botFlowId,
+      nodeId: "START",
+    });
+    if (startNode) {
+      await sendMessageNode(
+        customerPhone,
+        startNode,
+        enquiry,
+        accessToken,
+        recipientId
+      );
+      enquiry.conversationState = "START";
+      await enquiry.save();
+    }
+    return null;
+  }
+
+  // 7. Send the new message from the next node
+  const botReply = await sendMessageNode(
+    customerPhone,
+    nextNode,
+    enquiry,
+    accessToken,
+    recipientId
+  );
+
+  // 8. Update the user's state to the new node
   enquiry.conversationState = nextNodeKey;
   await enquiry.save();
 
-  /* --------------------------------------------------------------
-     9) Save outgoing reply
-  ----------------------------------------------------------------*/
-  if (botReply?.messages?.[0]?.id) {
-    await Reply.create({
+  // 9. Save the bot's reply to the chat history
+  if (botReply && botReply.messages && botReply.messages[0]?.id) {
+    const newAutoReply = new Reply({
       messageId: botReply.messages[0].id,
       from: customerPhone,
-      recipientId,
+      recipientId: recipientId,
       body: fillTemplate(nextNode.messageText, enquiry),
       timestamp: new Date(),
       direction: "outgoing",
-      read: true
+      read: true,
     });
+    await newAutoReply.save();
+    return newAutoReply; // Return the saved reply
   }
 
   return null;
 };
 
 module.exports = {
-  handleBotConversation
+  handleBotConversation,
 };
