@@ -290,16 +290,15 @@ const handleBotConversation = async (
     return null;
   }
 
-  // ------------- New enquiry (first message) -------------
-  // 0️⃣ FIRST — Auto-detect project URL before anything else
+  // ------------- FIRST MESSAGE: Detect URL BEFORE creation -------------
   const autoProjectFirstMessage = extractProjectFromUrl(messageBody);
 
-  // 1️⃣ If no enquiry exists yet → create NEW enquiry
+  // ------------- New enquiry (first ever message) -------------
   if (!enquiry) {
     const flow = await BotFlow.findById(botFlowId);
     const startNode = await BotNode.findById(flow.startNode);
 
-    // Create enquiry (include project if detected)
+    // Create initial enquiry (with auto-detected project)
     enquiry = await Enquiry.create({
       phoneNumber: customerPhone,
       recipientId: recipientId,
@@ -309,20 +308,11 @@ const handleBotConversation = async (
     });
 
     // Send START node
-    await sendMessageNode(
-      customerPhone,
-      startNode,
-      enquiry,
-      accessToken,
-      recipientId
-    );
+    await sendMessageNode(customerPhone, startNode, enquiry, accessToken, recipientId);
 
-    // 45-minute follow-up message
+    // 🔔 Follow-up after 45 minutes
     setTimeout(async () => {
-      const fresh = await Enquiry.findOne({
-        phoneNumber: customerPhone,
-        recipientId,
-      });
+      const fresh = await Enquiry.findOne({ phoneNumber: customerPhone, recipientId });
       if (fresh?.agentContacted) return;
 
       await sendButtonMessage(
@@ -337,20 +327,15 @@ const handleBotConversation = async (
       );
     }, 45 * 60 * 1000);
 
-    // Auto-send FIRST node if defined
+    // Auto-send FIRST question node if exists
     if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
       const firstNode = await BotNode.findOne({
         botFlow: botFlowId,
         nodeId: startNode.nextNodeId,
       });
+
       if (firstNode) {
-        await sendMessageNode(
-          customerPhone,
-          firstNode,
-          enquiry,
-          accessToken,
-          recipientId
-        );
+        await sendMessageNode(customerPhone, firstNode, enquiry, accessToken, recipientId);
         enquiry.conversationState = firstNode.nodeId;
         await enquiry.save();
         return null;
@@ -360,22 +345,25 @@ const handleBotConversation = async (
     currentNodeKey = startNode.nodeId;
   }
 
-  /*
-  ===========================================
-   ✅ STEP 2 — Auto-detect project URL and save name
-  ===========================================
-  */
-  // const autoProject = extractProjectFromUrl(messageBody);
-  // if (autoProject) {
-  //   enquiry.projectName = autoProject;
-  //   await enquiry.save();
-  //   return null;
-  // }
-  /*
-  ===========================================
-            END OF STEP 2
-  ===========================================
-  */
+  // ------------- FIX: Always define currentNodeKey -------------
+  if (enquiry && !currentNodeKey) {
+    currentNodeKey = enquiry.conversationState;
+  }
+
+  // ------------- STEP 2: URL detection ANYTIME -------------
+  const autoProjectLater = extractProjectFromUrl(messageBody);
+  if (autoProjectLater) {
+    enquiry.projectName = autoProjectLater;
+    enquiry.pageUrl = messageBody;
+    await enquiry.save();
+    // await sendTextMessage(
+    //   customerPhone,
+    //   `📌 Noted! You’re interested in *${autoProjectLater}*.\nOur team will assist you shortly.`,
+    //   accessToken,
+    //   recipientId
+    // );
+    return null;
+  }
 
   // 3. Find the user's current node in the flow
   const currentNode = await BotNode.findOne({
