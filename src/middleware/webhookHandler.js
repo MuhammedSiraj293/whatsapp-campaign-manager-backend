@@ -331,11 +331,11 @@ const processWebhook = async (req, res) => {
               from: message.from,
               direction: "incoming",
             });
-
-
+            
             // BOT HANDLES ONLY NON-CAMPAIGN
-            else if (
+            if (
               !isCampaignReply &&
+              totalIncoming === 1 &&
               (message.type === "text" || message.type === "interactive")
             ) {
               if (credentials?.accessToken) {
