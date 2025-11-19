@@ -295,7 +295,7 @@ const handleBotConversation = async (
     }
   }
 
-  // COMPLETE FIXED SECTION - Replace from "LOAD CURRENT NODE" onwards
+ // COMPLETE FIXED SECTION - Replace from "LOAD CURRENT NODE" onwards
 
   // ------------------------------------------------
   // LOAD CURRENT NODE
@@ -402,7 +402,13 @@ const handleBotConversation = async (
   // SAVE LIST/BUTTON SELECTIONS
   // ------------------------------------------------
   if (message.type === "interactive") {
+    console.log(`🎯 Interactive message received`);
+    console.log(`   Type: ${message.interactive?.type}`);
+    
     if (message.interactive?.list_reply) {
+      console.log(`   List reply ID: ${message.interactive.list_reply.id}`);
+      console.log(`   List reply title: ${message.interactive.list_reply.title}`);
+      
       const selectedValue = message.interactive.list_reply.title;
       if (currentNode.saveToField) {
         enquiry[currentNode.saveToField] = selectedValue;
@@ -410,7 +416,11 @@ const handleBotConversation = async (
         console.log(`✅ Saved ${currentNode.saveToField}: ${selectedValue}`);
       }
     }
+    
     if (message.interactive?.button_reply) {
+      console.log(`   Button reply ID: ${message.interactive.button_reply.id}`);
+      console.log(`   Button reply title: ${message.interactive.button_reply.title}`);
+      
       const selectedValue = message.interactive.button_reply.title;
       if (currentNode.saveToField) {
         enquiry[currentNode.saveToField] = selectedValue;
