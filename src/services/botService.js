@@ -375,16 +375,16 @@ const handleBotConversation = async (
     await enquiry.save();
   }
 
-  let nextNodeKey;
+  
+// Determine next node safely
+let nextNodeKey = getNextNodeKey(message, currentNode);
 
-// If this node saves a field → ALWAYS follow the defined nextNodeId
-if (currentNode.messageType === "text" && currentNode.saveToField) {
-    nextNodeKey = currentNode.nextNodeId;
-} else {
-    // Button/List logic
-    nextNodeKey = getNextNodeKey(message, currentNode);
+// Fallback – if logic fails, and it's a text field with nextNodeId, use that
+if (!nextNodeKey || nextNodeKey === "undefined") {
+    if (currentNode.messageType === "text" && currentNode.nextNodeId) {
+        nextNodeKey = currentNode.nextNodeId;
+    }
 }
-
 
   // END logic
   if (nextNodeKey === "END") {
