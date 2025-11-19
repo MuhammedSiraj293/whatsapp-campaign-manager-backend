@@ -120,12 +120,11 @@ const handleBotConversation = async (
     phoneNumberId: recipientId,
   });
   if (!phoneNumberDoc || !phoneNumberDoc.activeBotFlow) {
-    console.log(`Bot disabled for ${recipientId}. No active flow.`);
     return null;
   }
   const botFlowId = phoneNumberDoc.activeBotFlow;
 
-  // 1. Find the LATEST enquiry history (to check status)
+  // 1. Find the LATEST enquiry history
   let lastEnquiry = await Enquiry.findOne({
     phoneNumber: customerPhone,
     recipientId: recipientId,
@@ -137,62 +136,46 @@ const handleBotConversation = async (
   // 2. HANDLE BUTTON CLICKS (Follow-ups)
   // ============================================================
   if (message.type === "interactive" && message.interactive?.button_reply) {
-    const btnId = message.interactive.button_reply.id;
-
-    // Load reply BotNode from DB
-    const replyNode = await BotNode.findOne({
-      botFlow: botFlowId,
-      nodeId: btnId,
-    });
-
-    if (!replyNode) {
-      console.warn("No BotNode found for button:", btnId);
+      const btnId = message.interactive.button_reply.id; // followup_yes or followup_no
+  
+      // Load reply BotNode from DB
+      const replyNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: btnId,
+      });
+  
+      if (!replyNode) {
+        console.warn("No BotNode found for button:", btnId);
+        return null;
+      }
+  
+      // Handle enquiry updates
+      if (btnId === "followup_yes") {
+        if (enquiry) {
+          enquiry.agentContacted = true;
+          await enquiry.save();
+        }
+      }
+  
+      if (btnId === "followup_no") {
+        if (enquiry) {
+          enquiry.agentContacted = false;
+          enquiry.needsImmediateAttention = true;
+          await enquiry.save();
+        }
+      }
+  
+      // Send message as BotNode (same function you use everywhere)
+      await sendMessageNode(
+        customerPhone,
+        replyNode,
+        enquiry,
+        accessToken,
+        recipientId
+      );
+  
       return null;
     }
-
-    // Handle enquiry updates
-    if (btnId === "followup_yes") {
-      if (enquiry) {
-        enquiry.agentContacted = true;
-        await enquiry.save();
-      }
-    }
-
-    if (btnId === "followup_no") {
-      if (enquiry) {
-        enquiry.agentContacted = false;
-        enquiry.needsImmediateAttention = true;
-        await enquiry.save();
-      }
-    }
-
-    // Send message as BotNode (same function you use everywhere)
-    await sendMessageNode(
-      customerPhone,
-      replyNode,
-      enquiry,
-      accessToken,
-      recipientId
-    );
-    return null;
-  }
-  // cool of time
-  if (enquiry && enquiry.conversationState === "END") {
-    const oneHourMs = 60 * 60 * 1000;
-    // Check time since last update or endedAt
-    const lastActivityTime = new Date(enquiry.updatedAt).getTime();
-    const timeDiff = Date.now() - lastActivityTime;
-
-    // If less than 1 hour has passed since the last interaction ended
-    if (timeDiff < oneHourMs) {
-      console.log(
-        `⏳ Cool-off period active for ${customerPhone} (${Math.floor(
-          timeDiff / 60000
-        )} mins). Ignoring message.`
-      );
-      return null; // STOP HERE. Do not start new flow.
-    }
-  }
 
   // ============================================================
   // 3. START NEW ENQUIRY (If no enquiry or previous is END)
@@ -206,15 +189,16 @@ const handleBotConversation = async (
     const flow = await BotFlow.findById(botFlowId);
     const startNode = await BotNode.findById(flow.startNode);
 
-    // ✅ RESTORED: Copy history so we don't ask name/email again
+    // Create new document (CLEAN SLATE - No copying history)
     enquiry = await Enquiry.create({
       phoneNumber: customerPhone,
       recipientId: recipientId,
       projectName: autoProjectFirstMessage || null,
       pageUrl: autoProjectFirstMessage ? messageBody : null,
       conversationState: startNode.nodeId,
-      name: lastEnquiry ? lastEnquiry.name : undefined,
-      email: lastEnquiry ? lastEnquiry.email : undefined,
+      // Explicitly undefined so we re-ask these questions
+      name: undefined,
+      email: undefined,
     });
 
     // Send START message
@@ -226,17 +210,41 @@ const handleBotConversation = async (
       recipientId
     );
 
-    // --- AUTO-JUMP FOR START NODE ---
-    if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
-      // Update state to next node immediately so the logic below picks it up
-      enquiry.conversationState = startNode.nextNodeId;
-      await enquiry.save();
+    // If start node has immediate jump (e.g. it was just a greeting), move to next
+    if (
+      startNode.nextNodeId &&
+      startNode.nextNodeId !== "END" &&
+      startNode.messageType === "text"
+    ) {
+      const firstNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: startNode.nextNodeId,
+      });
+      if (firstNode) {
+        const botReply = await sendMessageNode(
+          customerPhone,
+          firstNode,
+          enquiry,
+          accessToken,
+          recipientId
+        );
+        enquiry.conversationState = firstNode.nodeId;
+        await enquiry.save();
 
-      // The rest of the function will now process this new state
-      // We do NOT return here, we let it fall through to the "Smart Skip Loop" below
-    } else {
-      // If start node has no next (rare), we are done
-      return null;
+        if (botReply && botReply.messages && botReply.messages[0]?.id) {
+          const newAutoReply = new Reply({
+            messageId: botReply.messages[0].id,
+            from: customerPhone,
+            recipientId,
+            body: fillTemplate(firstNode.messageText, enquiry),
+            timestamp: new Date(),
+            direction: "outgoing",
+            read: true,
+          });
+          await newAutoReply.save();
+          return newAutoReply;
+        }
+      }
     }
 
     // 45-min Follow-up timer
@@ -245,7 +253,7 @@ const handleBotConversation = async (
       if (fresh && !fresh.agentContacted && fresh.conversationState !== "END") {
         await sendButtonMessage(
           customerPhone,
-          "👋 Just checking in...\n\nDid someone from Capital Avenue Real Estate contact you?",
+           "👋 Just checking in...\n\nDid someone from Capital Avenue Real Estate contact you?",
           [
             { id: "followup_yes", title: "Yes!" },
             { id: "followup_no", title: "No" },
@@ -254,12 +262,15 @@ const handleBotConversation = async (
           recipientId
         );
       }
-    }, 45 * 60 * 1000);
+    }, 5 * 60 * 1000);
+
+    return null;
   }
 
   // ============================================================
-  // 4. CONTINUE SESSION & SMART SKIP LOOP
+  // 4. CONTINUE EXISTING SESSION
   // ============================================================
+  let currentNodeKey = enquiry.conversationState;
 
   // URL Detection
   const autoProjectLater = extractProjectFromUrl(messageBody);
@@ -269,19 +280,14 @@ const handleBotConversation = async (
     await enquiry.save();
   }
 
-  let currentNodeKey = enquiry.conversationState;
-  let currentNode = await BotNode.findOne({
+  const currentNode = await BotNode.findOne({
     botFlow: botFlowId,
     nodeId: currentNodeKey,
   });
+  if (!currentNode) return null;
 
-  // If user just sent a text answer, save it first
-  if (
-    !isNewSession &&
-    currentNode &&
-    currentNode.messageType === "text" &&
-    currentNode.saveToField
-  ) {
+  // Save User Input
+  if (currentNode.messageType === "text" && currentNode.saveToField) {
     const field = currentNode.saveToField.toLowerCase();
     const userInput = (messageBody || "").trim();
 
@@ -301,74 +307,30 @@ const handleBotConversation = async (
     } else {
       enquiry[field] = userInput;
     }
-
-    // Move to next node after saving
-    currentNodeKey = getNextNodeKey(message, currentNode);
-    enquiry.conversationState = currentNodeKey;
     await enquiry.save();
-
-    // Re-fetch the NEW current node to process in the loop
-    currentNode = await BotNode.findOne({
-      botFlow: botFlowId,
-      nodeId: currentNodeKey,
-    });
-  } else if (!isNewSession && currentNode) {
-    // It was a button/list click, move to next
-    currentNodeKey = getNextNodeKey(message, currentNode);
-    enquiry.conversationState = currentNodeKey;
-    await enquiry.save();
-    currentNode = await BotNode.findOne({
-      botFlow: botFlowId,
-      nodeId: currentNodeKey,
-    });
   }
 
-  // --- THE SMART SKIP LOOP ---
-  // Keep advancing while we have the answer
-  while (
-    currentNode &&
-    currentNode.messageType === "text" &&
-    currentNode.saveToField &&
-    enquiry[currentNode.saveToField] // We already have this data!
-  ) {
-    console.log(
-      `⏩ Smart Skip: Already have ${currentNode.saveToField} ("${
-        enquiry[currentNode.saveToField]
-      }"). Moving to ${currentNode.nextNodeId}`
-    );
+  // Determine Next Node Key
+  const nextNodeKey = getNextNodeKey(message, currentNode);
 
-    // Advance state
-    currentNodeKey = currentNode.nextNodeId;
-    enquiry.conversationState = currentNodeKey;
-    await enquiry.save();
-
-    if (currentNodeKey === "END") break; // Exit loop if we hit END
-
-    // Load next node for checking
-    currentNode = await BotNode.findOne({
-      botFlow: botFlowId,
-      nodeId: currentNodeKey,
-    });
-  }
-
-  // Handle END
-  if (currentNodeKey === "END" || !currentNode) {
+  // Handle Transition to END
+  if (nextNodeKey === "END") {
     if (!enquiry.endMessageSent) {
-      const endNode = await BotNode.findOne({
-        botFlow: botFlowId,
-        nodeId: "END",
-      });
-      if (endNode) {
-        await sendMessageNode(
-          customerPhone,
-          endNode,
-          enquiry,
-          accessToken,
-          recipientId
-        );
-      }
-      enquiry.endMessageSent = true;
-    }
+          const endNode = await BotNode.findOne({
+            botFlow: botFlowId,
+            nodeId: "END",
+          });
+          if (endNode) {
+            await sendMessageNode(
+              customerPhone,
+              endNode,
+              enquiry,
+              accessToken,
+              recipientId
+            );
+          }
+          enquiry.endMessageSent = true;
+        }
     enquiry.conversationState = "END";
     enquiry.endedAt = new Date();
     enquiry.status = "completed";
@@ -377,15 +339,34 @@ const handleBotConversation = async (
     return null;
   }
 
-  // Finally, send the message for the node we stopped at
+  // Fetch the NEXT node directly (No skipping logic)
+  const nextNode = await BotNode.findOne({
+    botFlow: botFlowId,
+    nodeId: nextNodeKey,
+  });
+
+  if (!nextNode) {
+    // If we hit an error or end of flow
+    if (enquiry.conversationState === "END" || nextNodeKey === "END") {
+      enquiry.conversationState = "END";
+      enquiry.endedAt = new Date();
+      await enquiry.save();
+    }
+    return null;
+  }
+
+  // Send Next Message
   const botReply = await sendMessageNode(
     customerPhone,
-    currentNode,
+    nextNode,
     enquiry,
     accessToken,
     recipientId
   );
 
+  // Update State
+  enquiry.conversationState = nextNode.nodeId;
+  await enquiry.save();
 
   // Save Reply to DB
   if (botReply && botReply.messages && botReply.messages[0]?.id) {
@@ -393,7 +374,7 @@ const handleBotConversation = async (
       messageId: botReply.messages[0].id,
       from: customerPhone,
       recipientId: recipientId,
-      body: fillTemplate(currentNode.messageText, enquiry),
+      body: fillTemplate(nextNode.messageText, enquiry),
       timestamp: new Date(),
       direction: "outgoing",
       read: true,
