@@ -186,47 +186,41 @@ const handleBotConversation = async (
   // 2. HANDLE BUTTON CLICKS (Follow-ups / Explicit Actions)
   // ============================================================
   // Even if in cool-off, we allow button clicks to work (e.g. "Yes" to follow up)
- if (message.type === "interactive" && message.interactive?.button_reply) {
-  const btnId = message.interactive.button_reply.id;
+  if (message.type === "interactive" && message.interactive?.button_reply) {
+    const btnId = message.interactive.button_reply.id;
 
-  // Fetch button config from DB
-  const button = await BotButton.findOne({ botFlow: botFlowId, buttonId: btnId });
+    // Fetch message from DB
+    const replyTemplate = await MessageTemplate.findOne({ messageId: btnId });
 
-  if (!button) {
-    console.warn("Unknown button ID:", btnId);
-    return null;
-  }
-
-  // Perform action based on DB value
-  if (enquiry) {
-    switch (button.action) {
-      case "SET_AGENT_CONTACTED_TRUE":
-        enquiry.agentContacted = true;
-        break;
-        
-      case "SET_NEEDS_ATTENTION":
-        enquiry.agentContacted = false;
-        enquiry.needsImmediateAttention = true;
-        break;
-
-      // Add more actions as you want
-      default:
-        console.warn("Unknown action:", button.action);
+    if (!replyTemplate) {
+        console.warn("No template found for", btnId);
+        return null;
     }
 
-    await enquiry.save();
-  }
+    // Handle DB operations for the enquiry
+    if (btnId === "followup_yes") {
+        if (enquiry) { enquiry.agentContacted = true; await enquiry.save(); }
+    }
 
-  // Send default reply from DB
-  await sendTextMessage(
-    customerPhone,
-    button.replyMessage,
-    accessToken,
-    recipientId
-  );
+    if (btnId === "followup_no") {
+        if (enquiry) {
+            enquiry.agentContacted = false;
+            enquiry.needsImmediateAttention = true;
+            await enquiry.save();
+        }
+    }
 
-  return null;
+    // Send message from DB
+    await sendTextMessage(
+        customerPhone,
+        replyTemplate.text,
+        accessToken,
+        recipientId
+    );
+
+    return null;
 }
+
 
   // ============================================================
   // 3. COOL-OFF CHECK (The Fix)
