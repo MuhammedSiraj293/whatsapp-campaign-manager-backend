@@ -136,47 +136,65 @@ const handleBotConversation = async (
   // 2. HANDLE BUTTON CLICKS (Follow-ups)
   // ============================================================
   if (message.type === "interactive" && message.interactive?.button_reply) {
-      const btnId = message.interactive.button_reply.id; // followup_yes or followup_no
-  
-      // Load reply BotNode from DB
-      const replyNode = await BotNode.findOne({
-        botFlow: botFlowId,
-        nodeId: btnId,
-      });
-  
-      if (!replyNode) {
-        console.warn("No BotNode found for button:", btnId);
-        return null;
-      }
-  
-      // Handle enquiry updates
-      if (btnId === "followup_yes") {
-        if (enquiry) {
-          enquiry.agentContacted = true;
-          await enquiry.save();
-        }
-      }
-  
-      if (btnId === "followup_no") {
-        if (enquiry) {
-          enquiry.agentContacted = false;
-          enquiry.needsImmediateAttention = true;
-          await enquiry.save();
-        }
-      }
-  
-      // Send message as BotNode (same function you use everywhere)
-      await sendMessageNode(
-        customerPhone,
-        replyNode,
-        enquiry,
-        accessToken,
-        recipientId
-      );
-  
+    const btnId = message.interactive.button_reply.id; // followup_yes or followup_no
+
+    // Load reply BotNode from DB
+    const replyNode = await BotNode.findOne({
+      botFlow: botFlowId,
+      nodeId: btnId,
+    });
+
+    if (!replyNode) {
+      console.warn("No BotNode found for button:", btnId);
       return null;
     }
 
+    // Handle enquiry updates
+    if (btnId === "followup_yes") {
+      if (enquiry) {
+        enquiry.agentContacted = true;
+        await enquiry.save();
+      }
+    }
+
+    if (btnId === "followup_no") {
+      if (enquiry) {
+        enquiry.agentContacted = false;
+        enquiry.needsImmediateAttention = true;
+        await enquiry.save();
+      }
+    }
+
+    // Send message as BotNode (same function you use everywhere)
+    await sendMessageNode(
+      customerPhone,
+      replyNode,
+      enquiry,
+      accessToken,
+      recipientId
+    );
+
+    return null;
+  }
+  // ============================================================
+  // 3. COOL-OFF CHECK (The Fix)
+  // ============================================================
+  if (enquiry && enquiry.conversationState === "END") {
+    const oneHourMs = 60 * 60 * 1000;
+    // Check time since last update or endedAt
+    const lastActivityTime = new Date(enquiry.updatedAt).getTime();
+    const timeDiff = Date.now() - lastActivityTime;
+
+    // If less than 1 hour has passed since the last interaction ended
+    if (timeDiff < oneHourMs) {
+      console.log(
+        `⏳ Cool-off period active for ${customerPhone} (${Math.floor(
+          timeDiff / 60000
+        )} mins). Ignoring message.`
+      );
+      return null; // STOP HERE. Do not start new flow.
+    }
+  }
   // ============================================================
   // 3. START NEW ENQUIRY (If no enquiry or previous is END)
   // ============================================================
@@ -253,7 +271,7 @@ const handleBotConversation = async (
       if (fresh && !fresh.agentContacted && fresh.conversationState !== "END") {
         await sendButtonMessage(
           customerPhone,
-           "👋 Just checking in...\n\nDid someone from Capital Avenue Real Estate contact you?",
+          "👋 Just checking in...\n\nDid someone from Capital Avenue Real Estate contact you?",
           [
             { id: "followup_yes", title: "Yes!" },
             { id: "followup_no", title: "No" },
@@ -316,21 +334,21 @@ const handleBotConversation = async (
   // Handle Transition to END
   if (nextNodeKey === "END") {
     if (!enquiry.endMessageSent) {
-          const endNode = await BotNode.findOne({
-            botFlow: botFlowId,
-            nodeId: "END",
-          });
-          if (endNode) {
-            await sendMessageNode(
-              customerPhone,
-              endNode,
-              enquiry,
-              accessToken,
-              recipientId
-            );
-          }
-          enquiry.endMessageSent = true;
-        }
+      const endNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: "END",
+      });
+      if (endNode) {
+        await sendMessageNode(
+          customerPhone,
+          endNode,
+          enquiry,
+          accessToken,
+          recipientId
+        );
+      }
+      enquiry.endMessageSent = true;
+    }
     enquiry.conversationState = "END";
     enquiry.endedAt = new Date();
     enquiry.status = "completed";
