@@ -295,6 +295,8 @@ const handleBotConversation = async (
     }
   }
 
+  // COMPLETE FIXED SECTION - Replace from "LOAD CURRENT NODE" onwards
+
   // ------------------------------------------------
   // LOAD CURRENT NODE
   // ------------------------------------------------
@@ -303,34 +305,43 @@ const handleBotConversation = async (
     nodeId: currentNodeKey,
   });
 
-  if (!currentNode) return null;
+  if (!currentNode) {
+    console.error(`❌ Could not find current node: ${currentNodeKey}`);
+    return null;
+  }
+
+  console.log(`📍 Current node: ${currentNode.nodeId} (type: ${currentNode.messageType})`);
 
   // ------------------------------------------------
   // 🔵 SKIP LOGIC (Only name + email)
   // ------------------------------------------------
   if (currentNode.saveToField === "name" && enquiry.skipName) {
+    console.log(`⏭️ Skipping name node`);
     enquiry.conversationState = currentNode.nextNodeId;
     await enquiry.save();
     const nn = await BotNode.findOne({
       botFlow: botFlowId,
       nodeId: currentNode.nextNodeId,
     });
-    await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+    if (nn) {
+      await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+    }
     return null;
   }
 
   if (currentNode.saveToField === "email" && enquiry.skipEmail) {
+    console.log(`⏭️ Skipping email node`);
     enquiry.conversationState = currentNode.nextNodeId;
     await enquiry.save();
     const nn = await BotNode.findOne({
       botFlow: botFlowId,
       nodeId: currentNode.nextNodeId,
     });
-    await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+    if (nn) {
+      await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+    }
     return null;
   }
-
-  // COMPLETE FIXED SECTION - Replace from "SAVE USER ANSWER" to the end of handleBotConversation
 
   // ------------------------------------------------
   // SAVE USER ANSWER
@@ -361,7 +372,6 @@ const handleBotConversation = async (
           accessToken,
           recipientId
         );
-        return null;
       }
       return null;
     }
@@ -389,14 +399,56 @@ const handleBotConversation = async (
   }
 
   // ------------------------------------------------
+  // SAVE LIST/BUTTON SELECTIONS
+  // ------------------------------------------------
+  if (message.type === "interactive") {
+    if (message.interactive?.list_reply) {
+      const selectedValue = message.interactive.list_reply.title;
+      if (currentNode.saveToField) {
+        enquiry[currentNode.saveToField] = selectedValue;
+        await enquiry.save();
+        console.log(`✅ Saved ${currentNode.saveToField}: ${selectedValue}`);
+      }
+    }
+    if (message.interactive?.button_reply) {
+      const selectedValue = message.interactive.button_reply.title;
+      if (currentNode.saveToField) {
+        enquiry[currentNode.saveToField] = selectedValue;
+        await enquiry.save();
+        console.log(`✅ Saved ${currentNode.saveToField}: ${selectedValue}`);
+      }
+    }
+  }
+
+  // ------------------------------------------------
   // DETERMINE NEXT NODE
   // ------------------------------------------------
+  console.log(`\n🔍 ========== DETERMINING NEXT NODE ==========`);
+  console.log(`🔍 Current node: ${currentNode.nodeId}`);
+  console.log(`🔍 Current enquiry state: ${enquiry.conversationState}`);
+  console.log(`🔍 Message type: ${message.type}`);
+  
   let nextNodeKey = getNextNodeKey(message, currentNode);
 
+  // Debug logging
+  console.log(`🔍 Raw nextNodeKey from getNextNodeKey: "${nextNodeKey}"`);
+  if (message.type === "interactive") {
+    console.log(`🔍 Interactive type:`, message.interactive?.type);
+    console.log(`🔍 Button reply ID:`, message.interactive?.button_reply?.id);
+    console.log(`🔍 List reply ID:`, message.interactive?.list_reply?.id);
+  }
+  console.log(`🔍 Current node's nextNodeId: "${currentNode.nextNodeId}"`);
+  console.log(`========================================\n`);
+
   // Fallback – if logic fails, and it's a text field with nextNodeId, use that
-  if (!nextNodeKey || nextNodeKey === "undefined") {
-    if (currentNode.messageType === "text" && currentNode.nextNodeId) {
+  if (!nextNodeKey || nextNodeKey === "undefined" || nextNodeKey === undefined) {
+    console.log(`⚠️ nextNodeKey is undefined, using fallback`);
+    if (currentNode.nextNodeId) {
       nextNodeKey = currentNode.nextNodeId;
+      console.log(`🔄 Fallback nextNodeKey: "${nextNodeKey}"`);
+    } else {
+      console.error(`❌ No nextNodeId found on current node!`);
+      return null;
     }
   }
 
@@ -449,6 +501,8 @@ const handleBotConversation = async (
     return null;
   }
 
+  console.log(`✅ Found next node: ${nextNode.nodeId}`);
+
   // ------------------------------------------------
   // 🔵 CHECK SKIP LOGIC FOR NEXT NODE
   // ------------------------------------------------
@@ -489,6 +543,8 @@ const handleBotConversation = async (
   // ------------------------------------------------
   // SEND NEXT NODE MESSAGE
   // ------------------------------------------------
+  console.log(`📤 Sending message for node: ${nextNode.nodeId}`);
+  
   const botReply = await sendMessageNode(
     customerPhone,
     nextNode,
@@ -497,8 +553,10 @@ const handleBotConversation = async (
     recipientId
   );
 
+  // 🔴 CRITICAL: Update conversation state IMMEDIATELY after sending
   enquiry.conversationState = nextNodeKey;
   await enquiry.save();
+  console.log(`💾 Updated conversation state to: ${nextNodeKey}`);
 
   if (botReply && botReply.messages && botReply.messages[0]?.id) {
     const newAutoReply = new Reply({
@@ -520,4 +578,3 @@ const handleBotConversation = async (
 module.exports = {
   handleBotConversation,
 };
-
