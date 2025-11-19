@@ -125,6 +125,26 @@ const findNextUnansweredNode = async (flowId, nodeId, enquiry) => {
   return currentNode;
 };
 
+/**
+ * Helper to find the next node based on user's reply
+ */
+const getNextNodeKey = (message, currentNode) => {
+  if (message.type === "interactive" && message.interactive?.button_reply) {
+    return message.interactive.button_reply.id;
+  }
+
+  if (message.type === "interactive" && message.interactive?.list_reply) {
+    return message.interactive.list_reply.id;
+  }
+
+  if (currentNode.messageType === "text" && currentNode.nextNodeId) {
+    return currentNode.nextNodeId;
+  }
+
+  return "main_menu"; // fallback
+};
+
+
 // ---------------- Main Handler ----------------
 const handleBotConversation = async (
   message,
