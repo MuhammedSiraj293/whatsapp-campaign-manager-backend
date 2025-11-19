@@ -285,12 +285,14 @@ const handleBotConversation = async (
   // ------------------------------------------------
   // AUTO-DETECT PROJECT ANYTIME
   // ------------------------------------------------
-  const autoProjectLater = extractProjectFromUrl(messageBody);
-  if (autoProjectLater) {
-    enquiry.projectName = autoProjectLater;
-    enquiry.pageUrl = messageBody;
-    await enquiry.save();
-    return null;
+  if (messageBody.includes("http")) {
+    const autoProjectLater = extractProjectFromUrl(messageBody);
+    if (autoProjectLater) {
+      enquiry.projectName = autoProjectLater;
+      enquiry.pageUrl = messageBody;
+      await enquiry.save();
+      return null;
+    }
   }
 
   // ------------------------------------------------
@@ -375,16 +377,15 @@ const handleBotConversation = async (
     await enquiry.save();
   }
 
-  
-// Determine next node safely
-let nextNodeKey = getNextNodeKey(message, currentNode);
+  // Determine next node safely
+  let nextNodeKey = getNextNodeKey(message, currentNode);
 
-// Fallback – if logic fails, and it's a text field with nextNodeId, use that
-if (!nextNodeKey || nextNodeKey === "undefined") {
+  // Fallback – if logic fails, and it's a text field with nextNodeId, use that
+  if (!nextNodeKey || nextNodeKey === "undefined") {
     if (currentNode.messageType === "text" && currentNode.nextNodeId) {
-        nextNodeKey = currentNode.nextNodeId;
+      nextNodeKey = currentNode.nextNodeId;
     }
-}
+  }
 
   // END logic
   if (nextNodeKey === "END") {
@@ -417,7 +418,7 @@ if (!nextNodeKey || nextNodeKey === "undefined") {
     nodeId: nextNodeKey,
   });
 
-if (!nextNode) {
+  if (!nextNode) {
     console.error(
       `❌ Bot error: Could not find next node "${nextNodeKey}" in flow "${botFlowId}"`
     );
