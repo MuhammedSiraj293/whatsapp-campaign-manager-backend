@@ -375,7 +375,16 @@ const handleBotConversation = async (
     await enquiry.save();
   }
 
-  const nextNodeKey = getNextNodeKey(message, currentNode);
+  let nextNodeKey;
+
+// If this node saves a field → ALWAYS follow the defined nextNodeId
+if (currentNode.messageType === "text" && currentNode.saveToField) {
+    nextNodeKey = currentNode.nextNodeId;
+} else {
+    // Button/List logic
+    nextNodeKey = getNextNodeKey(message, currentNode);
+}
+
 
   // END logic
   if (nextNodeKey === "END") {
