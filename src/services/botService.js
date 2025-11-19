@@ -69,9 +69,10 @@ const sendMessageNode = async (
 
     case "buttons": {
       const buttons = (node.buttons || []).map((btn) => ({
-        id: btn.nextNodeId,
+        id: btn.nextNodeId || btn.id,
         title: btn.title,
       }));
+      console.log(`🔘 Sending buttons:`, buttons);
       return sendButtonMessage(to, text, buttons, accessToken, phoneNumberId);
     }
 
@@ -143,41 +144,49 @@ const handleBotConversation = async (
   let currentNodeKey;
 
   // ------------------------------------------------
-  // FOLLOW-UP BUTTONS
+  // FOLLOW-UP BUTTONS ONLY
   // ------------------------------------------------
   if (message.type === "interactive" && message.interactive?.button_reply) {
     const btnId = message.interactive.button_reply.id;
 
-    const replyNode = await BotNode.findOne({
-      botFlow: botFlowId,
-      nodeId: btnId,
-    });
+    // Only handle follow-up buttons here, let regular flow buttons continue
+    if (btnId === "followup_yes" || btnId === "followup_no") {
+      const replyNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: btnId,
+      });
 
-    if (!replyNode) return null;
+      if (!replyNode) return null;
 
-    if (btnId === "followup_yes") {
-      if (enquiry) {
-        enquiry.agentContacted = true;
-        await enquiry.save();
+      if (btnId === "followup_yes") {
+        if (enquiry) {
+          enquiry.agentContacted = true;
+          await enquiry.save();
+        }
       }
-    }
 
-    if (btnId === "followup_no") {
-      if (enquiry) {
-        enquiry.agentContacted = false;
-        enquiry.needsImmediateAttention = true;
-        await enquiry.save();
+      if (btnId === "followup_no") {
+        if (enquiry) {
+          enquiry.agentContacted = false;
+          enquiry.needsImmediateAttention = true;
+          await enquiry.save();
+        }
       }
-    }
 
-    await sendMessageNode(
-      customerPhone,
-      replyNode,
-      enquiry,
-      accessToken,
-      recipientId
-    );
-    return null;
+      await sendMessageNode(
+        customerPhone,
+        replyNode,
+        enquiry,
+        accessToken,
+        recipientId
+      );
+
+      enquiry.conversationState = btnId;
+      await enquiry.save();
+
+      return null;
+    }
+    // If not a follow-up button, continue with normal flow processing below
   }
 
   // ------------------------------------------------
@@ -280,7 +289,19 @@ const handleBotConversation = async (
 
   if (enquiry && !currentNodeKey) {
     currentNodeKey = enquiry.conversationState;
+    console.log(
+      `📌 Using enquiry.conversationState as currentNodeKey: ${currentNodeKey}`
+    );
+  } else if (currentNodeKey) {
+    console.log(`📌 currentNodeKey already set: ${currentNodeKey}`);
+  } else {
+    console.log(`⚠️ WARNING: No currentNodeKey and no enquiry state!`);
   }
+
+  console.log(`\n📊 STATE CHECK:`);
+  console.log(`   - Enquiry conversation state: ${enquiry?.conversationState}`);
+  console.log(`   - Current node key: ${currentNodeKey}`);
+  console.log(`   - Message type: ${message.type}\n`);
 
   // ------------------------------------------------
   // AUTO-DETECT PROJECT ANYTIME
@@ -295,8 +316,6 @@ const handleBotConversation = async (
     }
   }
 
- // COMPLETE FIXED SECTION - Replace from "LOAD CURRENT NODE" onwards
-
   // ------------------------------------------------
   // LOAD CURRENT NODE
   // ------------------------------------------------
@@ -310,7 +329,9 @@ const handleBotConversation = async (
     return null;
   }
 
-  console.log(`📍 Current node: ${currentNode.nodeId} (type: ${currentNode.messageType})`);
+  console.log(
+    `📍 Current node: ${currentNode.nodeId} (type: ${currentNode.messageType})`
+  );
 
   // ------------------------------------------------
   // 🔵 SKIP LOGIC (Only name + email)
@@ -324,7 +345,13 @@ const handleBotConversation = async (
       nodeId: currentNode.nextNodeId,
     });
     if (nn) {
-      await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+      await sendMessageNode(
+        customerPhone,
+        nn,
+        enquiry,
+        accessToken,
+        recipientId
+      );
     }
     return null;
   }
@@ -338,7 +365,13 @@ const handleBotConversation = async (
       nodeId: currentNode.nextNodeId,
     });
     if (nn) {
-      await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+      await sendMessageNode(
+        customerPhone,
+        nn,
+        enquiry,
+        accessToken,
+        recipientId
+      );
     }
     return null;
   }
@@ -404,11 +437,13 @@ const handleBotConversation = async (
   if (message.type === "interactive") {
     console.log(`🎯 Interactive message received`);
     console.log(`   Type: ${message.interactive?.type}`);
-    
+
     if (message.interactive?.list_reply) {
       console.log(`   List reply ID: ${message.interactive.list_reply.id}`);
-      console.log(`   List reply title: ${message.interactive.list_reply.title}`);
-      
+      console.log(
+        `   List reply title: ${message.interactive.list_reply.title}`
+      );
+
       const selectedValue = message.interactive.list_reply.title;
       if (currentNode.saveToField) {
         enquiry[currentNode.saveToField] = selectedValue;
@@ -416,11 +451,13 @@ const handleBotConversation = async (
         console.log(`✅ Saved ${currentNode.saveToField}: ${selectedValue}`);
       }
     }
-    
+
     if (message.interactive?.button_reply) {
       console.log(`   Button reply ID: ${message.interactive.button_reply.id}`);
-      console.log(`   Button reply title: ${message.interactive.button_reply.title}`);
-      
+      console.log(
+        `   Button reply title: ${message.interactive.button_reply.title}`
+      );
+
       const selectedValue = message.interactive.button_reply.title;
       if (currentNode.saveToField) {
         enquiry[currentNode.saveToField] = selectedValue;
@@ -437,7 +474,7 @@ const handleBotConversation = async (
   console.log(`🔍 Current node: ${currentNode.nodeId}`);
   console.log(`🔍 Current enquiry state: ${enquiry.conversationState}`);
   console.log(`🔍 Message type: ${message.type}`);
-  
+
   let nextNodeKey = getNextNodeKey(message, currentNode);
 
   // Debug logging
@@ -451,7 +488,11 @@ const handleBotConversation = async (
   console.log(`========================================\n`);
 
   // Fallback – if logic fails, and it's a text field with nextNodeId, use that
-  if (!nextNodeKey || nextNodeKey === "undefined" || nextNodeKey === undefined) {
+  if (
+    !nextNodeKey ||
+    nextNodeKey === "undefined" ||
+    nextNodeKey === undefined
+  ) {
     console.log(`⚠️ nextNodeKey is undefined, using fallback`);
     if (currentNode.nextNodeId) {
       nextNodeKey = currentNode.nextNodeId;
@@ -506,7 +547,7 @@ const handleBotConversation = async (
     );
     console.error(`Current node was: ${currentNode.nodeId}`);
     console.error(`Enquiry state: ${enquiry.conversationState}`);
-    
+
     // Don't send START again - just log the error and stop
     return null;
   }
@@ -519,14 +560,20 @@ const handleBotConversation = async (
   if (nextNode.saveToField === "name" && enquiry.skipName) {
     console.log(`⏭️ Skipping name node for ${customerPhone}`);
     const skipToNodeKey = nextNode.nextNodeId;
-    
+
     const skipToNode = await BotNode.findOne({
       botFlow: botFlowId,
       nodeId: skipToNodeKey,
     });
-    
+
     if (skipToNode) {
-      await sendMessageNode(customerPhone, skipToNode, enquiry, accessToken, recipientId);
+      await sendMessageNode(
+        customerPhone,
+        skipToNode,
+        enquiry,
+        accessToken,
+        recipientId
+      );
       enquiry.conversationState = skipToNodeKey;
       await enquiry.save();
     }
@@ -536,14 +583,20 @@ const handleBotConversation = async (
   if (nextNode.saveToField === "email" && enquiry.skipEmail) {
     console.log(`⏭️ Skipping email node for ${customerPhone}`);
     const skipToNodeKey = nextNode.nextNodeId;
-    
+
     const skipToNode = await BotNode.findOne({
       botFlow: botFlowId,
       nodeId: skipToNodeKey,
     });
-    
+
     if (skipToNode) {
-      await sendMessageNode(customerPhone, skipToNode, enquiry, accessToken, recipientId);
+      await sendMessageNode(
+        customerPhone,
+        skipToNode,
+        enquiry,
+        accessToken,
+        recipientId
+      );
       enquiry.conversationState = skipToNodeKey;
       await enquiry.save();
     }
@@ -554,7 +607,7 @@ const handleBotConversation = async (
   // SEND NEXT NODE MESSAGE
   // ------------------------------------------------
   console.log(`📤 Sending message for node: ${nextNode.nodeId}`);
-  
+
   const botReply = await sendMessageNode(
     customerPhone,
     nextNode,
