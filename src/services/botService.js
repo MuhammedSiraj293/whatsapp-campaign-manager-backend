@@ -114,7 +114,7 @@ const getNextNodeKey = (message, currentNode) => {
     return currentNode.nextNodeId;
   }
   // Fallback
-  return "main_menu";
+  return currentNode.nextNodeId;
 };
 
 const handleBotConversation = async (
@@ -278,7 +278,9 @@ const handleBotConversation = async (
     currentNodeKey = startNode.nodeId;
   }
 
-  if (!currentNodeKey) currentNodeKey = enquiry.conversationState;
+  if (enquiry && !currentNodeKey) {
+    currentNodeKey = enquiry.conversationState;
+  }
 
   // ------------------------------------------------
   // AUTO-DETECT PROJECT ANYTIME
@@ -337,12 +339,11 @@ const handleBotConversation = async (
       enquiry[field] = "";
       await enquiry.save();
 
-      
       // Move to next node immediately
       const nextNodeKey = currentNode.nextNodeId;
       enquiry.conversationState = nextNodeKey;
       await enquiry.save();
-      
+
       return await sendMessageNode(
         customerPhone,
         await BotNode.findOne({
@@ -398,6 +399,7 @@ const handleBotConversation = async (
     enquiry.conversationState = "END";
     enquiry.endedAt = new Date();
     await enquiry.save();
+    console.log(`🤖 Bot flow ended for ${customerPhone}.`);
     return null;
   }
 
@@ -406,7 +408,28 @@ const handleBotConversation = async (
     nodeId: nextNodeKey,
   });
 
-  if (!nextNode) return null;
+if (!nextNode) {
+    console.error(
+      `❌ Bot error: Could not find next node "${nextNodeKey}" in flow "${botFlowId}"`
+    );
+    // Fallback: send them to the start
+    const startNode = await BotNode.findOne({
+      botFlow: botFlowId,
+      nodeId: "START",
+    });
+    if (startNode) {
+      await sendMessageNode(
+        customerPhone,
+        startNode,
+        enquiry,
+        accessToken,
+        recipientId
+      );
+      enquiry.conversationState = "START";
+      await enquiry.save();
+    }
+    return null;
+  }
 
   const botReply = await sendMessageNode(
     customerPhone,
