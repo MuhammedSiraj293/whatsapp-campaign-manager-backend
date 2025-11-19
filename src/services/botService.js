@@ -330,6 +330,8 @@ const handleBotConversation = async (
     return null;
   }
 
+  // Fixed section - replace the SAVE USER ANSWER section through END logic
+
   // ------------------------------------------------
   // SAVE USER ANSWER
   // ------------------------------------------------
@@ -342,20 +344,25 @@ const handleBotConversation = async (
       await enquiry.save();
 
       // Move to next node immediately
-      const nextNodeKey = currentNode.nextNodeId;
+      let nextNodeKey = currentNode.nextNodeId;
       enquiry.conversationState = nextNodeKey;
       await enquiry.save();
 
-      return await sendMessageNode(
-        customerPhone,
-        await BotNode.findOne({
-          botFlow: currentNode.botFlow,
-          nodeId: nextNodeKey,
-        }),
-        enquiry,
-        accessToken,
-        recipientId
-      );
+      const nextNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: nextNodeKey,
+      });
+
+      if (nextNode) {
+        return await sendMessageNode(
+          customerPhone,
+          nextNode,
+          enquiry,
+          accessToken,
+          recipientId
+        );
+      }
+      return null;
     }
 
     if (field === "email") {
@@ -387,6 +394,68 @@ const handleBotConversation = async (
     }
   }
 
+  // ------------------------------------------------
+  // 🔵 CHECK SKIP LOGIC FOR NEXT NODE
+  // ------------------------------------------------
+  const nextNode = await BotNode.findOne({
+    botFlow: botFlowId,
+    nodeId: nextNodeKey,
+  });
+
+  if (nextNode) {
+    // If next node is asking for name and we should skip it
+    if (nextNode.saveToField === "name" && enquiry.skipName) {
+      console.log(`⏭️ Skipping name node for ${customerPhone}`);
+      nextNodeKey = nextNode.nextNodeId;
+      enquiry.conversationState = nextNodeKey;
+      await enquiry.save();
+
+      const skipToNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: nextNodeKey,
+      });
+
+      if (skipToNode) {
+        await sendMessageNode(
+          customerPhone,
+          skipToNode,
+          enquiry,
+          accessToken,
+          recipientId
+        );
+        enquiry.conversationState = nextNodeKey;
+        await enquiry.save();
+      }
+      return null;
+    }
+
+    // If next node is asking for email and we should skip it
+    if (nextNode.saveToField === "email" && enquiry.skipEmail) {
+      console.log(`⏭️ Skipping email node for ${customerPhone}`);
+      nextNodeKey = nextNode.nextNodeId;
+      enquiry.conversationState = nextNodeKey;
+      await enquiry.save();
+
+      const skipToNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: nextNodeKey,
+      });
+
+      if (skipToNode) {
+        await sendMessageNode(
+          customerPhone,
+          skipToNode,
+          enquiry,
+          accessToken,
+          recipientId
+        );
+        enquiry.conversationState = nextNodeKey;
+        await enquiry.save();
+      }
+      return null;
+    }
+  }
+
   // END logic
   if (nextNodeKey === "END") {
     if (!enquiry.endMessageSent) {
@@ -412,11 +481,6 @@ const handleBotConversation = async (
     console.log(`🤖 Bot flow ended for ${customerPhone}.`);
     return null;
   }
-
-  const nextNode = await BotNode.findOne({
-    botFlow: botFlowId,
-    nodeId: nextNodeKey,
-  });
 
   if (!nextNode) {
     console.error(
