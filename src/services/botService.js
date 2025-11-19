@@ -385,9 +385,7 @@ const handleBotConversation = async (
     accessToken,
     recipientId
   );
-  // Update State
-  enquiry.conversationState = nextNode.nodeId;
-  await enquiry.save();
+
 
   // Save Reply to DB
   if (botReply && botReply.messages && botReply.messages[0]?.id) {
