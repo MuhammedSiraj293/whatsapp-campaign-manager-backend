@@ -187,40 +187,46 @@ const handleBotConversation = async (
   // ============================================================
   // Even if in cool-off, we allow button clicks to work (e.g. "Yes" to follow up)
   if (message.type === "interactive" && message.interactive?.button_reply) {
-    const btnId = message.interactive.button_reply.id;
+    const btnId = message.interactive.button_reply.id; // followup_yes or followup_no
 
-    // Fetch message from DB
-    const replyTemplate = await MessageTemplate.findOne({ messageId: btnId });
+    // Load reply BotNode from DB
+    const replyNode = await BotNode.findOne({
+      botFlow: botFlowId,
+      nodeId: btnId,
+    });
 
-    if (!replyTemplate) {
-        console.warn("No template found for", btnId);
-        return null;
+    if (!replyNode) {
+      console.warn("No BotNode found for button:", btnId);
+      return null;
     }
 
-    // Handle DB operations for the enquiry
+    // Handle enquiry updates
     if (btnId === "followup_yes") {
-        if (enquiry) { enquiry.agentContacted = true; await enquiry.save(); }
+      if (enquiry) {
+        enquiry.agentContacted = true;
+        await enquiry.save();
+      }
     }
 
     if (btnId === "followup_no") {
-        if (enquiry) {
-            enquiry.agentContacted = false;
-            enquiry.needsImmediateAttention = true;
-            await enquiry.save();
-        }
+      if (enquiry) {
+        enquiry.agentContacted = false;
+        enquiry.needsImmediateAttention = true;
+        await enquiry.save();
+      }
     }
 
-    // Send message from DB
-    await sendTextMessage(
-        customerPhone,
-        replyTemplate.text,
-        accessToken,
-        recipientId
+    // Send message as BotNode (same function you use everywhere)
+    await sendMessageNode(
+      customerPhone,
+      replyNode,
+      enquiry,
+      accessToken,
+      recipientId
     );
 
     return null;
-}
-
+  }
 
   // ============================================================
   // 3. COOL-OFF CHECK (The Fix)
@@ -233,7 +239,11 @@ const handleBotConversation = async (
 
     // If less than 1 hour has passed since the last interaction ended
     if (timeDiff < oneHourMs) {
-      console.log(`⏳ Cool-off period active for ${customerPhone} (${Math.floor(timeDiff/60000)} mins). Ignoring message.`);
+      console.log(
+        `⏳ Cool-off period active for ${customerPhone} (${Math.floor(
+          timeDiff / 60000
+        )} mins). Ignoring message.`
+      );
       return null; // STOP HERE. Do not start new flow.
     }
   }
