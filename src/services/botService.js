@@ -101,15 +101,19 @@ const sendMessageNode = async (
 };
 
 const getNextNodeKey = (message, currentNode) => {
-  if (message.type === "interactive" && message.interactive?.button_reply)
+  if (message.type === "interactive" && message.interactive?.button_reply) {
+    // User clicked a button, the ID *is* the next node key
     return message.interactive.button_reply.id;
-
-  if (message.type === "interactive" && message.interactive?.list_reply)
+  }
+  if (message.type === "interactive" && message.interactive?.list_reply) {
+    // User selected from a list, the ID *is* the next node key
     return message.interactive.list_reply.id;
-
-  if (currentNode.messageType === "text" && currentNode.nextNodeId)
+  }
+  if (currentNode.messageType === "text" && currentNode.nextNodeId) {
+    // User sent text in reply to a question, follow the simple path
     return currentNode.nextNodeId;
-
+  }
+  // Fallback
   return "main_menu";
 };
 
@@ -333,20 +337,22 @@ const handleBotConversation = async (
       enquiry[field] = "";
       await enquiry.save();
 
-      enquiry.conversationState = currentNode.nextNodeId;
+      
+      // Move to next node immediately
+      const nextNodeKey = currentNode.nextNodeId;
+      enquiry.conversationState = nextNodeKey;
       await enquiry.save();
-      const n2 = await BotNode.findOne({
-        botFlow: botFlowId,
-        nodeId: currentNode.nextNodeId,
-      });
-      await sendMessageNode(
+      
+      return await sendMessageNode(
         customerPhone,
-        n2,
+        await BotNode.findOne({
+          botFlow: currentNode.botFlow,
+          nodeId: nextNodeKey,
+        }),
         enquiry,
         accessToken,
         recipientId
       );
-      return null;
     }
 
     if (field === "email") {
