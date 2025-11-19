@@ -29,28 +29,19 @@ const extractProjectFromUrl = (text) => {
 
   try {
     const url = new URL(found[0]);
-
-    // Example URL: /properties/bloom-marbella
     const parts = url.pathname.split("/").filter(Boolean);
     const propIndex = parts.indexOf("properties");
 
     if (propIndex !== -1 && parts[propIndex + 1]) {
-      const slug = parts[propIndex + 1]; // bloom-marbella
-
-      return slug
-        .replace(/-/g, " ") // bloom marbella
-        .replace(/\b\w/g, (c) => c.toUpperCase()); // Bloom Marbella
+      const slug = parts[propIndex + 1];
+      return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     }
-
     return null;
   } catch (err) {
     return null;
   }
 };
 
-/**
- * Helper to replace variables in a message, e.g., {{name}}
- */
 const fillTemplate = (text, enquiry) => {
   if (!text) return "";
   return text
@@ -61,9 +52,6 @@ const fillTemplate = (text, enquiry) => {
     .replace(/{{bedrooms}}/gi, enquiry.bedrooms || "");
 };
 
-/**
- * Helper to replace variables in a message, e.g., {{name}}
- */
 const sendMessageNode = async (
   to,
   node,
@@ -112,29 +100,19 @@ const sendMessageNode = async (
   }
 };
 
-/**
- * Helper to find the next node based on user's reply
- */
 const getNextNodeKey = (message, currentNode) => {
-  if (message.type === "interactive" && message.interactive?.button_reply) {
-    // User clicked a button, the ID *is* the next node key
+  if (message.type === "interactive" && message.interactive?.button_reply)
     return message.interactive.button_reply.id;
-  }
-  if (message.type === "interactive" && message.interactive?.list_reply) {
-    // User selected from a list, the ID *is* the next node key
+
+  if (message.type === "interactive" && message.interactive?.list_reply)
     return message.interactive.list_reply.id;
-  }
-  if (currentNode.messageType === "text" && currentNode.nextNodeId) {
-    // User sent text in reply to a question, follow the simple path
+
+  if (currentNode.messageType === "text" && currentNode.nextNodeId)
     return currentNode.nextNodeId;
-  }
-  // Fallback
+
   return "main_menu";
 };
 
-/**
- * Main Bot Engine: Handles an incoming message
- */
 const handleBotConversation = async (
   message,
   messageBody,
@@ -144,7 +122,6 @@ const handleBotConversation = async (
   const { accessToken } = credentials;
   const customerPhone = message.from;
 
-  // 1. Find the Phone Number doc to get the active bot flow
   const phoneNumberDoc = await PhoneNumber.findOne({
     phoneNumberId: recipientId,
   });
@@ -154,7 +131,6 @@ const handleBotConversation = async (
   }
   const botFlowId = phoneNumberDoc.activeBotFlow;
 
-  // 2. Find or create the user's enquiry session
   let enquiry = await Enquiry.findOne({
     phoneNumber: customerPhone,
     recipientId: recipientId,
@@ -162,24 +138,19 @@ const handleBotConversation = async (
 
   let currentNodeKey;
 
-  /* ------------------------------------------------
-   * 2A. Handle Follow-up (45 min) & Restart Buttons
-   * ------------------------------------------------ */
+  // ------------------------------------------------
+  // FOLLOW-UP BUTTONS
+  // ------------------------------------------------
   if (message.type === "interactive" && message.interactive?.button_reply) {
     const btnId = message.interactive.button_reply.id;
 
-    // Load reply BotNode from DB
     const replyNode = await BotNode.findOne({
       botFlow: botFlowId,
       nodeId: btnId,
     });
 
-    if (!replyNode) {
-      console.warn("No BotNode found for button:", btnId);
-      return null;
-    }
+    if (!replyNode) return null;
 
-    // Handle enquiry updates
     if (btnId === "followup_yes") {
       if (enquiry) {
         enquiry.agentContacted = true;
@@ -195,7 +166,6 @@ const handleBotConversation = async (
       }
     }
 
-    // Send message as BotNode (same function you use everywhere)
     await sendMessageNode(
       customerPhone,
       replyNode,
@@ -203,48 +173,55 @@ const handleBotConversation = async (
       accessToken,
       recipientId
     );
-
     return null;
   }
 
-  // ============================================================
-  // 3. COOL-OFF CHECK (The Fix)
-  // ============================================================
+  // ------------------------------------------------
+  // COOL-OFF CHECK (1 hour)
+  // ------------------------------------------------
   if (enquiry && enquiry.conversationState === "END") {
     const oneHourMs = 60 * 60 * 1000;
-    // Check time since last update or endedAt
     const lastActivityTime = new Date(enquiry.updatedAt).getTime();
-    const timeDiff = Date.now() - lastActivityTime;
+    const diff = Date.now() - lastActivityTime;
 
-    // If less than 1 hour has passed since the last interaction ended
-    if (timeDiff < oneHourMs) {
+    if (diff < oneHourMs) {
       console.log(
-        `⏳ Cool-off period active for ${customerPhone} (${Math.floor(
-          timeDiff / 60000
-        )} mins). Ignoring message.`
+        `⏳ Cool-off active for ${customerPhone}, ignoring message...`
       );
-      return null; // STOP HERE. Do not start new flow.
+      return null;
     }
   }
 
-  // ------------- FIRST MESSAGE: Detect URL BEFORE creation -------------
+  // ------------------------------------------------
+  // AUTO-DETECT PROJECT (first message)
+  // ------------------------------------------------
   const autoProjectFirstMessage = extractProjectFromUrl(messageBody);
 
-  // ------------- New enquiry (first ever message) -------------
+  // ------------------------------------------------
+  // NEW ENQUIRY CREATION
+  // ------------------------------------------------
   if (!enquiry) {
+    const last = await Enquiry.findOne({
+      phoneNumber: customerPhone,
+      recipientId,
+    }).sort({ createdAt: -1 });
+
     const flow = await BotFlow.findById(botFlowId);
     const startNode = await BotNode.findById(flow.startNode);
 
-    // Create initial enquiry (with auto-detected project)
     enquiry = await Enquiry.create({
       phoneNumber: customerPhone,
-      recipientId: recipientId,
+      recipientId,
       projectName: autoProjectFirstMessage || null,
       pageUrl: autoProjectFirstMessage ? messageBody : null,
       conversationState: startNode.nodeId,
+
+      // 🔵 SKIP LOGIC FIX
+      skipName: last?.name ? true : false,
+      skipEmail: last?.email ? true : false,
     });
 
-    // Send START node
+    // send START
     await sendMessageNode(
       customerPhone,
       startNode,
@@ -253,13 +230,13 @@ const handleBotConversation = async (
       recipientId
     );
 
-    // 🔔 Follow-up after 45 minutes
+    // FOLLOW-UP 45 MIN
     setTimeout(async () => {
       const fresh = await Enquiry.findOne({
         phoneNumber: customerPhone,
         recipientId,
       });
-      if (fresh?.agentContacted) return;
+      if (!fresh || fresh.agentContacted) return;
 
       await sendButtonMessage(
         customerPhone,
@@ -273,7 +250,7 @@ const handleBotConversation = async (
       );
     }, 45 * 60 * 1000);
 
-    // Auto-send FIRST question node if exists
+    // send next after START
     if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
       const firstNode = await BotNode.findOne({
         botFlow: botFlowId,
@@ -297,95 +274,104 @@ const handleBotConversation = async (
     currentNodeKey = startNode.nodeId;
   }
 
-  // ------------- FIX: Always define currentNodeKey -------------
-  if (enquiry && !currentNodeKey) {
-    currentNodeKey = enquiry.conversationState;
-  }
+  if (!currentNodeKey) currentNodeKey = enquiry.conversationState;
 
-  // ------------- STEP 2: URL detection ANYTIME -------------
+  // ------------------------------------------------
+  // AUTO-DETECT PROJECT ANYTIME
+  // ------------------------------------------------
   const autoProjectLater = extractProjectFromUrl(messageBody);
   if (autoProjectLater) {
     enquiry.projectName = autoProjectLater;
     enquiry.pageUrl = messageBody;
     await enquiry.save();
-    // await sendTextMessage(
-    //   customerPhone,
-    //   `📌 Noted! You’re interested in *${autoProjectLater}*.\nOur team will assist you shortly.`,
-    //   accessToken,
-    //   recipientId
-    // );
     return null;
   }
 
-  // 3. Find the user's current node in the flow
+  // ------------------------------------------------
+  // LOAD CURRENT NODE
+  // ------------------------------------------------
   const currentNode = await BotNode.findOne({
     botFlow: botFlowId,
     nodeId: currentNodeKey,
   });
-  if (!currentNode) {
-    console.error(
-      `❌ Bot error: Could not find node "${currentNodeKey}" in flow "${botFlowId}"`
-    );
+
+  if (!currentNode) return null;
+
+  // ------------------------------------------------
+  // 🔵 SKIP LOGIC (Only name + email)
+  // ------------------------------------------------
+  if (currentNode.saveToField === "name" && enquiry.skipName) {
+    enquiry.conversationState = currentNode.nextNodeId;
+    await enquiry.save();
+    const nn = await BotNode.findOne({
+      botFlow: botFlowId,
+      nodeId: currentNode.nextNodeId,
+    });
+    await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
     return null;
   }
 
-  // 4. If the current node was a question, save the answer
+  if (currentNode.saveToField === "email" && enquiry.skipEmail) {
+    enquiry.conversationState = currentNode.nextNodeId;
+    await enquiry.save();
+    const nn = await BotNode.findOne({
+      botFlow: botFlowId,
+      nodeId: currentNode.nextNodeId,
+    });
+    await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+    return null;
+  }
+
+  // ------------------------------------------------
+  // SAVE USER ANSWER
+  // ------------------------------------------------
   if (currentNode.messageType === "text" && currentNode.saveToField) {
-    const field = currentNode.saveToField.toLowerCase(); // normalize
+    const field = currentNode.saveToField.toLowerCase();
     const userInput = (messageBody || "").trim();
 
-    // 0. Skip option
     if (userInput.toLowerCase() === "skip") {
-      // User chose to skip
-      enquiry[field] = ""; // Clear or leave empty
+      enquiry[field] = "";
       await enquiry.save();
 
-      // Move to next node immediately
-      const nextNodeKey = currentNode.nextNodeId;
-      enquiry.conversationState = nextNodeKey;
+      enquiry.conversationState = currentNode.nextNodeId;
       await enquiry.save();
-
-      return await sendMessageNode(
+      const n2 = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: currentNode.nextNodeId,
+      });
+      await sendMessageNode(
         customerPhone,
-        await BotNode.findOne({
-          botFlow: currentNode.botFlow,
-          nodeId: nextNodeKey,
-        }),
+        n2,
         enquiry,
         accessToken,
         recipientId
       );
+      return null;
     }
 
-    // 1. Email validation
     if (field === "email") {
-      const formattedEmail = userInput.toLowerCase();
-
-      if (!isValidEmail(formattedEmail)) {
+      const formatted = userInput.toLowerCase();
+      if (!isValidEmail(formatted)) {
         await sendTextMessage(
           customerPhone,
           "Invalid email. Please enter a valid email address (example: name@example.com)\n\nOr type *skip* to continue without email.",
           accessToken,
           recipientId
         );
-        return null; // repeat same node
+        return null;
       }
-      // Save valid email
-      enquiry.email = formattedEmail;
+      enquiry.email = formatted;
     } else {
-      // 2. Normal field
       enquiry[currentNode.saveToField] = userInput;
     }
 
     await enquiry.save();
   }
 
-  // 5. Determine the next node to go to
   const nextNodeKey = getNextNodeKey(message, currentNode);
 
-  // ---------- END handling ----------
+  // END logic
   if (nextNodeKey === "END") {
-    // Send END node message ONCE (from DB) if exists
     if (!enquiry.endMessageSent) {
       const endNode = await BotNode.findOne({
         botFlow: botFlowId,
@@ -406,39 +392,16 @@ const handleBotConversation = async (
     enquiry.conversationState = "END";
     enquiry.endedAt = new Date();
     await enquiry.save();
-    console.log(`🤖 Bot flow ended for ${customerPhone}.`);
     return null;
   }
 
-  // 6. Fetch the next node from the database
   const nextNode = await BotNode.findOne({
     botFlow: botFlowId,
     nodeId: nextNodeKey,
   });
-  if (!nextNode) {
-    console.error(
-      `❌ Bot error: Could not find next node "${nextNodeKey}" in flow "${botFlowId}"`
-    );
-    // Fallback: send them to the start
-    const startNode = await BotNode.findOne({
-      botFlow: botFlowId,
-      nodeId: "START",
-    });
-    if (startNode) {
-      await sendMessageNode(
-        customerPhone,
-        startNode,
-        enquiry,
-        accessToken,
-        recipientId
-      );
-      enquiry.conversationState = "START";
-      await enquiry.save();
-    }
-    return null;
-  }
 
-  // 7. Send the new message from the next node
+  if (!nextNode) return null;
+
   const botReply = await sendMessageNode(
     customerPhone,
     nextNode,
@@ -447,11 +410,9 @@ const handleBotConversation = async (
     recipientId
   );
 
-  // 8. Update the user's state to the new node
   enquiry.conversationState = nextNodeKey;
   await enquiry.save();
 
-  // 9. Save the bot's reply to the chat history
   if (botReply && botReply.messages && botReply.messages[0]?.id) {
     const newAutoReply = new Reply({
       messageId: botReply.messages[0].id,
@@ -463,7 +424,7 @@ const handleBotConversation = async (
       read: true,
     });
     await newAutoReply.save();
-    return newAutoReply; // Return the saved reply
+    return newAutoReply;
   }
 
   return null;
