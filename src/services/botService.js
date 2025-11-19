@@ -182,6 +182,68 @@ const handleBotConversation = async (
 
   let enquiry = lastEnquiry;
 
+  // ============================================================
+  // 2. HANDLE BUTTON CLICKS (Follow-ups / Explicit Actions)
+  // ============================================================
+  // Even if in cool-off, we allow button clicks to work (e.g. "Yes" to follow up)
+ if (message.type === "interactive" && message.interactive?.button_reply) {
+  const btnId = message.interactive.button_reply.id;
+
+  // Fetch button config from DB
+  const button = await BotButton.findOne({ botFlow: botFlowId, buttonId: btnId });
+
+  if (!button) {
+    console.warn("Unknown button ID:", btnId);
+    return null;
+  }
+
+  // Perform action based on DB value
+  if (enquiry) {
+    switch (button.action) {
+      case "SET_AGENT_CONTACTED_TRUE":
+        enquiry.agentContacted = true;
+        break;
+        
+      case "SET_NEEDS_ATTENTION":
+        enquiry.agentContacted = false;
+        enquiry.needsImmediateAttention = true;
+        break;
+
+      // Add more actions as you want
+      default:
+        console.warn("Unknown action:", button.action);
+    }
+
+    await enquiry.save();
+  }
+
+  // Send default reply from DB
+  await sendTextMessage(
+    customerPhone,
+    button.replyMessage,
+    accessToken,
+    recipientId
+  );
+
+  return null;
+}
+
+  // ============================================================
+  // 3. COOL-OFF CHECK (The Fix)
+  // ============================================================
+  if (enquiry && enquiry.conversationState === "END") {
+    const oneHourMs = 60 * 60 * 1000;
+    // Check time since last update or endedAt
+    const lastActivityTime = new Date(enquiry.updatedAt).getTime();
+    const timeDiff = Date.now() - lastActivityTime;
+
+    // If less than 1 hour has passed since the last interaction ended
+    if (timeDiff < oneHourMs) {
+      console.log(`⏳ Cool-off period active for ${customerPhone} (${Math.floor(timeDiff/60000)} mins). Ignoring message.`);
+      return null; // STOP HERE. Do not start new flow.
+    }
+  }
+
   // 2. DECIDE: Continue or Start New?
   // If no enquiry exists OR the last one is finished, we start fresh.
   const isNewSession = !enquiry || enquiry.conversationState === "END";
