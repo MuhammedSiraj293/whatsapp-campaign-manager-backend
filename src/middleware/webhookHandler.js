@@ -311,8 +311,7 @@ const processWebhook = async (req, res) => {
           /* ------------------------------
            * C3) Keyword logic
            * ------------------------------ */
-            messageBodyLower.includes("yes, i am interested") ||
-            /\byes\b/i.test(messageBodyLower)
+            messageBodyLower.includes("yes, i am interested")
           ) {
             autoReplyText =
               "Your interest has been noted. Our team will contact you shortly.";
