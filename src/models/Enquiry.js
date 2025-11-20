@@ -36,7 +36,7 @@ const EnquirySchema = new mongoose.Schema({
   },
 
   // -----------------------------
-  // NEW FIELDS FOR END LOGIC
+  // END LOGIC FIELDS
   // -----------------------------
 
   // Has the user completed the flow?
@@ -51,13 +51,46 @@ const EnquirySchema = new mongoose.Schema({
     default: false,
   },
 
-  // 45-minute follow-up tracking
+  // -----------------------------
+  // FOLLOW-UP TRACKING FIELDS
+  // -----------------------------
+
+  // Has the 45-minute follow-up been sent?
+  followUpSent: {
+    type: Boolean,
+    default: false,
+  },
+
+  // When was the follow-up sent?
+  followUpSentAt: {
+    type: Date,
+    default: null,
+  },
+
+  // Did an agent contact the customer?
   agentContacted: {
     type: Boolean,
     default: false,
   },
 
+  // Customer said agent didn't contact them
   needsImmediateAttention: {
+    type: Boolean,
+    default: false,
+  },
+
+  // -----------------------------
+  // SKIP LOGIC FIELDS
+  // -----------------------------
+
+  // Skip asking for name if we already have it from previous enquiry
+  skipName: {
+    type: Boolean,
+    default: false,
+  },
+
+  // Skip asking for email if we already have it from previous enquiry
+  skipEmail: {
     type: Boolean,
     default: false,
   },
@@ -68,5 +101,13 @@ const EnquirySchema = new mongoose.Schema({
 
 // Allow multiple enquiries for same phone number over time
 EnquirySchema.index({ phoneNumber: 1, recipientId: 1 });
+
+// Index for efficient follow-up queries
+EnquirySchema.index({ 
+  followUpSent: 1, 
+  agentContacted: 1, 
+  conversationState: 1, 
+  createdAt: 1 
+});
 
 module.exports = mongoose.model('Enquiry', EnquirySchema);

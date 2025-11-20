@@ -11,6 +11,7 @@ dotenv.config();
 
 const connectDB = require('./config/db');
 const { startScheduler } = require('./jobs/scheduler');
+const { checkAndSendFollowUps } = require('./services/followUpScheduler');
 
 // Route Imports
 const campaignRoutes = require('./routes/campaignRoutes');
@@ -24,7 +25,7 @@ const logRoutes = require('./routes/logRoutes');
 const userRoutes = require('./routes/userRoutes');
 const wabaRoutes = require('./routes/wabaRoutes');
 const enquiryRoutes = require('./routes/enquiryRoutes');
-const botFlowRoutes = require('./routes/botFlowRoutes'); // <-- 1. IMPORT NEW ROUTES
+const botFlowRoutes = require('./routes/botFlowRoutes');
 
 connectDB();
 
@@ -78,9 +79,28 @@ app.use('/api/logs', logRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/waba', wabaRoutes);
 app.use('/api/enquiries', enquiryRoutes);
-app.use('/api/bot-flows', botFlowRoutes); // <-- 2. USE THE NEW ROUTES
+app.use('/api/bot-flows', botFlowRoutes);
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
+  
+  // Start campaign scheduler
   startScheduler();
+  
+  // -----------------------------
+  // FOLLOW-UP SCHEDULER
+  // -----------------------------
+  
+  // Run initial follow-up check after 10 seconds (catch any missed ones)
+  setTimeout(async () => {
+    console.log('🚀 Running initial follow-up check...');
+    await checkAndSendFollowUps();
+  }, 10000);
+
+  // Run follow-up checker every 5 minutes
+  setInterval(async () => {
+    await checkAndSendFollowUps();
+  }, 5 * 60 * 1000);
+  
+  console.log('⏰ Follow-up scheduler started (runs every 5 minutes)');
 });
