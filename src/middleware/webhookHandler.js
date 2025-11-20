@@ -311,7 +311,6 @@ const processWebhook = async (req, res) => {
           /* ------------------------------
            * C3) Keyword logic
            * ------------------------------ */
-            // messageBodyLower === "yes" ||
             messageBodyLower.includes("yes, i am interested") ||
             /\byes\b/i.test(messageBodyLower)
           ) {
