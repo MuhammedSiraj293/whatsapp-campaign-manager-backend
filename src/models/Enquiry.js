@@ -15,7 +15,7 @@ const EnquirySchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-
+ 
   name: { type: String, trim: true },
   email: { type: String, trim: true },
   projectName: { type: String, trim: true },

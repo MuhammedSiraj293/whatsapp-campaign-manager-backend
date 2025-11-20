@@ -23,23 +23,29 @@ const checkAndSendFollowUps = async () => {
     const enquiries = await Enquiry.find({
       agentContacted: { $ne: true },
       followUpSent: { $ne: true },
-      conversationState: { $ne: "END" },
+      // conversationState: { $ne: "END" },
       createdAt: { $lte: new Date(now - followUpDelayMs) },
     });
 
-    console.log(`📋 Found ${enquiries.length} enquiries needing follow-up`);
+    if (enquiries.length > 0) {
+        console.log(`📋 Found ${enquiries.length} enquiries needing follow-up`);
+    }
 
     for (const enquiry of enquiries) {
       try {
-        // Get phone number credentials
+        // --- FIX 1: Populate WabaAccount to get the token ---
         const phoneDoc = await PhoneNumber.findOne({
           phoneNumberId: enquiry.recipientId,
-        });
+        }).populate("wabaAccount");
 
-        if (!phoneDoc) {
-          console.error(`❌ No phone doc found for ${enquiry.recipientId}`);
+        // --- FIX 2: Check for WABA account existence ---
+        if (!phoneDoc || !phoneDoc.wabaAccount) {
+          console.error(`❌ No WABA credentials found for ${enquiry.recipientId}`);
           continue;
         }
+
+        // --- FIX 3: Access token from the populated WABA account ---
+        const accessToken = phoneDoc.wabaAccount.accessToken;
 
         // Send follow-up message
         await sendButtonMessage(
@@ -49,7 +55,7 @@ const checkAndSendFollowUps = async () => {
             { id: "followup_yes", title: "Yes!" },
             { id: "followup_no", title: "No" },
           ],
-          phoneDoc.accessToken,
+          accessToken,
           enquiry.recipientId
         );
 
@@ -62,12 +68,14 @@ const checkAndSendFollowUps = async () => {
       } catch (error) {
         console.error(
           `❌ Error sending follow-up to ${enquiry.phoneNumber}:`,
-          error
+          error.message
         );
       }
     }
-
-    console.log("✅ Follow-up check completed");
+    
+    if (enquiries.length > 0) {
+        console.log("✅ Follow-up check completed");
+    }
   } catch (error) {
     console.error("❌ Error in checkAndSendFollowUps:", error);
   }
