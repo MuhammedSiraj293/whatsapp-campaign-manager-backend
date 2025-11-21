@@ -306,26 +306,26 @@ const processWebhook = async (req, res) => {
 
             autoReplyText =
               "Welcome back to Capital Avenue! How can we assist you today?";
-              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
+            console.log(`✅ Contact ${message.from} has been re-subscribed.`);
           } else if (
-
-          /* ------------------------------
-           * C3) Keyword logic
-           * ------------------------------ */
+            /* ------------------------------
+             * C3) Keyword logic
+             * ------------------------------ */
             messageBodyLower.includes("yes, i am interested")
           ) {
             autoReplyText =
               "Your interest has been noted. We will contact you shortly. Thank you for your response.";
           } else if (messageBodyLower.includes("نعم، مهتم")) {
-            autoReplyText = ".تم تسجيل اهتمامك. سنتواصل معك قريبًا. شكرًا على ردك";
+            autoReplyText =
+              ".تم تسجيل اهتمامك. سنتواصل معك قريبًا. شكرًا على ردك";
           } else if (messageBodyLower.includes("not interested")) {
-            autoReplyText = "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+            autoReplyText =
+              "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
           } else {
-
-          /* ------------------------------
-           * C4) No keyword → Welcome / Bot
-           * IMPORTANT: Bot ONLY for NON-CAMPAIGN
-           * ------------------------------ */
+            /* ------------------------------
+             * C4) No keyword → Welcome / Bot
+             * IMPORTANT: Bot ONLY for NON-CAMPAIGN
+             * ------------------------------ */
             // const totalIncoming = await Reply.countDocuments({
             //   from: message.from,
             //   direction: "incoming",
@@ -338,7 +338,7 @@ const processWebhook = async (req, res) => {
             // }
 
             // BOT HANDLES ONLY NON-CAMPAIGN
-             if (
+            if (
               !isCampaignReply &&
               (message.type === "text" || message.type === "interactive")
             ) {
@@ -413,9 +413,26 @@ const processWebhook = async (req, res) => {
      * --------------------------------------------------------- */
     if (value?.statuses?.[0]) {
       const status = value.statuses[0];
+
+      // 🔥 NEW: Capture error details
+      let errorInfo = null;
+
+      if (status.errors && status.errors.length > 0) {
+        errorInfo = status.errors.map((err) => ({
+          code: err.code,
+          title: err.title,
+          details: err.details,
+        }));
+
+        console.log("❌ WhatsApp Delivery Error:", failureReason);
+      }
+
       const updated = await Analytics.findOneAndUpdate(
         { wamid: status.id },
-        { status: status.status },
+        {
+          status: status.status,
+          failureReason: failureReason // <-- save errors
+        },
         { new: true }
       );
 
@@ -423,6 +440,7 @@ const processWebhook = async (req, res) => {
         io.emit("messageStatusUpdate", {
           wamid: status.id,
           status: status.status,
+          failureReason: failureReason,
           from: status.recipient_id,
         });
 

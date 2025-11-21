@@ -108,7 +108,7 @@ const exportCampaignAnalytics = async (req, res) => {
       { label: "Failure Reason", value: "failureReason" }, // <-- THIS LINE WAS MISSING
       { label: "Last Updated", value: "updatedAt" },
     ];
-
+ 
     const json2csvParser = new Parser({ fields });
     const csv = json2csvParser.parse(analyticsData);
     res.header("Content-Type", "text/csv");
