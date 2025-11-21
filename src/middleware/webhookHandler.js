@@ -285,7 +285,7 @@ const processWebhook = async (req, res) => {
           messageBodyLower.includes("إيقاف")
         ) {
           autoReplyText =
-            "You’ve been unsubscribed. You won’t receive further messages.";
+            "You’ve been unsubscribed. won’t receive further messages, but you can reach out anytime if you need assistance.";
 
           await Contact.findOneAndUpdate(
             { phoneNumber: message.from },
@@ -306,6 +306,7 @@ const processWebhook = async (req, res) => {
 
             autoReplyText =
               "Welcome back to Capital Avenue! How can we assist you today?";
+              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
           } else if (
 
           /* ------------------------------
@@ -314,11 +315,11 @@ const processWebhook = async (req, res) => {
             messageBodyLower.includes("yes, i am interested")
           ) {
             autoReplyText =
-              "Your interest has been noted. Our team will contact you shortly.";
+              "Your interest has been noted. We will contact you shortly. Thank you for your response.";
           } else if (messageBodyLower.includes("نعم، مهتم")) {
-            autoReplyText = ".تم تسجيل اهتمامك. سنتواصل معك قريبًا.";
+            autoReplyText = ".تم تسجيل اهتمامك. سنتواصل معك قريبًا. شكرًا على ردك";
           } else if (messageBodyLower.includes("not interested")) {
-            autoReplyText = "No worries! Feel free to reach out anytime.";
+            autoReplyText = "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
           } else {
 
           /* ------------------------------
