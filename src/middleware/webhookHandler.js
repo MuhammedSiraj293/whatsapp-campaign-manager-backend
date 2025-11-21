@@ -415,15 +415,13 @@ const processWebhook = async (req, res) => {
       const status = value.statuses[0];
 
       // 🔥 NEW: Capture error details
-      let errorInfo = null;
+      let failureReason = null;
 
       if (status.errors && status.errors.length > 0) {
-        errorInfo = status.errors.map((err) => ({
-          code: err.code,
-          title: err.title,
-          details: err.details,
-        }));
-
+        const err = status.errors[0];
+        failureReason = `${err.code} - ${err.title} (${
+          err.details || "No details"
+        })`;
         console.log("❌ WhatsApp Delivery Error:", failureReason);
       }
 
@@ -431,7 +429,7 @@ const processWebhook = async (req, res) => {
         { wamid: status.id },
         {
           status: status.status,
-          failureReason: failureReason // <-- save errors
+          failureReason: failureReason, // <-- save errors
         },
         { new: true }
       );
