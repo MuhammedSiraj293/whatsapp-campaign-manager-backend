@@ -19,6 +19,9 @@ const CampaignSchema = new mongoose.Schema(
     templateName: { type: String, required: true },
     templateLanguage: { type: String, required: true },
     headerImageUrl: { type: String, trim: true },
+    // --- NEW FIELD ---
+    // Stores the Media ID from Meta (e.g., "1234567890")
+    headerMediaId: { type: String, trim: true },
     bodyVariables: [{ type: String, trim: true }],
     expectedVariables: { type: Number, default: 0 },
     status: {
@@ -44,7 +47,7 @@ const CampaignSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true, 
+    timestamps: true,
   }
 );
 

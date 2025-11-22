@@ -154,6 +154,7 @@ const sendCampaign = async (campaignId) => {
         campaign.templateLanguage,
         {
           headerImageUrl: campaign.headerImageUrl,
+          headerMediaId: campaign.headerMediaId,
           bodyVariables: finalBodyVariables,
           buttons: campaign.buttons,
         },

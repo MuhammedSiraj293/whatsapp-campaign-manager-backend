@@ -8,6 +8,7 @@ const Log = require('../models/Log'); // <-- 1. IMPORT THE LOG MODEL
 const { sendCampaign } = require("../services/campaignService");
 const { getIO } = require('../socketManager');
 const axios = require("axios");
+const { uploadMedia } = require('../integrations/whatsappAPI');
 // const wabaConfig = require('../config/wabaConfig');
 
 const getCampaigns = async (req, res) => {
@@ -43,60 +44,71 @@ const getRecipientCount = async (req, res) => {
 const createCampaign = async (req, res) => {
   try {
     const {
-      name,
-      message,
-      templateName,
-      templateLanguage,
-      headerImageUrl,
-      expectedVariables,
-      scheduledFor,
-      spreadsheetId,
-      contactList,
-      phoneNumber,
-      buttons, // Get all fields
+      name, message, templateName, templateLanguage, 
+      expectedVariables, scheduledFor, spreadsheetId,
+      contactList, phoneNumber, buttons: buttonsString,
+      headerImageUrl // Fallback if they provided a URL
     } = req.body;
 
-    // --- NEW IMAGE LOGIC ---
-    let finalHeaderImageUrl = req.body.headerImageUrl; // Default to the URL typed in
-
-    if (req.file) {
-      // If a file was uploaded, construct the public URL
-      // Uses the server's host (e.g., https://my-app.onrender.com/uploads/filename.jpg)
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.get('host');
-      finalHeaderImageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+    // Parse buttons if they came as a string
+    let buttons = [];
+    if (buttonsString) {
+        try { buttons = JSON.parse(buttonsString); } catch (e) {}
     }
 
     if (!phoneNumber || !contactList) {
-      return res.status(400).json({
-        success: false,
-        error: '"Send From" and "Send To" are required.',
-      });
+        return res.status(400).json({ success: false, error: '"Send From" and "Send To" are required.' });
+    }
+
+    // --- NEW LOGIC: UPLOAD TO META ---
+    let finalHeaderMediaId = null;
+    let finalHeaderImageUrl = headerImageUrl;
+
+    if (req.file) {
+        console.log("📂 File detected. Uploading to Meta...");
+        
+        // 1. Find credentials to upload
+        const phoneDoc = await PhoneNumber.findById(phoneNumber).populate('wabaAccount');
+        if (!phoneDoc || !phoneDoc.wabaAccount) {
+             return res.status(400).json({ success: false, error: 'WABA credentials not found for this phone number.' });
+        }
+
+        // 2. Upload to Meta
+        try {
+            finalHeaderMediaId = await uploadMedia(
+                req.file, 
+                phoneDoc.wabaAccount.accessToken, 
+                phoneDoc.phoneNumberId
+            );
+            console.log(`✅ Media uploaded to Meta. ID: ${finalHeaderMediaId}`);
+            // We don't need a URL if we have an ID, but we can clear it to be safe
+            finalHeaderImageUrl = ''; 
+        } catch (uploadError) {
+            return res.status(500).json({ success: false, error: `Failed to upload image to WhatsApp: ${uploadError.message}` });
+        }
     }
 
     const campaignData = {
-      name,
-      message,
-      templateName,
-      templateLanguage,
-      contactList,
-      phoneNumber,
-      status: scheduledFor ? "scheduled" : "draft",
-      headerImageUrl: finalHeaderImageUrl, // Use the determined URL
-      ...(expectedVariables && {
-        expectedVariables: parseInt(expectedVariables, 10) || 0,
-      }),
-      ...(scheduledFor && {
-        scheduledFor: new Date(scheduledFor).toISOString(),
-      }),
-      ...(spreadsheetId && { spreadsheetId }),
-      ...(buttons && { buttons }),
+      name, message, templateName, templateLanguage, contactList, phoneNumber,
+      status: scheduledFor ? 'scheduled' : 'draft',
+      
+      // Save both (one will be null)
+      headerImageUrl: finalHeaderImageUrl, 
+      headerMediaId: finalHeaderMediaId,
+
+      expectedVariables: parseInt(expectedVariables, 10) || 0,
+      spreadsheetId,
+      buttons,
+      ...(scheduledFor && { scheduledFor: new Date(scheduledFor).toISOString() }),
     };
 
     const campaign = await Campaign.create(campaignData);
-    getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
+    
+    getIO().emit('campaignsUpdated');
+    
     res.status(201).json({ success: true, data: campaign });
   } catch (error) {
+    console.error("Error creating campaign:", error);
     res.status(400).json({ success: false, error: error.message });
   }
 };
