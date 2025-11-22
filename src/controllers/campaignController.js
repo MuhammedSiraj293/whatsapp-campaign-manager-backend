@@ -56,6 +56,17 @@ const createCampaign = async (req, res) => {
       buttons, // Get all fields
     } = req.body;
 
+    // --- NEW IMAGE LOGIC ---
+    let finalHeaderImageUrl = req.body.headerImageUrl; // Default to the URL typed in
+
+    if (req.file) {
+      // If a file was uploaded, construct the public URL
+      // Uses the server's host (e.g., https://my-app.onrender.com/uploads/filename.jpg)
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.get('host');
+      finalHeaderImageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+    }
+
     if (!phoneNumber || !contactList) {
       return res.status(400).json({
         success: false,
@@ -71,7 +82,7 @@ const createCampaign = async (req, res) => {
       contactList,
       phoneNumber,
       status: scheduledFor ? "scheduled" : "draft",
-      ...(headerImageUrl && { headerImageUrl }),
+      headerImageUrl: finalHeaderImageUrl, // Use the determined URL
       ...(expectedVariables && {
         expectedVariables: parseInt(expectedVariables, 10) || 0,
       }),

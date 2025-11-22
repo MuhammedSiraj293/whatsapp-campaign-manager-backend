@@ -15,11 +15,23 @@ const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+// Configure Multer for image uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+const upload = multer({ storage });
+
 // This route handles getting all campaigns (legacy) and creating a new one
 router
   .route("/")
   .get(protect, authorize("admin", "manager"), getCampaigns)
-  .post(protect, authorize("admin", "manager"), createCampaign);
+  // --- UPDATED: Add upload.single('headerImage') middleware ---
+  .post(protect, authorize('admin', 'manager'), upload.single('headerImage'), createCampaign);
 
 // --- 2. NEW ROUTES ---
 // Get campaigns for a SPECIFIC WABA

@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const http = require('http');
 const socketManager = require('./socketManager');
+const path = require('path'); // <-- 1. Import path
 
 // Load environment variables first
 dotenv.config();
@@ -56,6 +57,10 @@ io.on('connection', (socket) => {
 });
 
 app.use(express.json());
+
+// --- 2. SERVE UPLOADS FOLDER STATICALLY ---
+// This allows URLs like https://your-app.com/uploads/image.jpg to work
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 const PORT = process.env.PORT || 10000;
 
