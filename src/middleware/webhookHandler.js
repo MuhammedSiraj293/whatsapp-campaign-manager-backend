@@ -133,6 +133,8 @@ const processWebhook = async (req, res) => {
         case "button":
           if (message.interactive?.button_reply) {
             messageBody = message.interactive.button_reply.title;
+          } else if (message.interactive?.list_reply) {
+            messageBody = message.interactive.list_reply.title;
           } else if (message.button?.text) {
             messageBody = message.button.text;
           }
