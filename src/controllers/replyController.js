@@ -109,6 +109,7 @@ const getMessagesByNumber = async (req, res) => {
           direction: 1,
           mediaId: 1,
           mediaType: 1,
+          interactive: 1,
           status: { $arrayElemAt: ["$analyticsData.status", 0] },
         },
       },
