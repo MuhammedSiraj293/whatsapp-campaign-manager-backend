@@ -114,6 +114,9 @@ const processWebhook = async (req, res) => {
       /* -------------------------------------------
        * A3) NORMALIZE MESSAGE BODY
        * ------------------------------------------- */
+      /* -------------------------------------------
+       * A3) NORMALIZE MESSAGE BODY
+       * ------------------------------------------- */
       const newReplyData = {
         messageId: message.id,
         from: message.from,
@@ -121,12 +124,31 @@ const processWebhook = async (req, res) => {
         timestamp: new Date(message.timestamp * 1000),
         direction: "incoming",
         campaign: campaignToCredit?._id || null,
+        type: message.type, // Save the type explicitly
       };
+
+      // Handle Context (Quoted Replies)
+      if (message.context) {
+        newReplyData.context = {
+          id: message.context.id,
+          from: message.context.from,
+        };
+      }
 
       switch (message.type) {
         case "text":
           messageBody = message.text.body;
           newReplyData.body = messageBody;
+          break;
+
+        case "reaction":
+          messageBody = message.reaction.emoji;
+          newReplyData.body = messageBody; // Store emoji as body for fallback
+          newReplyData.reaction = {
+            emoji: message.reaction.emoji,
+            messageId: message.reaction.message_id,
+          };
+          console.log(`👍 Reaction received: ${message.reaction.emoji}`);
           break;
 
         case "interactive":
