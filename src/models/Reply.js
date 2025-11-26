@@ -49,6 +49,46 @@ const ReplySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Campaign",
     },
+    // --- NEW FIELD FOR INTERACTIVE MESSAGES ---
+    interactive: {
+      type: {
+        type: String, // 'button' or 'list'
+        enum: ["button", "list"],
+      },
+      header: {
+        type: String,
+      },
+      body: {
+        type: String,
+      },
+      footer: {
+        type: String,
+      },
+      action: {
+        buttons: [
+          {
+            type: { type: String, default: "reply" },
+            reply: {
+              id: String,
+              title: String,
+            },
+          },
+        ],
+        button: String,
+        sections: [
+          {
+            title: String,
+            rows: [
+              {
+                id: String,
+                title: String,
+                description: String,
+              },
+            ],
+          },
+        ],
+      },
+    },
   },
   {
     timestamps: true,

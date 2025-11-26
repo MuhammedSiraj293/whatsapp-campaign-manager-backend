@@ -180,10 +180,10 @@ const handleBotConversation = async (
         accessToken,
         recipientId
       );
-      
+
       enquiry.conversationState = btnId;
       await enquiry.save();
-      
+
       return null;
     }
     // If not a follow-up button, continue with normal flow processing below
@@ -207,24 +207,24 @@ const handleBotConversation = async (
       console.log(
         `🔄 Cool-off period expired for ${customerPhone}, restarting conversation...`
       );
-      
+
       const flow = await BotFlow.findById(botFlowId);
       const startNode = await BotNode.findById(flow.startNode);
-      
+
       // Update existing enquiry with new conversation
       enquiry.conversationState = startNode.nodeId;
       enquiry.endMessageSent = false;
       enquiry.endedAt = null;
-      
+
       // Auto-detect project from new message
       const autoProjectRestart = extractProjectFromUrl(messageBody);
       if (autoProjectRestart) {
         enquiry.projectName = autoProjectRestart;
         enquiry.pageUrl = messageBody;
       }
-      
+
       await enquiry.save();
-      
+
       // Send START message
       await sendMessageNode(
         customerPhone,
@@ -233,7 +233,7 @@ const handleBotConversation = async (
         accessToken,
         recipientId
       );
-      
+
       // Send next node after START
       if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
         const firstNode = await BotNode.findOne({
@@ -254,7 +254,7 @@ const handleBotConversation = async (
           return null;
         }
       }
-      
+
       return null;
     }
   }
@@ -323,7 +323,9 @@ const handleBotConversation = async (
 
   if (enquiry && !currentNodeKey) {
     currentNodeKey = enquiry.conversationState;
-    console.log(`📌 Using enquiry.conversationState as currentNodeKey: ${currentNodeKey}`);
+    console.log(
+      `📌 Using enquiry.conversationState as currentNodeKey: ${currentNodeKey}`
+    );
   } else if (currentNodeKey) {
     console.log(`📌 currentNodeKey already set: ${currentNodeKey}`);
   } else {
@@ -361,7 +363,9 @@ const handleBotConversation = async (
     return null;
   }
 
-  console.log(`📍 Current node: ${currentNode.nodeId} (type: ${currentNode.messageType})`);
+  console.log(
+    `📍 Current node: ${currentNode.nodeId} (type: ${currentNode.messageType})`
+  );
 
   // ------------------------------------------------
   // 🔵 SKIP LOGIC (Only name + email)
@@ -375,7 +379,13 @@ const handleBotConversation = async (
       nodeId: currentNode.nextNodeId,
     });
     if (nn) {
-      await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+      await sendMessageNode(
+        customerPhone,
+        nn,
+        enquiry,
+        accessToken,
+        recipientId
+      );
     }
     return null;
   }
@@ -389,7 +399,13 @@ const handleBotConversation = async (
       nodeId: currentNode.nextNodeId,
     });
     if (nn) {
-      await sendMessageNode(customerPhone, nn, enquiry, accessToken, recipientId);
+      await sendMessageNode(
+        customerPhone,
+        nn,
+        enquiry,
+        accessToken,
+        recipientId
+      );
     }
     return null;
   }
@@ -455,11 +471,13 @@ const handleBotConversation = async (
   if (message.type === "interactive") {
     console.log(`🎯 Interactive message received`);
     console.log(`   Type: ${message.interactive?.type}`);
-    
+
     if (message.interactive?.list_reply) {
       console.log(`   List reply ID: ${message.interactive.list_reply.id}`);
-      console.log(`   List reply title: ${message.interactive.list_reply.title}`);
-      
+      console.log(
+        `   List reply title: ${message.interactive.list_reply.title}`
+      );
+
       const selectedValue = message.interactive.list_reply.title;
       if (currentNode.saveToField) {
         enquiry[currentNode.saveToField] = selectedValue;
@@ -467,11 +485,13 @@ const handleBotConversation = async (
         console.log(`✅ Saved ${currentNode.saveToField}: ${selectedValue}`);
       }
     }
-    
+
     if (message.interactive?.button_reply) {
       console.log(`   Button reply ID: ${message.interactive.button_reply.id}`);
-      console.log(`   Button reply title: ${message.interactive.button_reply.title}`);
-      
+      console.log(
+        `   Button reply title: ${message.interactive.button_reply.title}`
+      );
+
       const selectedValue = message.interactive.button_reply.title;
       if (currentNode.saveToField) {
         enquiry[currentNode.saveToField] = selectedValue;
@@ -539,7 +559,7 @@ const handleBotConversation = async (
     );
     console.error(`Current node was: ${currentNode.nodeId}`);
     console.error(`Enquiry state: ${enquiry.conversationState}`);
-    
+
     // Don't send START again - just log the error and stop
     return null;
   }
@@ -552,14 +572,20 @@ const handleBotConversation = async (
   if (nextNode.saveToField === "name" && enquiry.skipName) {
     console.log(`⏭️ Skipping name node for ${customerPhone}`);
     const skipToNodeKey = nextNode.nextNodeId;
-    
+
     const skipToNode = await BotNode.findOne({
       botFlow: botFlowId,
       nodeId: skipToNodeKey,
     });
-    
+
     if (skipToNode) {
-      await sendMessageNode(customerPhone, skipToNode, enquiry, accessToken, recipientId);
+      await sendMessageNode(
+        customerPhone,
+        skipToNode,
+        enquiry,
+        accessToken,
+        recipientId
+      );
       enquiry.conversationState = skipToNodeKey;
       await enquiry.save();
     }
@@ -569,14 +595,20 @@ const handleBotConversation = async (
   if (nextNode.saveToField === "email" && enquiry.skipEmail) {
     console.log(`⏭️ Skipping email node for ${customerPhone}`);
     const skipToNodeKey = nextNode.nextNodeId;
-    
+
     const skipToNode = await BotNode.findOne({
       botFlow: botFlowId,
       nodeId: skipToNodeKey,
     });
-    
+
     if (skipToNode) {
-      await sendMessageNode(customerPhone, skipToNode, enquiry, accessToken, recipientId);
+      await sendMessageNode(
+        customerPhone,
+        skipToNode,
+        enquiry,
+        accessToken,
+        recipientId
+      );
       enquiry.conversationState = skipToNodeKey;
       await enquiry.save();
     }
@@ -587,7 +619,7 @@ const handleBotConversation = async (
   // SEND NEXT NODE MESSAGE
   // ------------------------------------------------
   console.log(`📤 Sending message for node: ${nextNode.nodeId}`);
-  
+
   const botReply = await sendMessageNode(
     customerPhone,
     nextNode,
@@ -611,6 +643,40 @@ const handleBotConversation = async (
       direction: "outgoing",
       read: true,
     });
+
+    // --- SAVE INTERACTIVE DATA ---
+    if (nextNode.messageType === "buttons") {
+      newAutoReply.interactive = {
+        type: "button",
+        body: fillTemplate(nextNode.messageText, enquiry),
+        action: {
+          buttons: (nextNode.buttons || []).map((btn) => ({
+            type: "reply",
+            reply: {
+              id: btn.nextNodeId || btn.id,
+              title: btn.title,
+            },
+          })),
+        },
+      };
+    } else if (nextNode.messageType === "list") {
+      newAutoReply.interactive = {
+        type: "list",
+        body: fillTemplate(nextNode.messageText, enquiry),
+        action: {
+          button: nextNode.listButtonText || "Options",
+          sections: (nextNode.listSections || []).map((sec) => ({
+            title: sec.title,
+            rows: (sec.rows || []).map((row) => ({
+              id: row.nextNodeId,
+              title: row.title,
+              description: row.description,
+            })),
+          })),
+        },
+      };
+    }
+
     await newAutoReply.save();
     return newAutoReply;
   }
