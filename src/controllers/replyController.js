@@ -127,6 +127,7 @@ const getMessagesByNumber = async (req, res) => {
           _id: 1,
           body: 1,
           timestamp: 1,
+          direction: 1,
           mediaType: 1,
           interactive: 1,
           type: 1,
