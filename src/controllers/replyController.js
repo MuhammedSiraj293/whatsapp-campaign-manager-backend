@@ -101,6 +101,27 @@ const getMessagesByNumber = async (req, res) => {
           as: "analyticsData",
         },
       },
+      // Lookup for Reactions (where reaction.messageId matches this message's messageId)
+      {
+        $lookup: {
+          from: "replies",
+          let: { msgId: "$messageId" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$reaction.messageId", "$$msgId"] } } },
+            { $project: { emoji: "$reaction.emoji", from: "$from" } },
+          ],
+          as: "reactions",
+        },
+      },
+      // Lookup for Quoted Message (where messageId matches this message's context.id)
+      {
+        $lookup: {
+          from: "replies",
+          localField: "context.id",
+          foreignField: "messageId",
+          as: "quotedMessageData",
+        },
+      },
       {
         $project: {
           _id: 1,
@@ -112,6 +133,8 @@ const getMessagesByNumber = async (req, res) => {
           reaction: 1,
           context: 1,
           status: { $arrayElemAt: ["$analyticsData.status", 0] },
+          reactions: 1,
+          quotedMessage: { $arrayElemAt: ["$quotedMessageData", 0] },
         },
       },
     ]);
