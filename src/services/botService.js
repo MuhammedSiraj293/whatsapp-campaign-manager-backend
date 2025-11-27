@@ -630,6 +630,11 @@ const handleBotConversation = async (
 
   // 🔴 CRITICAL: Update conversation state IMMEDIATELY after sending
   enquiry.conversationState = nextNodeKey;
+
+  // --- Follow-Up Tracking Update ---
+  enquiry.lastNodeSentAt = new Date();
+  enquiry.nodeFollowUpSent = false;
+
   await enquiry.save();
   console.log(`💾 Updated conversation state to: ${nextNodeKey}`);
 

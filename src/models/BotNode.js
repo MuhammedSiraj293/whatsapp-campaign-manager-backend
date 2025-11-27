@@ -1,12 +1,12 @@
 // backend/src/models/BotNode.js
 
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 // Sub-schema for an interactive button
 const ButtonSchema = new mongoose.Schema({
   title: { type: String, required: true },
   // The 'nodeId' of the *next* node to go to when this button is clicked
-  nextNodeId: { type: String, required: true }, 
+  nextNodeId: { type: String, required: true },
 });
 
 // Sub-schema for a row in a list
@@ -27,7 +27,7 @@ const BotNodeSchema = new mongoose.Schema({
   // Link to the parent flow (e.g., "Property Enquiry Bot")
   botFlow: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'BotFlow',
+    ref: "BotFlow",
     required: true,
   },
   // User-friendly ID for this node (e.g., "main_menu", "ask_name")
@@ -38,7 +38,7 @@ const BotNodeSchema = new mongoose.Schema({
   },
   messageType: {
     type: String,
-    enum: ['text', 'buttons', 'list'],
+    enum: ["text", "buttons", "list"],
     required: true,
   },
   messageText: {
@@ -63,14 +63,29 @@ const BotNodeSchema = new mongoose.Schema({
   buttons: [ButtonSchema],
 
   // --- Fields for 'list' nodes ---
-  listButtonText: { // The text on the button that opens the list
-    type: String, 
+  listButtonText: {
+    // The text on the button that opens the list
+    type: String,
     trim: true,
   },
   listSections: [ListSectionSchema],
+
+  // --- Follow-Up Configuration ---
+  followUpEnabled: {
+    type: Boolean,
+    default: false,
+  },
+  followUpDelay: {
+    type: Number, // In minutes
+    default: 15,
+  },
+  followUpMessage: {
+    type: String,
+    trim: true,
+  },
 });
 
 // Create a compound index to quickly find a specific node within a specific flow
 BotNodeSchema.index({ botFlow: 1, nodeId: 1 }, { unique: true });
 
-module.exports = mongoose.model('BotNode', BotNodeSchema);
+module.exports = mongoose.model("BotNode", BotNodeSchema);

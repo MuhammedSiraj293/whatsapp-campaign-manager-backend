@@ -2,79 +2,89 @@
 
 const Enquiry = require("../models/Enquiry");
 const PhoneNumber = require("../models/PhoneNumber");
-const { sendButtonMessage } = require("../integrations/whatsappAPI");
+const BotNode = require("../models/BotNode");
+const BotFlow = require("../models/BotFlow");
 
 /**
  * Check for enquiries that need follow-up messages
- * Run this every 5-10 minutes via cron job or scheduler
+ * Run this every 1 minute via cron job
  */
 const checkAndSendFollowUps = async () => {
   try {
-    console.log("🔍 Checking for enquiries needing follow-up...");
+    // console.log("🔍 Checking for enquiries needing follow-up...");
 
     const now = Date.now();
-    const followUpDelayMs = 45 * 60 * 1000; // 45 minutes
 
-    // Find enquiries that:
-    // 1. Were created 45+ minutes ago
-    // 2. Haven't been contacted by an agent yet
-    // 3. Haven't received a follow-up message yet
-    // 4. Aren't in END state
+    // Find active enquiries that haven't received a follow-up for the current node
     const enquiries = await Enquiry.find({
-      agentContacted: { $ne: true },
-      followUpSent: { $ne: true },
-      // conversationState: { $ne: "END" },
-      createdAt: { $lte: new Date(now - followUpDelayMs) },
+      conversationState: { $ne: "END" },
+      nodeFollowUpSent: false,
+      lastNodeSentAt: { $exists: true, $ne: null },
     });
 
     if (enquiries.length > 0) {
-        console.log(`📋 Found ${enquiries.length} enquiries needing follow-up`);
+      // console.log(`📋 Found ${enquiries.length} potential enquiries for follow-up`);
     }
 
     for (const enquiry of enquiries) {
       try {
-        // --- FIX 1: Populate WabaAccount to get the token ---
+        // 1. Get the current node configuration
         const phoneDoc = await PhoneNumber.findOne({
           phoneNumberId: enquiry.recipientId,
         }).populate("wabaAccount");
 
-        // --- FIX 2: Check for WABA account existence ---
-        if (!phoneDoc || !phoneDoc.wabaAccount) {
-          console.error(`❌ No WABA credentials found for ${enquiry.recipientId}`);
+        if (!phoneDoc || !phoneDoc.activeBotFlow || !phoneDoc.wabaAccount) {
           continue;
         }
 
-        // --- FIX 3: Access token from the populated WABA account ---
-        const accessToken = phoneDoc.wabaAccount.accessToken;
+        const currentNode = await BotNode.findOne({
+          botFlow: phoneDoc.activeBotFlow,
+          nodeId: enquiry.conversationState,
+        });
 
-        // Send follow-up message
-        await sendButtonMessage(
-          enquiry.phoneNumber,
-          "👋 Just checking in...\n\nDid someone from Capital Avenue contact you?",
-          [
-            { id: "followup_yes", title: "Yes!" },
-            { id: "followup_no", title: "No" },
-          ],
-          accessToken,
-          enquiry.recipientId
-        );
+        if (!currentNode || !currentNode.followUpEnabled) {
+          continue;
+        }
 
-        // Mark as sent
-        enquiry.followUpSent = true;
-        enquiry.followUpSentAt = new Date();
-        await enquiry.save();
+        // 2. Check if delay has passed
+        const delayMs = (currentNode.followUpDelay || 15) * 60 * 1000;
+        const timeSinceLastMsg =
+          now - new Date(enquiry.lastNodeSentAt).getTime();
 
-        console.log(`✅ Follow-up sent to ${enquiry.phoneNumber}`);
+        if (timeSinceLastMsg >= delayMs) {
+          console.log(
+            `🚀 Sending follow-up to ${enquiry.phoneNumber} for node ${currentNode.nodeId}`
+          );
+
+          // 3. Send the follow-up message
+          const accessToken = phoneDoc.wabaAccount.accessToken;
+
+          // Use the configured message or a default
+          const messageText =
+            currentNode.followUpMessage || "Are you still there?";
+
+          // Send text message
+          const { sendTextMessage } = require("../integrations/whatsappAPI");
+
+          await sendTextMessage(
+            enquiry.phoneNumber,
+            messageText,
+            accessToken,
+            enquiry.recipientId
+          );
+
+          // 4. Mark as sent
+          enquiry.nodeFollowUpSent = true;
+          await enquiry.save();
+
+          console.log(`✅ Follow-up sent successfully.`);
+        }
       } catch (error) {
         console.error(
-          `❌ Error sending follow-up to ${enquiry.phoneNumber}:`,
+          `❌ Error processing follow-up for ${enquiry.phoneNumber}:`,
           error.message
         );
       }
-    }
-    
-    if (enquiries.length > 0) {
-        console.log("✅ Follow-up check completed");
     }
   } catch (error) {
     console.error("❌ Error in checkAndSendFollowUps:", error);
