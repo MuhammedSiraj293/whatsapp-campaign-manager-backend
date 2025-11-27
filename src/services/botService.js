@@ -201,13 +201,60 @@ const handleBotConversation = async (
       enquiry.endedAt = null; // Clear ended status
       await enquiry.save();
 
-      await sendMessageNode(
+      const botReply = await sendMessageNode(
         customerPhone,
         replyNode,
         enquiry,
         accessToken,
         recipientId
       );
+
+      if (botReply && botReply.messages && botReply.messages[0]?.id) {
+        const newAutoReply = new Reply({
+          messageId: botReply.messages[0].id,
+          from: customerPhone,
+          recipientId: recipientId,
+          body: fillTemplate(replyNode.messageText, enquiry),
+          timestamp: new Date(),
+          direction: "outgoing",
+          read: true,
+        });
+
+        // --- SAVE INTERACTIVE DATA ---
+        if (replyNode.messageType === "buttons") {
+          newAutoReply.interactive = {
+            type: "button",
+            body: fillTemplate(replyNode.messageText, enquiry),
+            action: {
+              buttons: (replyNode.buttons || []).map((btn) => ({
+                type: "reply",
+                reply: {
+                  id: btn.nextNodeId || btn.id,
+                  title: btn.title,
+                },
+              })),
+            },
+          };
+        } else if (replyNode.messageType === "list") {
+          newAutoReply.interactive = {
+            type: "list",
+            body: fillTemplate(replyNode.messageText, enquiry),
+            action: {
+              button: replyNode.listButtonText || "Options",
+              sections: (replyNode.listSections || []).map((sec) => ({
+                title: sec.title,
+                rows: (sec.rows || []).map((row) => ({
+                  id: row.nextNodeId,
+                  title: row.title,
+                  description: row.description,
+                })),
+              })),
+            },
+          };
+        }
+
+        await newAutoReply.save();
+      }
 
       return null;
     }
