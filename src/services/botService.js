@@ -199,8 +199,11 @@ const handleBotConversation = async (
       enquiry.conversationState = targetNodeId;
       enquiry.endMessageSent = false;
       enquiry.endedAt = null; // Clear ended status
+      console.log("💾 Saving enquiry state...");
       await enquiry.save();
+      console.log("✅ Enquiry state saved.");
 
+      console.log("🚀 Calling sendMessageNode...");
       const botReply = await sendMessageNode(
         customerPhone,
         replyNode,
@@ -208,6 +211,7 @@ const handleBotConversation = async (
         accessToken,
         recipientId
       );
+      console.log("✅ sendMessageNode returned.");
 
       if (botReply && botReply.messages && botReply.messages[0]?.id) {
         const newAutoReply = new Reply({
@@ -252,11 +256,10 @@ const handleBotConversation = async (
             },
           };
         }
-      }
 
-      await newAutoReply.save();
-      return newAutoReply;
-    }
+        await newAutoReply.save();
+        return newAutoReply;
+      }
 
     return null;
   }
