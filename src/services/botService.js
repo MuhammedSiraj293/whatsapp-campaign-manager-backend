@@ -252,13 +252,13 @@ const handleBotConversation = async (
             },
           };
         }
-
-        await newAutoReply.save();
       }
 
-      return null;
+      await newAutoReply.save();
+      return newAutoReply;
     }
-    // If not a follow-up button, continue with normal flow processing below
+
+    return null;
   }
 
   // ------------------------------------------------
