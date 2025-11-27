@@ -105,7 +105,9 @@ const updateFlow = async (req, res) => {
 // @route   GET /api/bot-flows/:flowId/nodes
 const getFlowNodes = async (req, res) => {
   try {
+    console.log("--> GET /nodes hit for flow:", req.params.flowId);
     const nodes = await BotNode.find({ botFlow: req.params.flowId });
+    console.log("--> Found nodes:", nodes.length);
     res.status(200).json({ success: true, data: nodes });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });
