@@ -204,7 +204,8 @@ const handleBotConversation = async (
       console.log("✅ Enquiry state saved.");
 
       console.log("🚀 Calling sendMessageNode...");
-      const botReply = await sendMessageNode(
+      console.log("🚀 Calling sendMessageNode...");
+      const followUpReply = await sendMessageNode(
         customerPhone,
         replyNode,
         enquiry,
@@ -213,9 +214,13 @@ const handleBotConversation = async (
       );
       console.log("✅ sendMessageNode returned.");
 
-      if (botReply && botReply.messages && botReply.messages[0]?.id) {
+      if (
+        followUpReply &&
+        followUpReply.messages &&
+        followUpReply.messages[0]?.id
+      ) {
         const newAutoReply = new Reply({
-          messageId: botReply.messages[0].id,
+          messageId: followUpReply.messages[0].id,
           from: customerPhone,
           recipientId: recipientId,
           body: fillTemplate(replyNode.messageText, enquiry),
@@ -260,8 +265,7 @@ const handleBotConversation = async (
         await newAutoReply.save();
         return newAutoReply;
       }
-
-    return null;
+    }
   }
 
   // ------------------------------------------------
