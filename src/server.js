@@ -46,6 +46,9 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
+// Initialize Socket.IO using the manager
+const io = socketManager.init(httpServer, { origin: allowedOrigins });
+
 io.on("connection", (socket) => {
   console.log("🔌 A user connected:", socket.id);
   socket.on("disconnect", () => {
