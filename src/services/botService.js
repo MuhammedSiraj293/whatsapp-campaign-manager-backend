@@ -63,41 +63,59 @@ const sendMessageNode = async (
 
   const text = fillTemplate(node.messageText, enquiry);
 
-  switch (node.messageType) {
-    case "text":
-      return sendTextMessage(to, text, accessToken, phoneNumberId);
+  try {
+    switch (node.messageType) {
+      case "text":
+        return await sendTextMessage(to, text, accessToken, phoneNumberId);
 
-    case "buttons": {
-      const buttons = (node.buttons || []).map((btn) => ({
-        id: btn.nextNodeId || btn.id,
-        title: btn.title,
-      }));
-      console.log(`🔘 Sending buttons:`, buttons);
-      return sendButtonMessage(to, text, buttons, accessToken, phoneNumberId);
+      case "buttons": {
+        const buttons = (node.buttons || []).map((btn) => ({
+          id: btn.nextNodeId || btn.id,
+          title: btn.title,
+        }));
+        console.log(`🔘 Sending buttons:`, buttons);
+        return await sendButtonMessage(
+          to,
+          text,
+          buttons,
+          accessToken,
+          phoneNumberId
+        );
+      }
+
+      case "list": {
+        const sections = (node.listSections || []).map((sec) => ({
+          title: sec.title,
+          rows: (sec.rows || []).map((row) => ({
+            id: row.nextNodeId,
+            title: row.title,
+            description: row.description || undefined,
+          })),
+        }));
+
+        // Fallback for missing listButtonText
+        const buttonText = node.listButtonText || "Options";
+
+        return await sendListMessage(
+          to,
+          text,
+          buttonText,
+          sections,
+          accessToken,
+          phoneNumberId
+        );
+      }
+
+      default:
+        console.error(`Unknown node type: ${node.messageType}`);
+        return null;
     }
-
-    case "list": {
-      const sections = (node.listSections || []).map((sec) => ({
-        title: sec.title,
-        rows: (sec.rows || []).map((row) => ({
-          id: row.nextNodeId,
-          title: row.title,
-          description: row.description || undefined,
-        })),
-      }));
-      return sendListMessage(
-        to,
-        text,
-        node.listButtonText,
-        sections,
-        accessToken,
-        phoneNumberId
-      );
-    }
-
-    default:
-      console.error(`Unknown node type: ${node.messageType}`);
-      return null;
+  } catch (error) {
+    console.error(
+      `❌ Error in sendMessageNode for node ${node.nodeId}:`,
+      error.message
+    );
+    return null;
   }
 };
 
