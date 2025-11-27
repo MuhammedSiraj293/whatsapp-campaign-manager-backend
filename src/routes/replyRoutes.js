@@ -1,14 +1,5 @@
 // backend/src/routes/replyRoutes.js
 
-// --- NEW ROUTES ---
-// Get all conversations for a specific business phone number
-router.get("/conversations/:recipientId", getConversations);
-
-// Get the message history for a specific chat
-router.get("/messages/:phoneNumber/:recipientId", getMessagesByNumber);
-
-// backend/src/routes/replyRoutes.js
-
 const express = require("express");
 const multer = require("multer");
 const {
@@ -17,8 +8,8 @@ const {
   markAsRead,
   sendReply,
   sendMediaReply,
-  deleteConversation, // Added
-  deleteMessage, // Added
+  deleteConversation,
+  deleteMessage,
 } = require("../controllers/replyController");
 const { protect } = require("../middleware/authMiddleware");
 
@@ -28,7 +19,8 @@ const router = express.Router();
 // All reply routes are protected
 router.use(protect);
 
-// --- NEW ROUTES ---
+// --- ROUTES ---
+
 // Get all conversations for a specific business phone number
 router.get("/conversations/:recipientId", getConversations);
 
@@ -52,6 +44,6 @@ router.patch("/read/:phoneNumber/:recipientId", markAsRead);
 router.delete("/conversations/:phoneNumber/:recipientId", deleteConversation);
 
 // Delete a single message
-router.delete("/messages/:messageId", deleteMessage); // Using _id
+router.delete("/messages/:messageId", deleteMessage);
 
 module.exports = router;
