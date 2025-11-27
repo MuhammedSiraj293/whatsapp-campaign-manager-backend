@@ -136,6 +136,62 @@ const getNextNodeKey = (message, currentNode) => {
   return currentNode.nextNodeId;
 };
 
+const saveBotReply = async (
+  botReply,
+  customerPhone,
+  recipientId,
+  node,
+  enquiry
+) => {
+  if (!botReply || !botReply.messages || !botReply.messages[0]?.id) return null;
+
+  const newAutoReply = new Reply({
+    messageId: botReply.messages[0].id,
+    from: customerPhone,
+    recipientId: recipientId,
+    body: fillTemplate(node.messageText, enquiry),
+    timestamp: new Date(),
+    direction: "outgoing",
+    read: true,
+  });
+
+  // --- SAVE INTERACTIVE DATA ---
+  if (node.messageType === "buttons") {
+    newAutoReply.interactive = {
+      type: "button",
+      body: fillTemplate(node.messageText, enquiry),
+      action: {
+        buttons: (node.buttons || []).map((btn) => ({
+          type: "reply",
+          reply: {
+            id: btn.nextNodeId || btn.id,
+            title: btn.title,
+          },
+        })),
+      },
+    };
+  } else if (node.messageType === "list") {
+    newAutoReply.interactive = {
+      type: "list",
+      body: fillTemplate(node.messageText, enquiry),
+      action: {
+        button: node.listButtonText || "Options",
+        sections: (node.listSections || []).map((sec) => ({
+          title: sec.title,
+          rows: (sec.rows || []).map((row) => ({
+            id: row.nextNodeId,
+            title: row.title,
+            description: row.description,
+          })),
+        })),
+      },
+    };
+  }
+
+  await newAutoReply.save();
+  return newAutoReply;
+};
+
 const handleBotConversation = async (
   message,
   messageBody,
@@ -144,13 +200,14 @@ const handleBotConversation = async (
 ) => {
   const { accessToken } = credentials;
   const customerPhone = message.from;
+  const generatedReplies = []; // Store all replies generated in this turn
 
   const phoneNumberDoc = await PhoneNumber.findOne({
     phoneNumberId: recipientId,
   });
   if (!phoneNumberDoc || !phoneNumberDoc.activeBotFlow) {
     console.log(`🤖 Bot disabled for ${recipientId}. No active flow.`);
-    return null;
+    return [];
   }
   const botFlowId = phoneNumberDoc.activeBotFlow;
 
@@ -174,7 +231,7 @@ const handleBotConversation = async (
       const flow = await BotFlow.findById(botFlowId);
       if (!flow) {
         console.error("❌ Bot flow not found for follow-up response.");
-        return null;
+        return [];
       }
 
       let targetNodeId = null;
@@ -198,7 +255,7 @@ const handleBotConversation = async (
 
       if (!targetNodeId) {
         console.log(`⚠️ No target node configured for ${btnId}. Ending flow.`);
-        return null;
+        return [];
       }
 
       const replyNode = await BotNode.findOne({
@@ -208,7 +265,7 @@ const handleBotConversation = async (
 
       if (!replyNode) {
         console.error(`❌ Target node ${targetNodeId} not found.`);
-        return null;
+        return [];
       }
 
       console.log(`🔄 Resuming flow at node: ${targetNodeId}`);
@@ -222,7 +279,6 @@ const handleBotConversation = async (
       console.log("✅ Enquiry state saved.");
 
       console.log("🚀 Calling sendMessageNode...");
-      console.log("🚀 Calling sendMessageNode...");
       const followUpReply = await sendMessageNode(
         customerPhone,
         replyNode,
@@ -232,57 +288,16 @@ const handleBotConversation = async (
       );
       console.log("✅ sendMessageNode returned.");
 
-      if (
-        followUpReply &&
-        followUpReply.messages &&
-        followUpReply.messages[0]?.id
-      ) {
-        const newAutoReply = new Reply({
-          messageId: followUpReply.messages[0].id,
-          from: customerPhone,
-          recipientId: recipientId,
-          body: fillTemplate(replyNode.messageText, enquiry),
-          timestamp: new Date(),
-          direction: "outgoing",
-          read: true,
-        });
+      const savedReply = await saveBotReply(
+        followUpReply,
+        customerPhone,
+        recipientId,
+        replyNode,
+        enquiry
+      );
+      if (savedReply) generatedReplies.push(savedReply);
 
-        // --- SAVE INTERACTIVE DATA ---
-        if (replyNode.messageType === "buttons") {
-          newAutoReply.interactive = {
-            type: "button",
-            body: fillTemplate(replyNode.messageText, enquiry),
-            action: {
-              buttons: (replyNode.buttons || []).map((btn) => ({
-                type: "reply",
-                reply: {
-                  id: btn.nextNodeId || btn.id,
-                  title: btn.title,
-                },
-              })),
-            },
-          };
-        } else if (replyNode.messageType === "list") {
-          newAutoReply.interactive = {
-            type: "list",
-            body: fillTemplate(replyNode.messageText, enquiry),
-            action: {
-              button: replyNode.listButtonText || "Options",
-              sections: (replyNode.listSections || []).map((sec) => ({
-                title: sec.title,
-                rows: (sec.rows || []).map((row) => ({
-                  id: row.nextNodeId,
-                  title: row.title,
-                  description: row.description,
-                })),
-              })),
-            },
-          };
-        }
-
-        await newAutoReply.save();
-        return newAutoReply;
-      }
+      return generatedReplies;
     }
   }
 
@@ -298,7 +313,7 @@ const handleBotConversation = async (
       console.log(
         `⏳ Cool-off active for ${customerPhone}, ignoring message...`
       );
-      return null;
+      return [];
     } else {
       // Cool-off period has expired, restart the conversation
       console.log(
@@ -323,13 +338,21 @@ const handleBotConversation = async (
       await enquiry.save();
 
       // Send START message
-      await sendMessageNode(
+      const startReply = await sendMessageNode(
         customerPhone,
         startNode,
         enquiry,
         accessToken,
         recipientId
       );
+      const savedStart = await saveBotReply(
+        startReply,
+        customerPhone,
+        recipientId,
+        startNode,
+        enquiry
+      );
+      if (savedStart) generatedReplies.push(savedStart);
 
       // Send next node after START
       if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
@@ -339,7 +362,7 @@ const handleBotConversation = async (
         });
 
         if (firstNode) {
-          await sendMessageNode(
+          const firstReply = await sendMessageNode(
             customerPhone,
             firstNode,
             enquiry,
@@ -348,11 +371,21 @@ const handleBotConversation = async (
           );
           enquiry.conversationState = firstNode.nodeId;
           await enquiry.save();
-          return null;
+
+          const savedFirst = await saveBotReply(
+            firstReply,
+            customerPhone,
+            recipientId,
+            firstNode,
+            enquiry
+          );
+          if (savedFirst) generatedReplies.push(savedFirst);
+
+          return generatedReplies;
         }
       }
 
-      return null;
+      return generatedReplies;
     }
   }
 
@@ -386,13 +419,21 @@ const handleBotConversation = async (
     });
 
     // send START
-    await sendMessageNode(
+    const startReply = await sendMessageNode(
       customerPhone,
       startNode,
       enquiry,
       accessToken,
       recipientId
     );
+    const savedStart = await saveBotReply(
+      startReply,
+      customerPhone,
+      recipientId,
+      startNode,
+      enquiry
+    );
+    if (savedStart) generatedReplies.push(savedStart);
 
     // send next after START
     if (startNode.nextNodeId && startNode.nextNodeId !== "END") {
@@ -402,7 +443,7 @@ const handleBotConversation = async (
       });
 
       if (firstNode) {
-        await sendMessageNode(
+        const firstReply = await sendMessageNode(
           customerPhone,
           firstNode,
           enquiry,
@@ -411,7 +452,17 @@ const handleBotConversation = async (
         );
         enquiry.conversationState = firstNode.nodeId;
         await enquiry.save();
-        return null;
+
+        const savedFirst = await saveBotReply(
+          firstReply,
+          customerPhone,
+          recipientId,
+          firstNode,
+          enquiry
+        );
+        if (savedFirst) generatedReplies.push(savedFirst);
+
+        return generatedReplies;
       }
     }
 
@@ -443,7 +494,7 @@ const handleBotConversation = async (
       enquiry.projectName = autoProjectLater;
       enquiry.pageUrl = messageBody;
       await enquiry.save();
-      return null;
+      return generatedReplies;
     }
   }
 
@@ -457,7 +508,7 @@ const handleBotConversation = async (
 
   if (!currentNode) {
     console.error(`❌ Could not find current node: ${currentNodeKey}`);
-    return null;
+    return generatedReplies;
   }
 
   console.log(
@@ -476,15 +527,23 @@ const handleBotConversation = async (
       nodeId: currentNode.nextNodeId,
     });
     if (nn) {
-      await sendMessageNode(
+      const skipReply = await sendMessageNode(
         customerPhone,
         nn,
         enquiry,
         accessToken,
         recipientId
       );
+      const savedSkip = await saveBotReply(
+        skipReply,
+        customerPhone,
+        recipientId,
+        nn,
+        enquiry
+      );
+      if (savedSkip) generatedReplies.push(savedSkip);
     }
-    return null;
+    return generatedReplies;
   }
 
   if (currentNode.saveToField === "email" && enquiry.skipEmail) {
@@ -496,15 +555,23 @@ const handleBotConversation = async (
       nodeId: currentNode.nextNodeId,
     });
     if (nn) {
-      await sendMessageNode(
+      const skipReply = await sendMessageNode(
         customerPhone,
         nn,
         enquiry,
         accessToken,
         recipientId
       );
+      const savedSkip = await saveBotReply(
+        skipReply,
+        customerPhone,
+        recipientId,
+        nn,
+        enquiry
+      );
+      if (savedSkip) generatedReplies.push(savedSkip);
     }
-    return null;
+    return generatedReplies;
   }
 
   // ------------------------------------------------
@@ -529,15 +596,23 @@ const handleBotConversation = async (
       });
 
       if (nextNode) {
-        await sendMessageNode(
+        const skipReply = await sendMessageNode(
           customerPhone,
           nextNode,
           enquiry,
           accessToken,
           recipientId
         );
+        const savedSkip = await saveBotReply(
+          skipReply,
+          customerPhone,
+          recipientId,
+          nextNode,
+          enquiry
+        );
+        if (savedSkip) generatedReplies.push(savedSkip);
       }
-      return null;
+      return generatedReplies;
     }
 
     // Validate and save email
@@ -550,7 +625,7 @@ const handleBotConversation = async (
           accessToken,
           recipientId
         );
-        return null;
+        return generatedReplies;
       }
       enquiry.email = formatted;
     } else {
@@ -609,7 +684,7 @@ const handleBotConversation = async (
 
   if (!nextNodeKey) {
     console.error(`❌ No nextNodeId found on current node!`);
-    return null;
+    return generatedReplies;
   }
 
   console.log(`🔄 Moving from ${currentNode.nodeId} to ${nextNodeKey}`);
@@ -624,13 +699,22 @@ const handleBotConversation = async (
         nodeId: "END",
       });
       if (endNode) {
-        await sendMessageNode(
+        const botReply = await sendMessageNode(
           customerPhone,
           endNode,
           enquiry,
           accessToken,
           recipientId
         );
+
+        const savedEnd = await saveBotReply(
+          botReply,
+          customerPhone,
+          recipientId,
+          endNode,
+          enquiry
+        );
+        if (savedEnd) generatedReplies.push(savedEnd);
       }
       enquiry.endMessageSent = true;
     }
@@ -639,7 +723,7 @@ const handleBotConversation = async (
     enquiry.endedAt = new Date();
     await enquiry.save();
     console.log(`🤖 Bot flow ended for ${customerPhone}.`);
-    return null;
+    return generatedReplies;
   }
 
   // ------------------------------------------------
@@ -658,7 +742,7 @@ const handleBotConversation = async (
     console.error(`Enquiry state: ${enquiry.conversationState}`);
 
     // Don't send START again - just log the error and stop
-    return null;
+    return generatedReplies;
   }
 
   console.log(`✅ Found next node: ${nextNode.nodeId}`);
@@ -676,7 +760,7 @@ const handleBotConversation = async (
     });
 
     if (skipToNode) {
-      await sendMessageNode(
+      const skipReply = await sendMessageNode(
         customerPhone,
         skipToNode,
         enquiry,
@@ -685,8 +769,17 @@ const handleBotConversation = async (
       );
       enquiry.conversationState = skipToNodeKey;
       await enquiry.save();
+
+      const savedSkip = await saveBotReply(
+        skipReply,
+        customerPhone,
+        recipientId,
+        skipToNode,
+        enquiry
+      );
+      if (savedSkip) generatedReplies.push(savedSkip);
     }
-    return null;
+    return generatedReplies;
   }
 
   if (nextNode.saveToField === "email" && enquiry.skipEmail) {
@@ -699,7 +792,7 @@ const handleBotConversation = async (
     });
 
     if (skipToNode) {
-      await sendMessageNode(
+      const skipReply = await sendMessageNode(
         customerPhone,
         skipToNode,
         enquiry,
@@ -708,8 +801,17 @@ const handleBotConversation = async (
       );
       enquiry.conversationState = skipToNodeKey;
       await enquiry.save();
+
+      const savedSkip = await saveBotReply(
+        skipReply,
+        customerPhone,
+        recipientId,
+        skipToNode,
+        enquiry
+      );
+      if (savedSkip) generatedReplies.push(savedSkip);
     }
-    return null;
+    return generatedReplies;
   }
 
   // ------------------------------------------------
@@ -735,55 +837,16 @@ const handleBotConversation = async (
   await enquiry.save();
   console.log(`💾 Updated conversation state to: ${nextNodeKey}`);
 
-  if (botReply && botReply.messages && botReply.messages[0]?.id) {
-    const newAutoReply = new Reply({
-      messageId: botReply.messages[0].id,
-      from: customerPhone,
-      recipientId: recipientId,
-      body: fillTemplate(nextNode.messageText, enquiry),
-      timestamp: new Date(),
-      direction: "outgoing",
-      read: true,
-    });
+  const savedReply = await saveBotReply(
+    botReply,
+    customerPhone,
+    recipientId,
+    nextNode,
+    enquiry
+  );
+  if (savedReply) generatedReplies.push(savedReply);
 
-    // --- SAVE INTERACTIVE DATA ---
-    if (nextNode.messageType === "buttons") {
-      newAutoReply.interactive = {
-        type: "button",
-        body: fillTemplate(nextNode.messageText, enquiry),
-        action: {
-          buttons: (nextNode.buttons || []).map((btn) => ({
-            type: "reply",
-            reply: {
-              id: btn.nextNodeId || btn.id,
-              title: btn.title,
-            },
-          })),
-        },
-      };
-    } else if (nextNode.messageType === "list") {
-      newAutoReply.interactive = {
-        type: "list",
-        body: fillTemplate(nextNode.messageText, enquiry),
-        action: {
-          button: nextNode.listButtonText || "Options",
-          sections: (nextNode.listSections || []).map((sec) => ({
-            title: sec.title,
-            rows: (sec.rows || []).map((row) => ({
-              id: row.nextNodeId,
-              title: row.title,
-              description: row.description,
-            })),
-          })),
-        },
-      };
-    }
-
-    await newAutoReply.save();
-    return newAutoReply;
-  }
-
-  return null;
+  return generatedReplies;
 };
 
 module.exports = {

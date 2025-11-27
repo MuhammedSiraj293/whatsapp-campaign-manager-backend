@@ -369,7 +369,7 @@ const processWebhook = async (req, res) => {
               if (credentials?.accessToken) {
                 try {
                   console.log("🤖 Passing message to botService...");
-                  const botReply = await handleBotConversation(
+                  const botReplies = await handleBotConversation(
                     message,
                     messageBody,
                     recipientId,
@@ -377,19 +377,32 @@ const processWebhook = async (req, res) => {
                   );
 
                   console.log(
-                    "🤖 botReply returned from service:",
-                    botReply ? "OBJECT FOUND" : "NULL"
+                    "🤖 botReplies returned from service:",
+                    Array.isArray(botReplies)
+                      ? `${botReplies.length} replies`
+                      : "NULL"
                   );
 
-                  if (botReply) {
-                    botReplyDoc = botReply;
+                  if (Array.isArray(botReplies)) {
+                    botReplies.forEach((reply) => {
+                      console.log(
+                        "📡 Emitting newMessage socket event for bot reply..."
+                      );
+                      io.emit("newMessage", {
+                        from: message.from,
+                        recipientId,
+                        message: reply,
+                      });
+                    });
+                  } else if (botReplies) {
+                    // Backward compatibility if it returns a single object
                     console.log(
-                      "📡 Emitting newMessage socket event for bot reply..."
+                      "📡 Emitting newMessage socket event for single bot reply..."
                     );
                     io.emit("newMessage", {
                       from: message.from,
                       recipientId,
-                      message: botReply,
+                      message: botReplies,
                     });
                   }
                 } catch (err) {
