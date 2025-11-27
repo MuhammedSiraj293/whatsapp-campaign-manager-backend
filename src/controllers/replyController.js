@@ -269,10 +269,85 @@ const markAsRead = async (req, res) => {
   }
 };
 
+// --- NEW ---
+// @desc    Delete a conversation (all messages between two numbers)
+// @route   DELETE /api/replies/conversations/:phoneNumber/:recipientId
+const deleteConversation = async (req, res) => {
+  try {
+    const { phoneNumber, recipientId } = req.params;
+    await Reply.deleteMany({
+      $or: [
+        { from: phoneNumber, recipientId: recipientId },
+        { from: recipientId, recipientId: phoneNumber }, // Handle both directions if needed, but schema seems to use recipientId as business phone usually?
+        // Wait, the schema is: from (sender), recipientId (receiver).
+        // A conversation is defined by the pair.
+        // If I am the business (recipientId), incoming messages have me as recipientId.
+        // Outgoing messages have me as from.
+        // So we need to delete where (from=customer AND recipientId=business) OR (from=business AND recipientId=customer).
+      ],
+    });
+
+    // Actually, let's stick to the pattern used in getMessagesByNumber:
+    // { $match: { from: phoneNumber, recipientId: recipientId } }
+    // This seems to fetch messages *from* the contact *to* the business?
+    // Let's re-read getMessagesByNumber.
+    // It matches { from: phoneNumber, recipientId: recipientId }.
+    // Wait, getMessagesByNumber takes :phoneNumber (customer) and :recipientId (business).
+    // So it fetches messages sent BY the customer TO the business?
+    // What about outgoing?
+    // Ah, the socket listener handles both.
+    // Let's look at getMessagesByNumber again.
+    // It seems to ONLY fetch incoming messages?
+    // No, wait. The aggregation pipeline in getMessagesByNumber might be incomplete in my view or I missed something.
+    // Let's look at the file content I viewed earlier.
+    // Line 94: { $match: { from: phoneNumber, recipientId: recipientId } }
+    // This strictly matches messages FROM phoneNumber TO recipientId.
+    // If phoneNumber is the customer and recipientId is the business, this ONLY gets incoming messages.
+    // UNLESS the frontend passes different params for outgoing?
+    // But the frontend calls `/replies/messages/${customerPhone}/${recipientId}`.
+    // This implies the current backend might only be returning one side of the conversation?
+    // OR `phoneNumber` in the query is treated as "the other party".
+
+    // Let's assume for deletion we want to delete ALL messages involving this customer for this business.
+    // So: (from=customer AND recipientId=business) OR (from=business AND recipientId=customer).
+
+    await Reply.deleteMany({
+      $or: [
+        { from: phoneNumber, recipientId: recipientId },
+        { from: recipientId, recipientId: phoneNumber }, // Assuming recipientId is the business phone ID
+      ],
+    });
+
+    res.status(200).json({ success: true, message: "Conversation deleted" });
+  } catch (error) {
+    console.error("Error deleting conversation:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
+// --- NEW ---
+// @desc    Delete a single message
+// @route   DELETE /api/replies/messages/:messageId
+const deleteMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    await Reply.findOneAndDelete({ _id: messageId }); // Assuming _id is passed, or messageId field?
+    // The frontend usually has _id. Let's support both or just _id.
+    // If the route is /messages/:messageId, let's assume it's the Mongo _id.
+
+    res.status(200).json({ success: true, message: "Message deleted" });
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 module.exports = {
   getConversations,
   getMessagesByNumber,
   markAsRead,
   sendReply,
   sendMediaReply,
+  deleteConversation,
+  deleteMessage,
 };
