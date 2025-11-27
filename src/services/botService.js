@@ -274,6 +274,8 @@ const handleBotConversation = async (
       enquiry.conversationState = targetNodeId;
       enquiry.endMessageSent = false;
       enquiry.endedAt = null; // Clear ended status
+      enquiry.lastNodeSentAt = new Date(); // Reset timer
+      enquiry.nodeFollowUpSent = false; // Reset sent flag
       console.log("💾 Saving enquiry state...");
       await enquiry.save();
       console.log("✅ Enquiry state saved.");
@@ -335,6 +337,8 @@ const handleBotConversation = async (
         enquiry.pageUrl = messageBody;
       }
 
+      enquiry.lastNodeSentAt = new Date();
+      enquiry.nodeFollowUpSent = false;
       await enquiry.save();
 
       // Send START message
@@ -370,6 +374,8 @@ const handleBotConversation = async (
             recipientId
           );
           enquiry.conversationState = firstNode.nodeId;
+          enquiry.lastNodeSentAt = new Date();
+          enquiry.nodeFollowUpSent = false;
           await enquiry.save();
 
           const savedFirst = await saveBotReply(
@@ -416,6 +422,8 @@ const handleBotConversation = async (
       // 🔵 SKIP LOGIC FIX
       skipName: last?.name ? true : false,
       skipEmail: last?.email ? true : false,
+      lastNodeSentAt: new Date(),
+      nodeFollowUpSent: false,
     });
 
     // send START
@@ -451,6 +459,8 @@ const handleBotConversation = async (
           recipientId
         );
         enquiry.conversationState = firstNode.nodeId;
+        enquiry.lastNodeSentAt = new Date();
+        enquiry.nodeFollowUpSent = false;
         await enquiry.save();
 
         const savedFirst = await saveBotReply(
@@ -521,6 +531,8 @@ const handleBotConversation = async (
   if (currentNode.saveToField === "name" && enquiry.skipName) {
     console.log(`⏭️ Skipping name node`);
     enquiry.conversationState = currentNode.nextNodeId;
+    enquiry.lastNodeSentAt = new Date();
+    enquiry.nodeFollowUpSent = false;
     await enquiry.save();
     const nn = await BotNode.findOne({
       botFlow: botFlowId,
@@ -549,6 +561,8 @@ const handleBotConversation = async (
   if (currentNode.saveToField === "email" && enquiry.skipEmail) {
     console.log(`⏭️ Skipping email node`);
     enquiry.conversationState = currentNode.nextNodeId;
+    enquiry.lastNodeSentAt = new Date();
+    enquiry.nodeFollowUpSent = false;
     await enquiry.save();
     const nn = await BotNode.findOne({
       botFlow: botFlowId,
@@ -588,6 +602,8 @@ const handleBotConversation = async (
       // Move to next node immediately
       let nextNodeKey = currentNode.nextNodeId;
       enquiry.conversationState = nextNodeKey;
+      enquiry.lastNodeSentAt = new Date();
+      enquiry.nodeFollowUpSent = false;
       await enquiry.save();
 
       const nextNode = await BotNode.findOne({
@@ -768,6 +784,8 @@ const handleBotConversation = async (
         recipientId
       );
       enquiry.conversationState = skipToNodeKey;
+      enquiry.lastNodeSentAt = new Date();
+      enquiry.nodeFollowUpSent = false;
       await enquiry.save();
 
       const savedSkip = await saveBotReply(
