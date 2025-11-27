@@ -8,6 +8,7 @@ const {
   markAsRead,
   sendReply,
   sendMediaReply,
+  sendReaction,
   deleteConversation,
   deleteMessage,
 } = require("../controllers/replyController");
@@ -36,6 +37,9 @@ router.post(
   upload.single("file"),
   sendMediaReply
 );
+
+// Send a reaction
+router.post("/react/:phoneNumber/:recipientId", sendReaction);
 
 // Mark a conversation as read
 router.patch("/read/:phoneNumber/:recipientId", markAsRead);

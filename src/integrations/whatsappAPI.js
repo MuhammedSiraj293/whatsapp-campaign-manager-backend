@@ -14,7 +14,21 @@ const API_VERSION = "v20.0";
  * @param {string} accessToken - The Access Token of the WABA.
  * @param {string} phoneNumberId - The Phone Number ID to send from.
  */
-const sendTextMessage = async (to, text, accessToken, phoneNumberId) => {
+/**
+ * Sends a simple text message.
+ * @param {string} to - The recipient's phone number.
+ * @param {string} text - The text message to send.
+ * @param {string} accessToken - The Access Token of the WABA.
+ * @param {string} phoneNumberId - The Phone Number ID to send from.
+ * @param {string} [contextMessageId] - The WAMID of the message to reply to.
+ */
+const sendTextMessage = async (
+  to,
+  text,
+  accessToken,
+  phoneNumberId,
+  contextMessageId = null
+) => {
   const url = `https://graph.facebook.com/${API_VERSION}/${phoneNumberId}/messages`;
   const data = {
     messaging_product: "whatsapp",
@@ -22,6 +36,11 @@ const sendTextMessage = async (to, text, accessToken, phoneNumberId) => {
     type: "text",
     text: { preview_url: false, body: text },
   };
+
+  if (contextMessageId) {
+    data.context = { message_id: contextMessageId };
+  }
+
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${accessToken}`,
@@ -35,6 +54,47 @@ const sendTextMessage = async (to, text, accessToken, phoneNumberId) => {
       error.response ? error.response.data : error.message
     );
     throw new Error("Failed to send WhatsApp text message.");
+  }
+};
+
+/**
+ * Sends a reaction message.
+ * @param {string} to - The recipient's phone number.
+ * @param {string} messageId - The WAMID of the message to react to.
+ * @param {string} emoji - The emoji to react with.
+ * @param {string} accessToken - The Access Token of the WABA.
+ * @param {string} phoneNumberId - The Phone Number ID to send from.
+ */
+const sendReactionMessage = async (
+  to,
+  messageId,
+  emoji,
+  accessToken,
+  phoneNumberId
+) => {
+  const url = `https://graph.facebook.com/${API_VERSION}/${phoneNumberId}/messages`;
+  const data = {
+    messaging_product: "whatsapp",
+    to: to,
+    type: "reaction",
+    reaction: {
+      message_id: messageId,
+      emoji: emoji,
+    },
+  };
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+  };
+  try {
+    const response = await axios.post(url, data, { headers });
+    return response.data;
+  } catch (error) {
+    console.error(
+      "❌ Error sending WhatsApp reaction:",
+      error.response ? error.response.data : error.message
+    );
+    throw new Error("Failed to send WhatsApp reaction.");
   }
 };
 
@@ -353,4 +413,5 @@ module.exports = {
   sendButtonMessage, // <-- NEW
   sendListMessage, // <-- NEW
   uploadMedia,
+  sendReactionMessage, // <-- NEW
 };

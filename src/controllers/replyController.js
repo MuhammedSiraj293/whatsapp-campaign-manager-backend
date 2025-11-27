@@ -7,6 +7,7 @@ const {
   sendTextMessage,
   sendMediaMessage,
   getMediaUrl,
+  sendReactionMessage,
 } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
 
@@ -153,20 +154,28 @@ const getMessagesByNumber = async (req, res) => {
 // --- UPGRADED ---
 // @desc    Send a text reply
 // @route   POST /api/replies/send/:phoneNumber/:recipientId
+// --- UPGRADED ---
+// @desc    Send a text reply
+// @route   POST /api/replies/send/:phoneNumber/:recipientId
 const sendReply = async (req, res) => {
   const io = getIO();
   try {
     const { phoneNumber, recipientId } = req.params;
-    const { message } = req.body;
+    const { message, context } = req.body; // Extract context (quoted message)
 
     const { accessToken, phoneNumberId } = await getCredentialsFromRecipientId(
       recipientId
     );
+
+    // If context is provided, it should be the WAMID of the message being replied to
+    const contextMessageId = context ? context.messageId : null;
+
     const result = await sendTextMessage(
       phoneNumber,
       message,
       accessToken,
-      phoneNumberId
+      phoneNumberId,
+      contextMessageId
     );
 
     if (result?.messages?.[0]?.id) {
@@ -178,6 +187,7 @@ const sendReply = async (req, res) => {
         timestamp: new Date(),
         direction: "outgoing",
         read: true,
+        context: contextMessageId ? { id: contextMessageId } : undefined, // Save context in DB
       });
       await newReply.save();
       io.emit("newMessage", {
@@ -191,6 +201,61 @@ const sendReply = async (req, res) => {
   } catch (error) {
     console.error("Error sending reply:", error.message);
     res.status(500).json({ success: false, error: "Failed to send reply." });
+  }
+};
+
+// --- NEW ---
+// @desc    Send a reaction
+// @route   POST /api/replies/react/:phoneNumber/:recipientId
+const sendReaction = async (req, res) => {
+  const io = getIO();
+  try {
+    const { phoneNumber, recipientId } = req.params;
+    const { messageId, emoji } = req.body;
+
+    const { accessToken, phoneNumberId } = await getCredentialsFromRecipientId(
+      recipientId
+    );
+
+    await sendReactionMessage(
+      phoneNumber,
+      messageId,
+      emoji,
+      accessToken,
+      phoneNumberId
+    );
+
+    // Save reaction as a new Reply document (or update existing if you prefer, but your aggregation uses a separate doc)
+    // Based on your aggregation pipeline, you look up reactions from the 'replies' collection.
+    // So we should save it as a Reply.
+
+    const newReaction = new Reply({
+      messageId: `reaction_${Date.now()}`, // Internal ID for the reaction event
+      from: phoneNumber, // The business sent the reaction
+      recipientId: recipientId,
+      timestamp: new Date(),
+      direction: "outgoing",
+      read: true,
+      type: "reaction",
+      reaction: {
+        messageId: messageId, // The message being reacted to
+        emoji: emoji,
+      },
+    });
+
+    await newReaction.save();
+
+    // Emit socket event so frontend updates immediately
+    io.emit("newMessage", {
+      from: phoneNumber,
+      recipientId: recipientId,
+      message: newReaction,
+    });
+
+    res.status(200).json({ success: true, message: "Reaction sent" });
+  } catch (error) {
+    console.error("Error sending reaction:", error.message);
+    res.status(500).json({ success: false, error: "Failed to send reaction." });
   }
 };
 
@@ -348,6 +413,7 @@ module.exports = {
   markAsRead,
   sendReply,
   sendMediaReply,
+  sendReaction, // Added
   deleteConversation,
   deleteMessage,
 };
