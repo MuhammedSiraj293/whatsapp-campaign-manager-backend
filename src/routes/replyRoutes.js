@@ -1,9 +1,5 @@
 // backend/src/routes/replyRoutes.js
 
-const express = require("express");
-const multer = require("multer");
-router.use(protect);
-
 // --- NEW ROUTES ---
 // Get all conversations for a specific business phone number
 router.get("/conversations/:recipientId", getConversations);
