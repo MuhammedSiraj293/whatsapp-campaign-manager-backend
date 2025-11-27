@@ -100,6 +100,83 @@ const checkAndSendFollowUps = async () => {
         );
       }
     }
+    // ------------------------------------------------------------------
+    // PART 2: CHECK FOR POST-COMPLETION FOLLOW-UPS (Global Flow Setting)
+    // ------------------------------------------------------------------
+    const completedEnquiries = await Enquiry.find({
+      conversationState: "END",
+      completionFollowUpSent: false,
+      endedAt: { $exists: true, $ne: null },
+    });
+
+    if (completedEnquiries.length > 0) {
+      console.log(
+        `📋 Found ${completedEnquiries.length} completed enquiries for potential follow-up`
+      );
+    }
+
+    for (const enquiry of completedEnquiries) {
+      try {
+        const phoneDoc = await PhoneNumber.findOne({
+          phoneNumberId: enquiry.recipientId,
+        }).populate("wabaAccount");
+
+        if (!phoneDoc || !phoneDoc.activeBotFlow || !phoneDoc.wabaAccount) {
+          continue;
+        }
+
+        const botFlow = await BotFlow.findById(phoneDoc.activeBotFlow);
+        if (!botFlow || !botFlow.completionFollowUpEnabled) {
+          continue;
+        }
+
+        const delayMs = (botFlow.completionFollowUpDelay || 60) * 60 * 1000;
+        const timeSinceEnd = now - new Date(enquiry.endedAt).getTime();
+
+        console.log(
+          `🔍 Checking completion follow-up for ${
+            enquiry.phoneNumber
+          }: TimeSince=${timeSinceEnd / 1000}s, Delay=${delayMs / 1000}s`
+        );
+
+        if (timeSinceEnd >= delayMs) {
+          console.log(
+            `🚀 Sending completion follow-up to ${enquiry.phoneNumber}`
+          );
+
+          const accessToken = phoneDoc.wabaAccount.accessToken;
+          const messageText =
+            botFlow.completionFollowUpMessage ||
+            "Did you find what you were looking for?";
+
+          // Send Yes/No Buttons
+          const { sendButtonMessage } = require("../integrations/whatsappAPI");
+
+          const buttons = [
+            { id: "followup_yes", title: "Yes" },
+            { id: "followup_no", title: "No" },
+          ];
+
+          await sendButtonMessage(
+            enquiry.phoneNumber,
+            messageText,
+            buttons,
+            accessToken,
+            enquiry.recipientId
+          );
+
+          enquiry.completionFollowUpSent = true;
+          await enquiry.save();
+
+          console.log(`✅ Completion follow-up sent successfully.`);
+        }
+      } catch (error) {
+        console.error(
+          `❌ Error processing completion follow-up for ${enquiry.phoneNumber}:`,
+          error.message
+        );
+      }
+    }
   } catch (error) {
     console.error("❌ Error in checkAndSendFollowUps:", error);
   }

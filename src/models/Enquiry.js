@@ -62,6 +62,12 @@ const EnquirySchema = new mongoose.Schema(
       default: false,
     },
 
+    // Has the post-completion follow-up been sent?
+    completionFollowUpSent: {
+      type: Boolean,
+      default: false,
+    },
+
     // When was the follow-up sent?
     followUpSentAt: {
       type: Date,
