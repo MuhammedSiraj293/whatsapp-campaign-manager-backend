@@ -376,8 +376,16 @@ const processWebhook = async (req, res) => {
                     credentials
                   );
 
+                  console.log(
+                    "🤖 botReply returned from service:",
+                    botReply ? "OBJECT FOUND" : "NULL"
+                  );
+
                   if (botReply) {
                     botReplyDoc = botReply;
+                    console.log(
+                      "📡 Emitting newMessage socket event for bot reply..."
+                    );
                     io.emit("newMessage", {
                       from: message.from,
                       recipientId,
