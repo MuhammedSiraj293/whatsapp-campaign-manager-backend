@@ -208,7 +208,7 @@ const checkAndSendFollowUps = async () => {
               read: true,
               interactive: {
                 type: "button",
-                body: { text: messageText },
+                body: messageText, // Fixed: Schema expects String, not Object
                 action: {
                   buttons: buttons.map((b) => ({
                     type: "reply",
