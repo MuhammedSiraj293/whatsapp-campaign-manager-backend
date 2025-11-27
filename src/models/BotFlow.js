@@ -34,6 +34,15 @@ const BotFlowSchema = new mongoose.Schema(
       trim: true,
       default: "Did you find what you were looking for?",
     },
+    // IDs of nodes to trigger based on follow-up response
+    completionFollowUpYesNodeId: {
+      type: String,
+      trim: true,
+    },
+    completionFollowUpNoNodeId: {
+      type: String,
+      trim: true,
+    },
   },
   {
     timestamps: true,
