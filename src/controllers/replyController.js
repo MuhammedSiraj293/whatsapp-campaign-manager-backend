@@ -126,6 +126,7 @@ const getMessagesByNumber = async (req, res) => {
       {
         $project: {
           _id: 1,
+          messageId: 1, // Added
           body: 1,
           timestamp: 1,
           direction: 1,
