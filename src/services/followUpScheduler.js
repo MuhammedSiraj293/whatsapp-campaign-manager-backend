@@ -12,6 +12,7 @@ const { getIO } = require("../socketManager");
  * Run this every 1 minute via cron job
  */
 const checkAndSendFollowUps = async () => {
+  console.log("🔄 FollowUpScheduler: Code version 1.1 loaded");
   try {
     // console.log("🔍 Checking for enquiries needing follow-up...");
 
