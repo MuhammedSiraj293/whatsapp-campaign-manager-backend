@@ -23,7 +23,9 @@ const checkAndSendFollowUps = async () => {
     });
 
     if (enquiries.length > 0) {
-      // console.log(`📋 Found ${enquiries.length} potential enquiries for follow-up`);
+      console.log(
+        `📋 Found ${enquiries.length} potential enquiries for follow-up`
+      );
     }
 
     for (const enquiry of enquiries) {
@@ -42,7 +44,13 @@ const checkAndSendFollowUps = async () => {
           nodeId: enquiry.conversationState,
         });
 
-        if (!currentNode || !currentNode.followUpEnabled) {
+        if (!currentNode) {
+          console.log(`❌ Node not found: ${enquiry.conversationState}`);
+          continue;
+        }
+
+        if (!currentNode.followUpEnabled) {
+          // console.log(`ℹ️ Follow-up disabled for node ${currentNode.nodeId}`);
           continue;
         }
 
@@ -50,6 +58,12 @@ const checkAndSendFollowUps = async () => {
         const delayMs = (currentNode.followUpDelay || 15) * 60 * 1000;
         const timeSinceLastMsg =
           now - new Date(enquiry.lastNodeSentAt).getTime();
+
+        console.log(
+          `🔍 Checking ${enquiry.phoneNumber} on node ${
+            currentNode.nodeId
+          }: TimeSince=${timeSinceLastMsg / 1000}s, Delay=${delayMs / 1000}s`
+        );
 
         if (timeSinceLastMsg >= delayMs) {
           console.log(
