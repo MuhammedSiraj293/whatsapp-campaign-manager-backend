@@ -1,7 +1,7 @@
 // backend/src/controllers/botFlowController.js
 
-const BotFlow = require('../models/BotFlow');
-const BotNode = require('../models/BotNode');
+const BotFlow = require("../models/BotFlow");
+const BotNode = require("../models/BotNode");
 
 // --- Flow Management ---
 
@@ -12,7 +12,7 @@ const getFlowsByWaba = async (req, res) => {
     const flows = await BotFlow.find({ wabaAccount: req.params.wabaId });
     res.status(200).json({ success: true, data: flows });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Server Error' });
+    res.status(500).json({ success: false, error: "Server Error" });
   }
 };
 
@@ -27,14 +27,14 @@ const createFlow = async (req, res) => {
       name,
       wabaAccount,
     });
-    
+
     // Every flow needs a "start" node
     const startNode = await BotNode.create({
-        botFlow: newFlow._id,
-        nodeId: 'START', // This is the default entry point
-        messageType: 'text',
-        messageText: 'Hello! Welcome to our service.',
-        nextNodeId: 'END' // By default, it just ends
+      botFlow: newFlow._id,
+      nodeId: "START", // This is the default entry point
+      messageType: "text",
+      messageText: "Hello! Welcome to our service.",
+      nextNodeId: "END", // By default, it just ends
     });
 
     // Save the start node's ID to the flow
@@ -54,7 +54,7 @@ const deleteFlow = async (req, res) => {
     const { flowId } = req.params;
     const flow = await BotFlow.findById(flowId);
     if (!flow) {
-      return res.status(404).json({ success: false, error: 'Flow not found' });
+      return res.status(404).json({ success: false, error: "Flow not found" });
     }
 
     // Delete all nodes associated with this flow
@@ -64,7 +64,38 @@ const deleteFlow = async (req, res) => {
 
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Server Error' });
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
+// @desc    Get a single flow by ID
+// @route   GET /api/bot-flows/:flowId
+const getFlowById = async (req, res) => {
+  try {
+    const flow = await BotFlow.findById(req.params.flowId);
+    if (!flow) {
+      return res.status(404).json({ success: false, error: "Flow not found" });
+    }
+    res.status(200).json({ success: true, data: flow });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
+// @desc    Update a single flow by ID
+// @route   PUT /api/bot-flows/:flowId
+const updateFlow = async (req, res) => {
+  try {
+    const flow = await BotFlow.findByIdAndUpdate(req.params.flowId, req.body, {
+      new: true,
+      runValidators: true,
+    });
+    if (!flow) {
+      return res.status(404).json({ success: false, error: "Flow not found" });
+    }
+    res.status(200).json({ success: true, data: flow });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
   }
 };
 
@@ -77,7 +108,7 @@ const getFlowNodes = async (req, res) => {
     const nodes = await BotNode.find({ botFlow: req.params.flowId });
     res.status(200).json({ success: true, data: nodes });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Server Error' });
+    res.status(500).json({ success: false, error: "Server Error" });
   }
 };
 
@@ -108,7 +139,7 @@ const updateNode = async (req, res) => {
       runValidators: true,
     });
     if (!node) {
-      return res.status(404).json({ success: false, error: 'Node not found' });
+      return res.status(404).json({ success: false, error: "Node not found" });
     }
     res.status(200).json({ success: true, data: node });
   } catch (error) {
@@ -123,12 +154,12 @@ const deleteNode = async (req, res) => {
     const { nodeId } = req.params;
     const node = await BotNode.findById(nodeId);
     if (!node) {
-      return res.status(404).json({ success: false, error: 'Node not found' });
+      return res.status(404).json({ success: false, error: "Node not found" });
     }
     await node.deleteOne();
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Server Error' });
+    res.status(500).json({ success: false, error: "Server Error" });
   }
 };
 
@@ -136,6 +167,8 @@ module.exports = {
   getFlowsByWaba,
   createFlow,
   deleteFlow,
+  getFlowById,
+  updateFlow,
   getFlowNodes,
   addNode,
   updateNode,
