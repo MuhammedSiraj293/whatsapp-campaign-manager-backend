@@ -72,10 +72,13 @@ const deleteFlow = async (req, res) => {
 // @route   GET /api/bot-flows/:flowId
 const getFlowById = async (req, res) => {
   try {
+    console.log("--> GET /flow/:id hit:", req.params.flowId);
     const flow = await BotFlow.findById(req.params.flowId);
     if (!flow) {
+      console.log("--> Flow NOT FOUND");
       return res.status(404).json({ success: false, error: "Flow not found" });
     }
+    console.log("--> Flow found, sending data");
     res.status(200).json({ success: true, data: flow });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });
@@ -109,6 +112,7 @@ const getFlowNodes = async (req, res) => {
     const nodes = await BotNode.find({ botFlow: req.params.flowId });
     console.log("--> Found nodes:", nodes.length);
     res.status(200).json({ success: true, data: nodes });
+    console.log("--> Response sent successfully");
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });
   }
