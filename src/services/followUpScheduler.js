@@ -4,6 +4,8 @@ const Enquiry = require("../models/Enquiry");
 const PhoneNumber = require("../models/PhoneNumber");
 const BotNode = require("../models/BotNode");
 const BotFlow = require("../models/BotFlow");
+const Reply = require("../models/Reply");
+const { getIO } = require("../socketManager");
 
 /**
  * Check for enquiries that need follow-up messages
@@ -80,12 +82,42 @@ const checkAndSendFollowUps = async () => {
           // Send text message
           const { sendTextMessage } = require("../integrations/whatsappAPI");
 
-          await sendTextMessage(
+          const sentMsg = await sendTextMessage(
             enquiry.phoneNumber,
             messageText,
             accessToken,
             enquiry.recipientId
           );
+
+          if (sentMsg && sentMsg.messages && sentMsg.messages[0]?.id) {
+            const newReply = new Reply({
+              messageId: sentMsg.messages[0].id,
+              from: enquiry.phoneNumber, // In this context, 'from' is usually the customer phone for consistency in chat view, or we check how outgoing is stored.
+              // WAIT: In botService, outgoing messages have from: customerPhone, recipientId: businessPhone (recipientId).
+              // The schema says: from: String, recipientId: String.
+              // In botService: from: customerPhone, recipientId: recipientId (business).
+              // So here: from: enquiry.phoneNumber, recipientId: enquiry.recipientId.
+              from: enquiry.phoneNumber,
+              recipientId: enquiry.recipientId,
+              body: messageText,
+              timestamp: new Date(),
+              direction: "outgoing",
+              read: true,
+            });
+            await newReply.save();
+
+            // Emit socket event
+            try {
+              const io = getIO();
+              io.emit("newMessage", {
+                from: enquiry.phoneNumber,
+                recipientId: enquiry.recipientId,
+                message: newReply,
+              });
+            } catch (err) {
+              console.error("Socket emit error:", err.message);
+            }
+          }
 
           // 4. Mark as sent
           enquiry.nodeFollowUpSent = true;
@@ -157,13 +189,48 @@ const checkAndSendFollowUps = async () => {
             { id: "followup_no", title: "No" },
           ];
 
-          await sendButtonMessage(
+          const sentMsg = await sendButtonMessage(
             enquiry.phoneNumber,
             messageText,
             buttons,
             accessToken,
             enquiry.recipientId
           );
+
+          if (sentMsg && sentMsg.messages && sentMsg.messages[0]?.id) {
+            const newReply = new Reply({
+              messageId: sentMsg.messages[0].id,
+              from: enquiry.phoneNumber,
+              recipientId: enquiry.recipientId,
+              body: messageText,
+              timestamp: new Date(),
+              direction: "outgoing",
+              read: true,
+              interactive: {
+                type: "button",
+                body: { text: messageText },
+                action: {
+                  buttons: buttons.map((b) => ({
+                    type: "reply",
+                    reply: { id: b.id, title: b.title },
+                  })),
+                },
+              },
+            });
+            await newReply.save();
+
+            // Emit socket event
+            try {
+              const io = getIO();
+              io.emit("newMessage", {
+                from: enquiry.phoneNumber,
+                recipientId: enquiry.recipientId,
+                message: newReply,
+              });
+            } catch (err) {
+              console.error("Socket emit error:", err.message);
+            }
+          }
 
           enquiry.completionFollowUpSent = true;
           await enquiry.save();
