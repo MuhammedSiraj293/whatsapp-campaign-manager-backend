@@ -151,18 +151,22 @@ const handleBotConversation = async (
 
     // Only handle follow-up buttons here, let regular flow buttons continue
     if (btnId === "followup_yes" || btnId === "followup_no") {
-      const replyNode = await BotNode.findOne({
-        botFlow: botFlowId,
-        nodeId: btnId,
-      });
+      console.log(`🎯 Received follow-up response: ${btnId}`);
 
-      if (!replyNode) return null;
+      const flow = await BotFlow.findById(botFlowId);
+      if (!flow) {
+        console.error("❌ Bot flow not found for follow-up response.");
+        return null;
+      }
+
+      let targetNodeId = null;
 
       if (btnId === "followup_yes") {
         if (enquiry) {
           enquiry.agentContacted = true;
           await enquiry.save();
         }
+        targetNodeId = flow.completionFollowUpYesNodeId;
       }
 
       if (btnId === "followup_no") {
@@ -171,7 +175,31 @@ const handleBotConversation = async (
           enquiry.needsImmediateAttention = true;
           await enquiry.save();
         }
+        targetNodeId = flow.completionFollowUpNoNodeId;
       }
+
+      if (!targetNodeId) {
+        console.log(`⚠️ No target node configured for ${btnId}. Ending flow.`);
+        return null;
+      }
+
+      const replyNode = await BotNode.findOne({
+        botFlow: botFlowId,
+        nodeId: targetNodeId,
+      });
+
+      if (!replyNode) {
+        console.error(`❌ Target node ${targetNodeId} not found.`);
+        return null;
+      }
+
+      console.log(`🔄 Resuming flow at node: ${targetNodeId}`);
+
+      // Resume conversation
+      enquiry.conversationState = targetNodeId;
+      enquiry.endMessageSent = false;
+      enquiry.endedAt = null; // Clear ended status
+      await enquiry.save();
 
       await sendMessageNode(
         customerPhone,
@@ -180,9 +208,6 @@ const handleBotConversation = async (
         accessToken,
         recipientId
       );
-
-      enquiry.conversationState = btnId;
-      await enquiry.save();
 
       return null;
     }
