@@ -250,7 +250,14 @@ const sendMediaMessage = async (to, file, accessToken, phoneNumberId) => {
     const sendUrl = `https://graph.facebook.com/${API_VERSION}/${phoneNumberId}/messages`;
     let mediaType = "document";
     if (file.mimetype && typeof file.mimetype === "string") {
-      mediaType = file.mimetype.split("/")[0];
+      // WhatsApp requires specific formats for "audio" and "video" types.
+      // WebM is generally not supported for PTT/Voice Messages or native Video messages.
+      // Force "document" for WebM to ensure delivery as a file attachment.
+      if (file.mimetype.includes("webm")) {
+        mediaType = "document";
+      } else {
+        mediaType = file.mimetype.split("/")[0];
+      }
     }
     const sendData = {
       messaging_product: "whatsapp",
