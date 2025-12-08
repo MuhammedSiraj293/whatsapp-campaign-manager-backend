@@ -34,10 +34,21 @@ const getConversations = async (req, res) => {
     const { recipientId } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
+    const search = req.query.search || ""; // Extract search term
     const skip = (page - 1) * limit;
 
+    // Build Match Stage
+    const matchStage = { recipientId: recipientId };
+
+    if (search) {
+      matchStage.$or = [
+        { from: { $regex: search, $options: "i" } }, // Search by Phone Number
+        { body: { $regex: search, $options: "i" } }, // Search by Message Content
+      ];
+    }
+
     const conversations = await Reply.aggregate([
-      { $match: { recipientId: recipientId } },
+      { $match: matchStage },
       { $sort: { timestamp: -1 } },
       {
         $group: {
