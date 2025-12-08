@@ -27,11 +27,14 @@ const getCredentialsFromRecipientId = async (recipientId) => {
 };
 
 // --- UPGRADED ---
-// @desc    Get conversations for a specific business phone number
-// @route   GET /api/replies/conversations/:recipientId
+// @desc    Get conversations for a specific business phone number (Paginated)
+// @route   GET /api/replies/conversations/:recipientId?page=1&limit=20
 const getConversations = async (req, res) => {
   try {
     const { recipientId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
     const conversations = await Reply.aggregate([
       { $match: { recipientId: recipientId } },
@@ -75,6 +78,8 @@ const getConversations = async (req, res) => {
         },
       },
       { $sort: { lastMessageTimestamp: -1 } },
+      { $skip: skip },
+      { $limit: limit },
     ]);
 
     res.status(200).json({ success: true, data: conversations });
@@ -85,15 +90,28 @@ const getConversations = async (req, res) => {
 };
 
 // --- UPGRADED ---
-// @desc    Get message history for a specific chat
-// @route   GET /api/replies/messages/:phoneNumber/:recipientId
+// @desc    Get message history for a specific chat (Paginated)
+// @route   GET /api/replies/messages/:phoneNumber/:recipientId?page=1&limit=50
 const getMessagesByNumber = async (req, res) => {
   try {
     const { phoneNumber, recipientId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
     const messages = await Reply.aggregate([
-      { $match: { from: phoneNumber, recipientId: recipientId } },
-      { $sort: { timestamp: 1 } },
+      {
+        $match: {
+          $or: [
+            { from: phoneNumber, recipientId: recipientId }, // Customer -> Business
+            { from: recipientId, recipientId: phoneNumber }, // Business -> Customer
+          ],
+        },
+      },
+      { $sort: { timestamp: -1 } }, // Newest first for pagination
+      { $skip: skip },
+      { $limit: limit },
+      { $sort: { timestamp: 1 } }, // Re-sort to Oldest first for display
       {
         $lookup: {
           from: "analytics",
@@ -102,7 +120,6 @@ const getMessagesByNumber = async (req, res) => {
           as: "analyticsData",
         },
       },
-      // Lookup for Reactions (where reaction.messageId matches this message's messageId)
       {
         $lookup: {
           from: "replies",
@@ -114,7 +131,6 @@ const getMessagesByNumber = async (req, res) => {
           as: "reactions",
         },
       },
-      // Lookup for Quoted Message (where messageId matches this message's context.id)
       {
         $lookup: {
           from: "replies",
@@ -126,7 +142,7 @@ const getMessagesByNumber = async (req, res) => {
       {
         $project: {
           _id: 1,
-          messageId: 1, // Added
+          messageId: 1,
           body: 1,
           timestamp: 1,
           direction: 1,
