@@ -61,6 +61,9 @@ app.use(express.json());
 // --- SERVE UPLOADS FOLDER STATICALLY ---
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
+// --- SERVE FRONTEND STATIC FILES ---
+app.use(express.static(path.join(__dirname, "../../frontend/build")));
+
 const PORT = process.env.PORT || 10000;
 
 app.get("/", (req, res) => {
@@ -84,6 +87,10 @@ app.use("/api/users", userRoutes);
 app.use("/api/waba", wabaRoutes);
 app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/bot-flows", botFlowRoutes);
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../frontend/build", "index.html"));
+});
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
