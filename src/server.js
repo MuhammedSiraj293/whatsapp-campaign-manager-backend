@@ -88,7 +88,7 @@ app.use("/api/waba", wabaRoutes);
 app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/bot-flows", botFlowRoutes);
 
-app.get("*", (req, res) => {
+app.get("*splat", (req, res) => {
   res.sendFile(path.join(__dirname, "../../frontend/build", "index.html"));
 });
 
