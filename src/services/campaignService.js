@@ -43,6 +43,32 @@ const sendCampaign = async (campaignId) => {
     contactList: campaign.contactList,
     isSubscribed: true,
   });
+
+  // --- NEW EXCLUSION LOGIC ---
+  let excludedPhoneNumbers = new Set();
+  if (campaign.exclusionList) {
+    const excludedContacts = await Contact.find({
+      contactList: campaign.exclusionList,
+    }).select("phoneNumber");
+
+    excludedContacts.forEach((c) => excludedPhoneNumbers.add(c.phoneNumber));
+    console.log(`🚫 Found ${excludedPhoneNumbers.size} contacts to exclude.`);
+  }
+
+  // Filter existing contacts array
+  // We keep only those whose phone number is NOT in the excluded set
+  const originalCount = contacts.length;
+  for (let i = contacts.length - 1; i >= 0; i--) {
+    if (excludedPhoneNumbers.has(contacts[i].phoneNumber)) {
+      contacts.splice(i, 1);
+    }
+  }
+  if (originalCount !== contacts.length) {
+    console.log(
+      `📉 Removed ${originalCount - contacts.length} contacts due to exclusion.`
+    );
+  }
+  // --- END EXCLUSION LOGIC ---
   if (contacts.length === 0) {
     await Log.create({
       level: "info",

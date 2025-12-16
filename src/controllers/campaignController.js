@@ -4,11 +4,11 @@ const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const WabaAccount = require("../models/WabaAccount");
 const PhoneNumber = require("../models/PhoneNumber"); // <-- 1. IMPORT
-const Log = require('../models/Log'); // <-- 1. IMPORT THE LOG MODEL
+const Log = require("../models/Log"); // <-- 1. IMPORT THE LOG MODEL
 const { sendCampaign } = require("../services/campaignService");
-const { getIO } = require('../socketManager');
+const { getIO } = require("../socketManager");
 const axios = require("axios");
-const { uploadMedia } = require('../integrations/whatsappAPI');
+const { uploadMedia } = require("../integrations/whatsappAPI");
 // const wabaConfig = require('../config/wabaConfig');
 
 const getCampaigns = async (req, res) => {
@@ -16,6 +16,7 @@ const getCampaigns = async (req, res) => {
     const campaigns = await Campaign.find()
       .sort({ createdAt: -1 })
       .populate("contactList", "name") // Populate contact list name
+      .populate("exclusionList", "name") // Populate exclusion list name
       .populate("phoneNumber", "phoneNumberName"); // Populate phone number name
     res
       .status(200)
@@ -44,20 +45,35 @@ const getRecipientCount = async (req, res) => {
 const createCampaign = async (req, res) => {
   try {
     const {
-      name, message, templateName, templateLanguage, 
-      expectedVariables, scheduledFor, spreadsheetId,
-      contactList, phoneNumber, buttons: buttonsString,
-      headerImageUrl // Fallback if they provided a URL
+      name,
+      message,
+      templateName,
+      templateLanguage,
+      expectedVariables,
+      scheduledFor,
+      spreadsheetId,
+      contactList,
+      exclusionList,
+      phoneNumber,
+      buttons: buttonsString,
+      headerImageUrl, // Fallback if they provided a URL
     } = req.body;
 
     // Parse buttons if they came as a string
     let buttons = [];
     if (buttonsString) {
-        try { buttons = JSON.parse(buttonsString); } catch (e) {}
+      try {
+        buttons = JSON.parse(buttonsString);
+      } catch (e) {}
     }
 
     if (!phoneNumber || !contactList) {
-        return res.status(400).json({ success: false, error: '"Send From" and "Send To" are required.' });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: '"Send From" and "Send To" are required.',
+        });
     }
 
     // --- NEW LOGIC: UPLOAD TO META ---
@@ -65,47 +81,67 @@ const createCampaign = async (req, res) => {
     let finalHeaderImageUrl = headerImageUrl;
 
     if (req.file) {
-        console.log("📂 File detected. Uploading to Meta...");
-        
-        // 1. Find credentials to upload
-        const phoneDoc = await PhoneNumber.findById(phoneNumber).populate('wabaAccount');
-        if (!phoneDoc || !phoneDoc.wabaAccount) {
-             return res.status(400).json({ success: false, error: 'WABA credentials not found for this phone number.' });
-        }
+      console.log("📂 File detected. Uploading to Meta...");
 
-        // 2. Upload to Meta
-        try {
-            finalHeaderMediaId = await uploadMedia(
-                req.file, 
-                phoneDoc.wabaAccount.accessToken, 
-                phoneDoc.phoneNumberId
-            );
-            console.log(`✅ Media uploaded to Meta. ID: ${finalHeaderMediaId}`);
-            // We don't need a URL if we have an ID, but we can clear it to be safe
-            finalHeaderImageUrl = ''; 
-        } catch (uploadError) {
-            return res.status(500).json({ success: false, error: `Failed to upload image to WhatsApp: ${uploadError.message}` });
-        }
+      // 1. Find credentials to upload
+      const phoneDoc = await PhoneNumber.findById(phoneNumber).populate(
+        "wabaAccount"
+      );
+      if (!phoneDoc || !phoneDoc.wabaAccount) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            error: "WABA credentials not found for this phone number.",
+          });
+      }
+
+      // 2. Upload to Meta
+      try {
+        finalHeaderMediaId = await uploadMedia(
+          req.file,
+          phoneDoc.wabaAccount.accessToken,
+          phoneDoc.phoneNumberId
+        );
+        console.log(`✅ Media uploaded to Meta. ID: ${finalHeaderMediaId}`);
+        // We don't need a URL if we have an ID, but we can clear it to be safe
+        finalHeaderImageUrl = "";
+      } catch (uploadError) {
+        return res
+          .status(500)
+          .json({
+            success: false,
+            error: `Failed to upload image to WhatsApp: ${uploadError.message}`,
+          });
+      }
     }
 
     const campaignData = {
-      name, message, templateName, templateLanguage, contactList, phoneNumber,
-      status: scheduledFor ? 'scheduled' : 'draft',
-      
+      name,
+      message,
+      templateName,
+      templateLanguage,
+      contactList,
+      exclusionList,
+      phoneNumber,
+      status: scheduledFor ? "scheduled" : "draft",
+
       // Save both (one will be null)
-      headerImageUrl: finalHeaderImageUrl, 
+      headerImageUrl: finalHeaderImageUrl,
       headerMediaId: finalHeaderMediaId,
 
       expectedVariables: parseInt(expectedVariables, 10) || 0,
       spreadsheetId,
       buttons,
-      ...(scheduledFor && { scheduledFor: new Date(scheduledFor).toISOString() }),
+      ...(scheduledFor && {
+        scheduledFor: new Date(scheduledFor).toISOString(),
+      }),
     };
 
     const campaign = await Campaign.create(campaignData);
-    
-    getIO().emit('campaignsUpdated');
-    
+
+    getIO().emit("campaignsUpdated");
+
     res.status(201).json({ success: true, data: campaign });
   } catch (error) {
     console.error("Error creating campaign:", error);
@@ -134,7 +170,7 @@ const executeCampaign = async (req, res) => {
 
     campaign.status = "sending";
     await campaign.save(); // 2. Log that manual send started
-    getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
+    getIO().emit("campaignsUpdated"); // <-- 2. EMIT EVENT
 
     await Log.create({
       level: "info",
@@ -154,7 +190,7 @@ const executeCampaign = async (req, res) => {
         if (failedCampaign && failedCampaign.status !== "sent") {
           failedCampaign.status = "failed";
           await failedCampaign.save();
-          getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
+          getIO().emit("campaignsUpdated"); // <-- 2. EMIT EVENT
         }
         await Log.create({
           level: "error",
@@ -184,8 +220,10 @@ const executeCampaign = async (req, res) => {
 const getCampaignsByWaba = async (req, res) => {
   try {
     const { wabaId } = req.params;
-    const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId }).select('_id');
-    const phoneNumberIds = phoneNumbers.map(p => p._id);
+    const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId }).select(
+      "_id"
+    );
+    const phoneNumberIds = phoneNumbers.map((p) => p._id);
 
     const campaigns = await Campaign.aggregate([
       // 1. Find campaigns for the selected phone numbers
@@ -194,29 +232,29 @@ const getCampaignsByWaba = async (req, res) => {
       // 2. Join with the 'contactlists' collection
       {
         $lookup: {
-          from: 'contactlists',
-          localField: 'contactList',
-          foreignField: '_id',
-          as: 'contactListData'
-        }
+          from: "contactlists",
+          localField: "contactList",
+          foreignField: "_id",
+          as: "contactListData",
+        },
       },
       // 3. Join with the 'phonenumbers' collection
       {
         $lookup: {
-          from: 'phonenumbers',
-          localField: 'phoneNumber',
-          foreignField: '_id',
-          as: 'phoneNumberData'
-        }
+          from: "phonenumbers",
+          localField: "phoneNumber",
+          foreignField: "_id",
+          as: "phoneNumberData",
+        },
       },
       // 4. Get the count of contacts
       {
         $lookup: {
-          from: 'contacts',
-          localField: 'contactList',
-          foreignField: 'contactList',
-          as: 'contacts'
-        }
+          from: "contacts",
+          localField: "contactList",
+          foreignField: "contactList",
+          as: "contacts",
+        },
       },
       // 5. Reshape the data to what the frontend expects
       {
@@ -227,16 +265,26 @@ const getCampaignsByWaba = async (req, res) => {
           createdAt: 1,
           scheduledFor: 1,
           sentAt: 1,
-          contactList: { _id: { $arrayElemAt: ['$contactListData._id', 0] }, name: { $arrayElemAt: ['$contactListData.name', 0] } },
-          phoneNumber: { _id: { $arrayElemAt: ['$phoneNumberData._id', 0] }, phoneNumberName: { $arrayElemAt: ['$phoneNumberData.phoneNumberName', 0] } },
-          contactCount: { $size: '$contacts' } // <-- Calculate the count here
-        }
-      }
+          contactList: {
+            _id: { $arrayElemAt: ["$contactListData._id", 0] },
+            name: { $arrayElemAt: ["$contactListData.name", 0] },
+          },
+          phoneNumber: {
+            _id: { $arrayElemAt: ["$phoneNumberData._id", 0] },
+            phoneNumberName: {
+              $arrayElemAt: ["$phoneNumberData.phoneNumberName", 0],
+            },
+          },
+          contactCount: { $size: "$contacts" }, // <-- Calculate the count here
+        },
+      },
     ]);
-      
-    res.status(200).json({ success: true, count: campaigns.length, data: campaigns });
+
+    res
+      .status(200)
+      .json({ success: true, count: campaigns.length, data: campaigns });
   } catch (error) {
-    res.status(500).json({ success: false, error: 'Server Error' });
+    res.status(500).json({ success: false, error: "Server Error" });
   }
 };
 // --- 4. UPGRADED TEMPLATE FETCHER ---
@@ -304,7 +352,7 @@ const deleteCampaign = async (req, res) => {
     }
 
     await campaign.deleteOne();
-    getIO().emit('campaignsUpdated');
+    getIO().emit("campaignsUpdated");
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });

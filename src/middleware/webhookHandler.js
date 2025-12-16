@@ -7,6 +7,7 @@ const Contact = require("../models/Contact");
 const PhoneNumber = require("../models/PhoneNumber");
 const WabaAccount = require("../models/WabaAccount");
 const Enquiry = require("../models/Enquiry");
+const ContactList = require("../models/ContactList");
 
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
@@ -311,22 +312,84 @@ const processWebhook = async (req, res) => {
           autoReplyText =
             "You’ve been unsubscribed. won’t receive further messages, but you can reach out anytime if you need assistance.";
 
-          await Contact.findOneAndUpdate(
+          // 1. Mark ALL existing instances of this contact as unsubscribed
+          await Contact.updateMany(
             { phoneNumber: message.from },
-            { isSubscribed: false },
-            { upsert: true }
+            { isSubscribed: false }
           );
+
+          // 2. Add to "Unsubscriber List" (Create copy)
+          try {
+            let unsubList = await ContactList.findOne({
+              name: "Unsubscriber List",
+            });
+            if (!unsubList) {
+              unsubList = await ContactList.create({
+                name: "Unsubscriber List",
+              });
+              console.log("📝 Created 'Unsubscriber List'");
+            }
+
+            const existsInUnsub = await Contact.findOne({
+              phoneNumber: message.from,
+              contactList: unsubList._id,
+            });
+
+            if (!existsInUnsub) {
+              // Find name from another contact or default
+              const existingContact = await Contact.findOne({
+                phoneNumber: message.from,
+              });
+
+              await Contact.create({
+                phoneNumber: message.from,
+                name: existingContact?.name || "Unknown",
+                contactList: unsubList._id,
+                isSubscribed: false,
+              });
+              console.log(`📝 Added ${message.from} to Unsubscriber List`);
+            }
+          } catch (err) {
+            console.error("❌ Error adding to Unsubscriber List:", err);
+          }
         } else {
           /* ------------------------------
            * C2) RESUBSCRIBE
            * ------------------------------ */
+          // Check if they are currently unsubscribed in any primary list
           const contact = await Contact.findOne({
             phoneNumber: message.from,
+            isSubscribed: false,
           });
 
-          if (contact && !contact.isSubscribed) {
-            contact.isSubscribed = true;
-            await contact.save();
+          if (contact) {
+            // Found at least one unsubscribed record
+            // 1. Remove from "Unsubscriber List"
+            try {
+              const unsubList = await ContactList.findOne({
+                name: "Unsubscriber List",
+              });
+              if (unsubList) {
+                await Contact.deleteMany({
+                  phoneNumber: message.from,
+                  contactList: unsubList._id,
+                });
+                console.log(
+                  `🗑️ Removed ${message.from} from Unsubscriber List`
+                );
+              }
+            } catch (err) {
+              console.error("❌ Error removing from Unsubscriber List:", err);
+            }
+
+            // 2. Mark ALL other instances as subscribed
+            // We use updateMany without contactList filter to just catch them all
+            // (Note: we just deleted the one in Unsubscriber List, so no need to filter it out explicitly,
+            // but effectively we are resubscribing them in all their lists)
+            await Contact.updateMany(
+              { phoneNumber: message.from },
+              { isSubscribed: true }
+            );
 
             autoReplyText =
               "Welcome back to Capital Avenue! How can we assist you today?";
