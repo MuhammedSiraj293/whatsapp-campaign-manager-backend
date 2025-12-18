@@ -437,18 +437,6 @@ const deleteMessage = async (req, res) => {
   }
 };
 
-module.exports = {
-  getConversations,
-  getMessagesByNumber,
-  markAsRead,
-  sendReply,
-  sendMediaReply,
-  sendReaction, // Added
-  deleteConversation,
-  deleteMessage,
-  toggleSubscription,
-};
-
 // --- NEW ---
 // @desc    Toggle subscription status (Unsubscribe/Resubscribe)
 // @route   POST /api/replies/subscription/:phoneNumber
@@ -524,4 +512,16 @@ const toggleSubscription = async (req, res) => {
       .status(500)
       .json({ success: false, error: "Failed to update subscription." });
   }
+};
+
+module.exports = {
+  getConversations,
+  getMessagesByNumber,
+  markAsRead,
+  sendReply,
+  sendMediaReply,
+  sendReaction,
+  deleteConversation,
+  deleteMessage,
+  toggleSubscription,
 };
