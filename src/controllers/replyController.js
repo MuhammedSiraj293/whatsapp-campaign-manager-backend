@@ -2,6 +2,7 @@
 
 const Reply = require("../models/Reply");
 const Contact = require("../models/Contact");
+const ContactList = require("../models/ContactList"); // Added for Unsubscriber List logic
 const PhoneNumber = require("../models/PhoneNumber");
 const {
   sendTextMessage,
@@ -86,6 +87,7 @@ const getConversations = async (req, res) => {
           lastMessageTimestamp: 1,
           unreadCount: 1,
           name: { $arrayElemAt: ["$contactInfo.name", 0] },
+          isSubscribed: { $arrayElemAt: ["$contactInfo.isSubscribed", 0] }, // Include subscription status
         },
       },
       { $sort: { lastMessageTimestamp: -1 } },
@@ -444,4 +446,82 @@ module.exports = {
   sendReaction, // Added
   deleteConversation,
   deleteMessage,
+  toggleSubscription,
+};
+
+// --- NEW ---
+// @desc    Toggle subscription status (Unsubscribe/Resubscribe)
+// @route   POST /api/replies/subscription/:phoneNumber
+const toggleSubscription = async (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+    const { status } = req.body; // true = Resubscribe, false = Unsubscribe
+
+    console.log(`Manual subscription toggle for ${phoneNumber}: ${status}`);
+
+    if (status === false) {
+      // --- UNSUBSCRIBE LOGIC ---
+      // 1. Mark ALL existing contacts for this number as unsubscribed
+      await Contact.updateMany(
+        { phoneNumber: phoneNumber },
+        { $set: { isSubscribed: false } }
+      );
+
+      // 2. Add to "Unsubscriber List" if not already there
+      let unsubList = await ContactList.findOne({ name: "Unsubscriber List" });
+      if (!unsubList) {
+        unsubList = await ContactList.create({ name: "Unsubscriber List" });
+        console.log(`Created new Unsubscriber List: ${unsubList._id}`);
+      }
+
+      const existingInUnsub = await Contact.findOne({
+        phoneNumber: phoneNumber,
+        contactList: unsubList._id,
+      });
+
+      if (!existingInUnsub) {
+        // Find a name from an existing contact to reuse, or default to "Unknown"
+        const anyContact = await Contact.findOne({ phoneNumber: phoneNumber });
+        const contactName = anyContact ? anyContact.name : "Unknown";
+
+        await Contact.create({
+          phoneNumber: phoneNumber,
+          name: contactName,
+          contactList: unsubList._id,
+          isSubscribed: false,
+        });
+      }
+
+      res
+        .status(200)
+        .json({ success: true, message: "Unsubscribed successfully" });
+    } else {
+      // --- RESUBSCRIBE LOGIC ---
+      // 1. Mark ALL existing contacts for this number as subscribed
+      await Contact.updateMany(
+        { phoneNumber: phoneNumber },
+        { $set: { isSubscribed: true } }
+      );
+
+      // 2. Remove from "Unsubscriber List"
+      const unsubList = await ContactList.findOne({
+        name: "Unsubscriber List",
+      });
+      if (unsubList) {
+        await Contact.deleteMany({
+          phoneNumber: phoneNumber,
+          contactList: unsubList._id,
+        });
+      }
+
+      res
+        .status(200)
+        .json({ success: true, message: "Resubscribed successfully" });
+    }
+  } catch (error) {
+    console.error("Error toggling subscription:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to update subscription." });
+  }
 };

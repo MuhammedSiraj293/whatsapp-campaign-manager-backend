@@ -11,6 +11,7 @@ const {
   sendReaction,
   deleteConversation,
   deleteMessage,
+  toggleSubscription,
 } = require("../controllers/replyController");
 const { protect } = require("../middleware/authMiddleware");
 
@@ -49,5 +50,8 @@ router.delete("/conversations/:phoneNumber/:recipientId", deleteConversation);
 
 // Delete a single message
 router.delete("/messages/:messageId", deleteMessage);
+
+// Toggle subscription status
+router.post("/subscription/:phoneNumber", toggleSubscription);
 
 module.exports = router;
