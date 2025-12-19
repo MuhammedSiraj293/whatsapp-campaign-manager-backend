@@ -87,6 +87,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/waba", wabaRoutes);
 app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/bot-flows", botFlowRoutes);
+app.use("/api/auto-reply", require("./routes/autoReplyRoutes")); // <-- NEW ROUTE
 
 app.get("*splat", (req, res) => {
   res.sendFile(path.join(__dirname, "../../frontend/build", "index.html"));

@@ -8,6 +8,7 @@ const PhoneNumber = require("../models/PhoneNumber");
 const WabaAccount = require("../models/WabaAccount");
 const Enquiry = require("../models/Enquiry");
 const ContactList = require("../models/ContactList");
+const AutoReplyConfig = require("../models/AutoReplyConfig");
 
 const { sendTextMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
@@ -292,184 +293,224 @@ const processWebhook = async (req, res) => {
       }
 
       /* ---------------------------------------------------------
-       * C) AUTO-REPLY + BOT (NOW CORRECTLY SEPARATED)
+       * C) AUTO-REPLY + BOT (DYNAMIC CONFIG)
        * --------------------------------------------------------- */
-
       if (messageBody) {
         const messageBodyLower = messageBody.toLowerCase();
         const isCampaignReply = !!campaignToCredit;
 
         let autoReplyText = null;
-        let botReplyDoc = null;
 
-        /* ------------------------------
-         * C1) STOP / UNSUBSCRIBE
-         * ------------------------------ */
+        // 1. Fetch Config for this phone number
+        const config = await AutoReplyConfig.findOne({
+          phoneNumberId: recipientId,
+        });
+
+        // --- CHECK OFFICE HOURS (If Enabled) ---
+        let isAway = false;
         if (
-          messageBodyLower.includes("stop") ||
-          messageBodyLower.includes("إيقاف")
+          config &&
+          config.officeHoursEnabled &&
+          config.officeHours &&
+          config.officeHours.length > 0
         ) {
-          autoReplyText =
-            "You’ve been unsubscribed. won’t receive further messages, but you can reach out anytime if you need assistance.";
+          const now = new Date();
+          // Convert 'now' to target timezone if needed (using 'config.timezone')
+          // For simplicity, assuming server time or basic offset handling.
+          // Ideally use 'moment-timezone' or 'luxon' for robust TZ handling.
+          // For now, let's just check the day/time string vs server time (UTC usually).
 
-          // 1. Mark ALL existing instances of this contact as unsubscribed
-          await Contact.updateMany(
-            { phoneNumber: message.from },
-            { isSubscribed: false }
+          // TODO: Implement robust Timezone logic.
+          // Assuming config.timezone matches server or using helper.
+
+          const days = [
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+          ];
+          const currentDay = days[now.getDay()];
+          const currentHour = now.getHours();
+          const currentMinute = now.getMinutes();
+          const currentTimeStr = `${currentHour
+            .toString()
+            .padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`;
+
+          const todayConfig = config.officeHours.find(
+            (d) => d.day === currentDay
           );
 
-          // 2. Add to "Unsubscriber List" (Create copy)
-          try {
-            let unsubList = await ContactList.findOne({
-              name: "Unsubscriber List",
-            });
-            if (!unsubList) {
-              unsubList = await ContactList.create({
-                name: "Unsubscriber List",
-              });
-              console.log("📝 Created 'Unsubscriber List'");
+          if (todayConfig) {
+            if (!todayConfig.isOpen) {
+              isAway = true; // Closed all day
+            } else {
+              // Check time range
+              if (
+                currentTimeStr < todayConfig.startTime ||
+                currentTimeStr > todayConfig.endTime
+              ) {
+                isAway = true;
+              }
             }
+          }
+        }
 
-            const existsInUnsub = await Contact.findOne({
-              phoneNumber: message.from,
-              contactList: unsubList._id,
-            });
+        if (isAway && config.awayMessageEnabled) {
+          // --- SEND AWAY MESSAGE ---
+          // Only send if not a campaign reply? Or always?
+          // Usually Away Message overrides Bot, but maybe not Campaign?
+          // Let's say Away Message sent only if NO Campaign to be safe ??
+          // Actually, Away Message is good for everything if we are closed.
 
-            if (!existsInUnsub) {
-              // Find name from another contact or default
-              const existingContact = await Contact.findOne({
-                phoneNumber: message.from,
-              });
-
-              await Contact.create({
-                phoneNumber: message.from,
-                name: existingContact?.name || "Unknown",
-                contactList: unsubList._id,
-                isSubscribed: false,
-              });
-              console.log(`📝 Added ${message.from} to Unsubscriber List`);
-            }
-          } catch (err) {
-            console.error("❌ Error adding to Unsubscriber List:", err);
+          // BUT: Don't spam away message on every text.
+          // Need a "rate limit" or "sent once per window".
+          // For now, simplified:
+          if (!isCampaignReply) {
+            autoReplyText = config.awayMessageText;
+            console.log("🌙 Office Closed. Queuing Away Message.");
           }
         } else {
+          // --- WE ARE OPEN (OR NO CONFIG) ---
+
           /* ------------------------------
-           * C2) RESUBSCRIBE
+           * C1) STOP / UNSUBSCRIBE (Global override)
            * ------------------------------ */
-          // Check if they are currently unsubscribed in any primary list
-          const contact = await Contact.findOne({
-            phoneNumber: message.from,
-            isSubscribed: false,
-          });
-
-          if (contact) {
-            // Found at least one unsubscribed record
-            // 1. Remove from "Unsubscriber List"
-            try {
-              const unsubList = await ContactList.findOne({
-                name: "Unsubscriber List",
-              });
-              if (unsubList) {
-                await Contact.deleteMany({
-                  phoneNumber: message.from,
-                  contactList: unsubList._id,
-                });
-                console.log(
-                  `🗑️ Removed ${message.from} from Unsubscriber List`
-                );
-              }
-            } catch (err) {
-              console.error("❌ Error removing from Unsubscriber List:", err);
-            }
-
-            // 2. Mark ALL other instances as subscribed
-            // We use updateMany without contactList filter to just catch them all
-            // (Note: we just deleted the one in Unsubscriber List, so no need to filter it out explicitly,
-            // but effectively we are resubscribing them in all their lists)
-            await Contact.updateMany(
-              { phoneNumber: message.from },
-              { isSubscribed: true }
-            );
-
-            autoReplyText =
-              "Welcome back to Capital Avenue! How can we assist you today?";
-            console.log(`✅ Contact ${message.from} has been re-subscribed.`);
-          } else if (
-            /* ------------------------------
-             * C3) Keyword logic
-             * ------------------------------ */
-            messageBodyLower.includes("yes, i am interested")
+          if (
+            messageBodyLower.includes("stop") ||
+            messageBodyLower.includes("إيقاف")
           ) {
             autoReplyText =
-              "Your interest has been noted. We will contact you shortly. Thank you for your response.";
-          } else if (messageBodyLower.includes("نعم، مهتم")) {
-            autoReplyText =
-              ".تم تسجيل اهتمامك. سنتواصل معك قريبًا. شكرًا على ردك";
-          } else if (messageBodyLower.includes("not interested")) {
-            autoReplyText =
-              "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+              "You’ve been unsubscribed. won’t receive further messages, but you can reach out anytime if you need assistance.";
+
+            // 1. Mark ALL existing instances of this contact as unsubscribed
+            await Contact.updateMany(
+              { phoneNumber: message.from },
+              { isSubscribed: false }
+            );
+
+            // 2. Add to "Unsubscriber List" (Create copy)
+            try {
+              let unsubList = await ContactList.findOne({
+                name: "Unsubscriber List",
+              });
+              if (!unsubList) {
+                unsubList = await ContactList.create({
+                  name: "Unsubscriber List",
+                });
+                console.log("📝 Created 'Unsubscriber List'");
+              }
+
+              const existsInUnsub = await Contact.findOne({
+                phoneNumber: message.from,
+                contactList: unsubList._id,
+              });
+
+              if (!existsInUnsub) {
+                const existingContact = await Contact.findOne({
+                  phoneNumber: message.from,
+                });
+
+                await Contact.create({
+                  phoneNumber: message.from,
+                  name: existingContact?.name || "Unknown",
+                  contactList: unsubList._id,
+                  isSubscribed: false,
+                });
+                console.log(`📝 Added ${message.from} to Unsubscriber List`);
+              }
+            } catch (err) {
+              console.error("❌ Error adding to Unsubscriber List:", err);
+            }
           } else {
             /* ------------------------------
-             * C4) No keyword → Welcome / Bot
-             * IMPORTANT: Bot ONLY for NON-CAMPAIGN
+             * C2) RESUBSCRIBE
              * ------------------------------ */
-            // const totalIncoming = await Reply.countDocuments({
-            //   from: message.from,
-            //   direction: "incoming",
-            // });
+            // Check if they are currently unsubscribed in any primary list
+            const contact = await Contact.findOne({
+              phoneNumber: message.from,
+              isSubscribed: false,
+            });
 
-            // // First-ever non-campaign message → Welcome
-            // if (!isCampaignReply && totalIncoming === 1) {
-            //   autoReplyText =
-            //     "Hello and welcome to Capital Avenue! How can we help you today?";
-            // }
+            if (contact) {
+              // Resubscribe logic...
+              try {
+                const unsubList = await ContactList.findOne({
+                  name: "Unsubscriber List",
+                });
+                if (unsubList) {
+                  await Contact.deleteMany({
+                    phoneNumber: message.from,
+                    contactList: unsubList._id,
+                  });
+                }
+              } catch (err) {
+                console.error("❌ Error removing from Unsubscriber List:", err);
+              }
 
-            // BOT HANDLES ONLY NON-CAMPAIGN
-            if (
-              !isCampaignReply &&
-              (message.type === "text" || message.type === "interactive")
-            ) {
-              if (credentials?.accessToken) {
-                try {
-                  console.log("🤖 Passing message to botService...");
-                  const botReplies = await handleBotConversation(
-                    message,
-                    messageBody,
-                    recipientId,
-                    credentials
-                  );
+              await Contact.updateMany(
+                { phoneNumber: message.from },
+                { isSubscribed: true }
+              );
 
-                  console.log(
-                    "🤖 botReplies returned from service:",
-                    Array.isArray(botReplies)
-                      ? `${botReplies.length} replies`
-                      : "NULL"
-                  );
+              autoReplyText = "Welcome back! How can we assist you today?";
+              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
+            } else {
+              /* ------------------------------
+               * C3) BOT FLOW & GREETING
+               * ------------------------------ */
 
-                  if (Array.isArray(botReplies)) {
-                    botReplies.forEach((reply) => {
-                      console.log(
-                        "📡 Emitting newMessage socket event for bot reply..."
-                      );
+              // GREETING LOGIC:
+              // Valid only if NOT Campaign AND Config Enabled
+              if (!isCampaignReply && config && config.greetingEnabled) {
+                // Check if first message ever?
+                const totalIncoming = await Reply.countDocuments({
+                  from: message.from,
+                  direction: "incoming",
+                });
+                if (totalIncoming <= 1) {
+                  // 1 because we just saved the current one
+                  autoReplyText = config.greetingText;
+                  console.log("👋 Sending First-Time Greeting.");
+                }
+              }
+
+              // If no greeting/away set, TRY BOT
+              if (
+                !autoReplyText &&
+                !isCampaignReply &&
+                (message.type === "text" || message.type === "interactive")
+              ) {
+                if (credentials?.accessToken) {
+                  try {
+                    console.log("🤖 Passing message to botService...");
+                    const botReplies = await handleBotConversation(
+                      message,
+                      messageBody,
+                      recipientId,
+                      credentials
+                    );
+                    // Emit socket events for bot replies...
+                    if (Array.isArray(botReplies)) {
+                      botReplies.forEach((reply) => {
+                        io.emit("newMessage", {
+                          from: message.from,
+                          recipientId,
+                          message: reply,
+                        });
+                      });
+                    } else if (botReplies) {
                       io.emit("newMessage", {
                         from: message.from,
                         recipientId,
-                        message: reply,
+                        message: botReplies,
                       });
-                    });
-                  } else if (botReplies) {
-                    // Backward compatibility if it returns a single object
-                    console.log(
-                      "📡 Emitting newMessage socket event for single bot reply..."
-                    );
-                    io.emit("newMessage", {
-                      from: message.from,
-                      recipientId,
-                      message: botReplies,
-                    });
+                    }
+                  } catch (err) {
+                    console.error("❌ Bot Error:", err);
                   }
-                } catch (err) {
-                  console.error("❌ Bot Error:", err);
                 }
               }
             }
@@ -477,7 +518,7 @@ const processWebhook = async (req, res) => {
         }
 
         /* ------------------------------
-         * C5) Send auto-reply (if exists)
+         * C5) Send auto-reply (Away, Greeting, or Sub status)
          * ------------------------------ */
         if (autoReplyText && credentials?.accessToken) {
           try {
