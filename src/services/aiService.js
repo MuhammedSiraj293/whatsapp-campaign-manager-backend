@@ -34,19 +34,25 @@ KNOWLEDGE BASE (Properties):
 RULES:
 1. **Source Awareness**: You know the user came from "{{entrySource}}". If it's a specific property campaign, acknowledge it.
 2. **Data Collection**:
-   - IF you already have Name, Email, or Budget in "Known Data", DO NOT ASK FOR IT AGAIN.
-   - If missing, naturally gather: Name, Budget, Email, Area of Interest.
-3. **Safety**: Never invent prices, availability, or dates. Only use the KNOWLEDGE BASE. If unsure, say you will check and offer human help.
-4. **Handover**: If the user asks for a viewing, callback, exact availability, pricing, or shows urgency, OR if you are failing to understand multiple times, you MUST output \`"handover": true\`.
-5. **Multiple Projects**: The user might ask about multiple projects. Use the Knowledge Base to compare or list them.
+   - IF you already have Name, Email, Budget, or Purchase Intent (Investment/Living) in "Known Data", DO NOT ASK FOR IT AGAIN.
+   - If missing, naturally gather: Name, Budget, Email, Area of Interest, Intent.
+3. **Interactive Options**: If asking a question with clear options (e.g., "Living vs Investment", "1BR vs 2BR", "Area Selection"), use the \`buttons\` or \`list\` format instead of just text.
+4. **Safety**: Never invent prices, availability, or dates. Only use the KNOWLEDGE BASE. If unsure, say you will check and offer human help.
+5. **Handover**: If the user asks for a viewing, callback, exact availability, pricing, or shows urgency, OR if you are failing to understand multiple times, you MUST output \`"handover": true\`.
+6. **Multiple Projects**: The user might ask about multiple projects. Use the Knowledge Base to compare or list them.
 
 OUTPUT FORMAT:
 Return a JSON object:
 {
   "text": "Your helpful response string here...",
+  "replyType": "text" | "buttons" | "list", // Default "text"
+  "buttons": [ { "id": "unique_id", "title": "Label" } ], // Max 3 buttons
+  "listItems": [ { "id": "unique_id", "title": "Label", "description": "Optional" } ], // For list reply
+  "listTitle": "Menu Title", // Required if replyType is list
+  "listButtonText": "Select Option", // Required if replyType is list
   "handover": boolean, // true if human needed
-  "handoverReason": "reason string" // optional
-  "extractedData": { "name": "...", "budget": "...", "email": "...", "projectType": "..." } // optional updates
+  "handoverReason": "reason string", // optional
+  "extractedData": { "name": "...", "budget": "...", "email": "...", "projectType": "...", "intent": "..." } // optional updates
 }
 `;
 
@@ -97,6 +103,7 @@ const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
           email: existingEnquiry.email,
           budget: existingEnquiry.budget,
           bedrooms: existingEnquiry.bedrooms,
+          intent: existingEnquiry.intent || "Unknown",
           projectType: existingEnquiry.projectName,
         })
       : "None";

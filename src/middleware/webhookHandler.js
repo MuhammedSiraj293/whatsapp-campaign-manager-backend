@@ -474,13 +474,51 @@ const processWebhook = async (req, res) => {
                 // AI produced a response
                 console.log("✨ AI Response generated:", aiResult.text);
 
-                // 1. Send AI Text
-                const aiReplyMsg = await sendTextMessage(
-                  message.from,
-                  aiResult.text,
-                  credentials.accessToken,
-                  recipientId
-                );
+                // 1. Send AI Response (Text or Interactive)
+                let aiReplyMsg;
+                const {
+                  sendButtonMessage,
+                  sendListMessage,
+                } = require("../integrations/whatsappAPI");
+
+                if (aiResult.replyType === "buttons" && aiResult.buttons) {
+                  console.log("🔘 Sending AI Button Message");
+                  aiReplyMsg = await sendButtonMessage(
+                    message.from,
+                    aiResult.text,
+                    aiResult.buttons, // [{id, title}]
+                    credentials.accessToken,
+                    recipientId
+                  );
+                } else if (
+                  aiResult.replyType === "list" &&
+                  aiResult.listItems
+                ) {
+                  console.log("📜 Sending AI List Message");
+                  // Convert generic listItems to Section format required by sendListMessage
+                  const sections = [
+                    {
+                      title: aiResult.listTitle || "Options",
+                      rows: aiResult.listItems, // [{id, title, description}]
+                    },
+                  ];
+                  aiReplyMsg = await sendListMessage(
+                    message.from,
+                    aiResult.text,
+                    aiResult.listButtonText || "Select",
+                    sections,
+                    credentials.accessToken,
+                    recipientId
+                  );
+                } else {
+                  // Default TEXT
+                  aiReplyMsg = await sendTextMessage(
+                    message.from,
+                    aiResult.text,
+                    credentials.accessToken,
+                    recipientId
+                  );
+                }
 
                 // 2. Save Reply to DB
                 if (aiReplyMsg?.messages?.[0]?.id) {
@@ -488,7 +526,7 @@ const processWebhook = async (req, res) => {
                     messageId: aiReplyMsg.messages[0].id,
                     from: message.from,
                     recipientId,
-                    body: aiResult.text,
+                    body: aiResult.text, // Save the text body
                     timestamp: new Date(),
                     direction: "outgoing",
                     read: true,
