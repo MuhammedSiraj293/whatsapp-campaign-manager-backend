@@ -408,7 +408,8 @@ const processWebhook = async (req, res) => {
               }
 
               // 3. Handle normal keyword logic
-              if (!autoReplyText) {
+              if (!autoReplyText && isCampaignReply) {
+                // RESTRICTED TO CAMPAIGN REPLIES PER USER REQUEST
                 // Only if not already responding
                 if (messageBodyLower.includes("yes, i am interested")) {
                   autoReplyText =
@@ -419,23 +420,8 @@ const processWebhook = async (req, res) => {
                 } else if (messageBodyLower.includes("not interested")) {
                   autoReplyText =
                     "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
-                } else {
-                  // GREETING Check
-                  const incomingMessageCount = await Reply.countDocuments({
-                    from: message.from,
-                    direction: "incoming", // Ensure direction check
-                  });
-                  // User said "countDocuments({from: message.from})", but usually we filter by direction or it counts bot replies too?
-                  // User's snippet: countDocuments({from: message.from}) -> likely counts user messages.
-                  // If count === 1, it means THIS message is the first one.
-                  if (incomingMessageCount === 1) {
-                    if (!isCampaignReply) {
-                      // Usually greeting only if not campaign
-                      autoReplyText =
-                        "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
-                    }
-                  }
                 }
+                // GREETING BLOCK REMOVED PER USER REQUEST ("if some one message first time transfer to ai")
               }
             }
           }
