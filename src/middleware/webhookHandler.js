@@ -477,7 +477,7 @@ const processWebhook = async (req, res) => {
                 }
               }
 
-              // If no greeting/away set, TRY BOT
+              // If no greeting/away set, TRY BOT or AI
               if (
                 !autoReplyText &&
                 !isCampaignReply &&
@@ -485,7 +485,107 @@ const processWebhook = async (req, res) => {
               ) {
                 if (credentials?.accessToken) {
                   try {
-                    console.log("🤖 Passing message to botService...");
+                    // --- AI AGENT CHECK ---
+                    // By default, we try AI if the user isn't in a specific strict flow or if we want to replace the bot.
+                    // For now, let's prioritize AI if 'AI_ENABLED' is not explicitly false, or just use it.
+                    // We'll check if there's an active Bot Flow first. If there IS a bot flow, we might want to respect it,
+                    // BUT the user wants to "create a system that works in ai".
+                    // Let's TRY AI first. If AI returns 'handover' or valid text, we use it.
+
+                    console.log("🤖 Passing message to AI Service...");
+                    const {
+                      generateResponse,
+                    } = require("../services/aiService");
+
+                    // Fetch existing enquiry for context
+                    const existingEnquiry = await Enquiry.findOne({
+                      phoneNumber: message.from,
+                      recipientId,
+                    });
+
+                    const aiResult = await generateResponse(
+                      message.from,
+                      messageBody,
+                      existingEnquiry
+                    );
+
+                    if (aiResult && aiResult.text) {
+                      // AI produced a response
+                      console.log("✨ AI Response generated:", aiResult.text);
+
+                      // 1. Send AI Text
+                      const aiReplyMsg = await sendTextMessage(
+                        message.from,
+                        aiResult.text,
+                        credentials.accessToken,
+                        recipientId
+                      );
+
+                      // 2. Save Reply to DB
+                      if (aiReplyMsg?.messages?.[0]?.id) {
+                        const aiDbReply = new Reply({
+                          messageId: aiReplyMsg.messages[0].id,
+                          from: message.from,
+                          recipientId,
+                          body: aiResult.text,
+                          timestamp: new Date(),
+                          direction: "outgoing",
+                          read: true,
+                          isAiGenerated: true,
+                        });
+                        await aiDbReply.save();
+
+                        io.emit("newMessage", {
+                          from: message.from,
+                          recipientId,
+                          message: aiDbReply,
+                        });
+                      }
+
+                      // 3. Handle Data Extraction (Update Enquiry)
+                      if (aiResult.extractedData) {
+                        const updates = aiResult.extractedData;
+                        if (!existingEnquiry) {
+                          await Enquiry.create({
+                            phoneNumber: message.from,
+                            recipientId,
+                            name: updates.name,
+                            email: updates.email,
+                            budget: updates.budget,
+                            projectName: updates.projectType, // Mapping
+                          });
+                        } else {
+                          if (updates.name) existingEnquiry.name = updates.name;
+                          if (updates.email)
+                            existingEnquiry.email = updates.email;
+                          if (updates.budget)
+                            existingEnquiry.budget = updates.budget;
+                          await existingEnquiry.save();
+                        }
+                      }
+
+                      // 4. Handle Handover
+                      if (aiResult.handover) {
+                        console.log(
+                          "👤 AI requested HUMAN HANDOVER:",
+                          aiResult.handoverReason
+                        );
+                        // We could trigger a notification here or mark the chat as "Needs Attention"
+                        if (existingEnquiry) {
+                          existingEnquiry.needsImmediateAttention = true;
+                          await existingEnquiry.save();
+                        }
+                        // Optionally send a "Connecting you to an agent..." message if the AI didn't say it.
+                      }
+
+                      // STOP HERE - Do not fall through to old bot
+                      return res.sendStatus(200);
+                    }
+
+                    // Fallback to old bot if AI fails or returns nothing?
+                    console.log(
+                      "🤖 AI yielded no result, passing to legacy botService..."
+                    );
                     const botReplies = await handleBotConversation(
                       message,
                       messageBody,

@@ -94,6 +94,10 @@ const ReplySchema = new mongoose.Schema(
       id: String,
       from: String,
     },
+    isAiGenerated: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
