@@ -56,6 +56,7 @@ const processWebhook = async (req, res) => {
 
   const value = body.entry?.[0]?.changes?.[0]?.value;
   const recipientId = value?.metadata?.phone_number_id;
+  const contactName = value?.contacts?.[0]?.profile?.name || "Guest";
 
   if (!recipientId) {
     console.log("⚠️ Missing metadata.phone_number_id — ignoring webhook.");
