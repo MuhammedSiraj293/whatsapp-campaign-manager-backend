@@ -3,9 +3,9 @@ const Property = require("../models/Property");
 const Reply = require("../models/Reply");
 const Enquiry = require("../models/Enquiry");
 
+// Initialize Gemini with API Key
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-
-const MODEL_NAME = "gemini-1.5-flash"; // Fast and efficient
+const MODEL_NAME = "gemini-2.0-flash"; // Available model from list
 
 // System Prompt Template
 const SYSTEM_PROMPT = `
@@ -82,7 +82,13 @@ const getRecentHistory = async (phoneNumber, limit = 10) => {
 
 const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    // Retry logic for model names
+    const modelsToTry = ["gemini-1.5-flash", "gemini-pro"];
+    let model;
+
+    // We just instantiate the model here, but the call happens below.
+    // We'll use the primary configure one.
+    model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     // 1. Gather Context
     const propertyKnowledge = await getPropertyKnowledge();
