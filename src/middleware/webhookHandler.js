@@ -467,7 +467,8 @@ const processWebhook = async (req, res) => {
               const aiResult = await generateResponse(
                 message.from,
                 messageBody,
-                existingEnquiry
+                existingEnquiry,
+                contactName // Pass WhatsApp Profile Name
               );
 
               if (aiResult && aiResult.text) {
@@ -553,7 +554,10 @@ const processWebhook = async (req, res) => {
                       name: updates.name,
                       email: updates.email,
                       budget: updates.budget,
+                      bedrooms: updates.bedrooms,
                       projectName: updates.projectType,
+                      location: updates.area || updates.location,
+                      intent: updates.intent,
                       entrySource: campaignToCredit
                         ? `Campaign: ${campaignToCredit.name}`
                         : "Direct",
@@ -562,8 +566,15 @@ const processWebhook = async (req, res) => {
                     if (updates.name) existingEnquiry.name = updates.name;
                     if (updates.email) existingEnquiry.email = updates.email;
                     if (updates.budget) existingEnquiry.budget = updates.budget;
+                    if (updates.bedrooms)
+                      existingEnquiry.bedrooms = updates.bedrooms;
                     if (updates.projectType)
                       existingEnquiry.projectName = updates.projectType;
+                    if (updates.area || updates.location)
+                      existingEnquiry.location =
+                        updates.area || updates.location;
+                    if (updates.intent) existingEnquiry.intent = updates.intent;
+
                     await existingEnquiry.save();
                   }
 

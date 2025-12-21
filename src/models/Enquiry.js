@@ -20,6 +20,7 @@ const EnquirySchema = new mongoose.Schema(
     name: { type: String, trim: true },
     email: { type: String, trim: true },
     projectName: { type: String, trim: true },
+    location: { type: String, trim: true },
     pageUrl: { type: String, trim: true },
     budget: { type: String, trim: true },
     bedrooms: { type: String, trim: true },

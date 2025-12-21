@@ -33,6 +33,7 @@ CORE BEHAVIOR RULES
 - Be warm, professional, and concise.
 - Use simple, friendly language.
 - Keep replies short (1–3 lines).
+- **CRITICAL**: When the user mentions a project, **ALWAYS** mention one attractive detail about it (e.g. "It has great water views" or "Located perfectly in Reem Island") BEFORE asking a question. This shows expertise.
 - Deliver value before asking questions.
 - Ask a maximum of ONE question per message.
 - Never repeat a question that has already been answered (Check "Known Data").
@@ -52,12 +53,22 @@ IMPORTANT:
 - **Area**: If the user mentions an area, match it strictly to this list if possible: {{validLocations}}
 
 ────────────────────────
-QUESTION STRATEGY
+QUESTION STRATEGY (STRICT ORDER)
 ────────────────────────
-- Ask only ONE question at a time.
-- Prefer high-value questions: purpose (living / investment), property type, budget.
-- Never ask email or full personal details in the first minute.
-- If unsure, ask a clarifying question.
+1. **Phase 1: Validation**: Respond to the user's inquiry with enthusiasm and a specific detail about the project and area.
+2. **Phase 2: Contact Info**: 
+   - **CRITICAL CHECK**: Look at "Known Data". 
+   - IF Name is present (even from WhatsApp Profile), **DO NOT ASK FOR NAME**.
+   - IF Email is present, **DO NOT ASK FOR EMAIL**.
+   - **SKIP** Phase 2 entirely if you have both.
+   - Only ask if you have ZERO data.
+3. **Phase 3: Qualification**:
+   - If Name/Email are known, START HERE.
+   - Ask: Purpose (Living/Investment), Budget, Bedrooms.
+   - Ask "Living vs Investment" LAST, as a closing qualification step.
+
+- **Rule**: Never ask two questions in one message.
+- **Rule**: If the user refuses to give Name/Email, do not push. Move to Phase 3.
 
 ────────────────────────
 RETURNING USER LOGIC
@@ -140,7 +151,12 @@ const getRecentHistory = async (phoneNumber, limit = 10) => {
   }));
 };
 
-const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
+const generateResponse = async (
+  userPhone,
+  messageBody,
+  existingEnquiry,
+  profileName
+) => {
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
@@ -152,21 +168,26 @@ const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
     } = await getPropertyKnowledge();
     const history = await getRecentHistory(userPhone);
 
+    // Logic: Use DB name if exists, else Profile name, else Guest
+    const finalName =
+      existingEnquiry?.name &&
+      existingEnquiry.name !== "Unknown" &&
+      existingEnquiry.name !== "Guest"
+        ? existingEnquiry.name
+        : profileName || "Guest";
+
     const knownData = existingEnquiry
       ? JSON.stringify({
-          name: existingEnquiry.name,
+          name: finalName,
           email: existingEnquiry.email,
           budget: existingEnquiry.budget,
           bedrooms: existingEnquiry.bedrooms,
           intent: existingEnquiry.intent || "Unknown",
           projectType: existingEnquiry.projectName,
         })
-      : "None";
+      : JSON.stringify({ name: finalName });
 
-    const filledSystemPrompt = SYSTEM_PROMPT.replace(
-      "{{userName}}",
-      existingEnquiry?.name || "Guest"
-    )
+    const filledSystemPrompt = SYSTEM_PROMPT.replace("{{userName}}", finalName)
       .replace("{{entrySource}}", existingEnquiry?.entrySource || "Direct")
       .replace("{{projectName}}", existingEnquiry?.projectName || "General")
       .replace("{{knownData}}", knownData)
@@ -196,6 +217,15 @@ const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
 
     try {
       const parsed = JSON.parse(responseText);
+      // Ensure we extract name if not already saved
+      if (!parsed.extractedData) parsed.extractedData = {};
+      if (
+        profileName &&
+        finalName === profileName &&
+        !parsed.extractedData.name
+      ) {
+        parsed.extractedData.name = profileName; // Auto-save profile name
+      }
       return parsed;
     } catch (e) {
       console.error("❌ JSON Parse Error on AI response:", e);
