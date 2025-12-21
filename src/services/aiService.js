@@ -9,7 +9,7 @@ const MODEL_NAME = "gemini-2.0-flash"; // Available model from list
 
 // System Prompt Template
 const SYSTEM_PROMPT = `
-You are an AI-powered WhatsApp real estate assistant for a premium developer in Abu Dhabi.
+You are an AI-powered WhatsApp real estate assistant for **The Capital Avenue Real Estate**, a premium agency in Abu Dhabi.
 Your primary goal is to deliver the BEST user experience within 60 seconds.
 You must behave like a smart human assistant, not a form and not a chatbot.
 
@@ -32,10 +32,13 @@ KNOWLEDGE BASE (Properties):
 {{propertyKnowledge}}
 
 RULES:
-1. If the 24-hour window is closed, the system handles it, but if you reply, assume you are chatting freely.
-2. Safety: Never invent prices, availability, or dates. Only use the KNOWLEDGE BASE. If unsure, say you will check and offer human help.
-3. Handover: If the user asks for a viewing, callback, exact availability, pricing, or shows urgency, you MUST output a specific JSON tool call to trigger handover.
-4. Data Collection: You want to naturally gather: Name, Budget, Email, Area of Interest, Project Type. Do not interrogate. Ask one thing at a time mixed with helpful info.
+1. **Source Awareness**: You know the user came from "{{entrySource}}". If it's a specific property campaign, acknowledge it.
+2. **Data Collection**:
+   - IF you already have Name, Email, or Budget in "Known Data", DO NOT ASK FOR IT AGAIN.
+   - If missing, naturally gather: Name, Budget, Email, Area of Interest.
+3. **Safety**: Never invent prices, availability, or dates. Only use the KNOWLEDGE BASE. If unsure, say you will check and offer human help.
+4. **Handover**: If the user asks for a viewing, callback, exact availability, pricing, or shows urgency, OR if you are failing to understand multiple times, you MUST output \`"handover": true\`.
+5. **Multiple Projects**: The user might ask about multiple projects. Use the Knowledge Base to compare or list them.
 
 OUTPUT FORMAT:
 Return a JSON object:
@@ -43,7 +46,7 @@ Return a JSON object:
   "text": "Your helpful response string here...",
   "handover": boolean, // true if human needed
   "handoverReason": "reason string" // optional
-  "extractedData": { "name": "...", "budget": "...", "email": "..." } // optional updates
+  "extractedData": { "name": "...", "budget": "...", "email": "...", "projectType": "..." } // optional updates
 }
 `;
 
@@ -82,13 +85,7 @@ const getRecentHistory = async (phoneNumber, limit = 10) => {
 
 const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
   try {
-    // Retry logic for model names
-    const modelsToTry = ["gemini-1.5-flash", "gemini-pro"];
-    let model;
-
-    // We just instantiate the model here, but the call happens below.
-    // We'll use the primary configure one.
-    model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     // 1. Gather Context
     const propertyKnowledge = await getPropertyKnowledge();
@@ -100,6 +97,7 @@ const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
           email: existingEnquiry.email,
           budget: existingEnquiry.budget,
           bedrooms: existingEnquiry.bedrooms,
+          projectType: existingEnquiry.projectName,
         })
       : "None";
 
@@ -119,10 +117,10 @@ const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
           role: "user",
           parts: [{ text: `SYSTEM_INSTRUCTION: ${filledSystemPrompt}` }],
         },
-        ...history, // Append actual conversation history
+        ...history,
       ],
       generationConfig: {
-        responseMimeType: "application/json", // Force JSON output for parsing
+        responseMimeType: "application/json",
       },
     });
 
@@ -136,21 +134,14 @@ const generateResponse = async (userPhone, messageBody, existingEnquiry) => {
       const parsed = JSON.parse(responseText);
       return parsed;
     } catch (e) {
-      // Fallback if JSON parsing fails
       console.error("❌ JSON Parse Error on AI response:", e);
-      return {
-        text: "I apologize, I'm having a little trouble connecting. Could you please repeat that?",
-        handover: true,
-        handoverReason: "AI JSON Parse Error",
-      };
+      // Return NULL to trigger fallback to legacy bot
+      return null;
     }
   } catch (error) {
     console.error("❌ AI Service Error:", error);
-    return {
-      text: "I'm checking on that for you. One moment.",
-      handover: true,
-      handoverReason: "AI Service Failure",
-    };
+    // Return NULL to trigger fallback to legacy bot
+    return null;
   }
 };
 

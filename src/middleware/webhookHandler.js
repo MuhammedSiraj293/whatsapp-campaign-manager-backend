@@ -374,245 +374,246 @@ const processWebhook = async (req, res) => {
           }
         } else {
           // --- WE ARE OPEN (OR NO CONFIG) ---
-
-          /* ------------------------------
-           * C1) STOP / UNSUBSCRIBE (Global override)
-           * ------------------------------ */
-          if (
-            messageBodyLower.includes("stop") ||
-            messageBodyLower.includes("إيقاف")
-          ) {
-            autoReplyText =
-              "You’ve been unsubscribed. won’t receive further messages, but you can reach out anytime if you need assistance.";
-
-            // 1. Mark ALL existing instances of this contact as unsubscribed
-            await Contact.updateMany(
-              { phoneNumber: message.from },
-              { isSubscribed: false }
+          // 1. Find the credentials for this specific phone number FIRST
+          // (Already loaded in A1, but ensuring we have acccesToken)
+          if (!credentials || !credentials.accessToken) {
+            console.error(
+              `❌ Could not find credentials for recipientId ${recipientId}. Aborting auto-reply.`
             );
-
-            // 2. Add to "Unsubscriber List" (Create copy)
-            try {
-              let unsubList = await ContactList.findOne({
-                name: "Unsubscriber List",
-              });
-              if (!unsubList) {
-                unsubList = await ContactList.create({
-                  name: "Unsubscriber List",
-                });
-                console.log("📝 Created 'Unsubscriber List'");
-              }
-
-              const existsInUnsub = await Contact.findOne({
-                phoneNumber: message.from,
-                contactList: unsubList._id,
-              });
-
-              if (!existsInUnsub) {
-                const existingContact = await Contact.findOne({
-                  phoneNumber: message.from,
-                });
-
-                await Contact.create({
-                  phoneNumber: message.from,
-                  name: existingContact?.name || "Unknown",
-                  contactList: unsubList._id,
-                  isSubscribed: false,
-                });
-                console.log(`📝 Added ${message.from} to Unsubscriber List`);
-              }
-            } catch (err) {
-              console.error("❌ Error adding to Unsubscriber List:", err);
-            }
+            // Continue, but won't be able to reply
           } else {
-            /* ------------------------------
-             * C2) RESUBSCRIBE
-             * ------------------------------ */
-            // Check if they are currently unsubscribed in any primary list
-            const contact = await Contact.findOne({
-              phoneNumber: message.from,
-              isSubscribed: false,
-            });
-
-            if (contact) {
-              // Resubscribe logic...
-              try {
-                const unsubList = await ContactList.findOne({
-                  name: "Unsubscriber List",
-                });
-                if (unsubList) {
-                  await Contact.deleteMany({
-                    phoneNumber: message.from,
-                    contactList: unsubList._id,
-                  });
-                }
-              } catch (err) {
-                console.error("❌ Error removing from Unsubscriber List:", err);
-              }
-
-              await Contact.updateMany(
+            // 2. Handle "stop" and "re-subscribe" logic
+            if (
+              messageBodyLower.includes("stop") ||
+              messageBodyLower.includes("إيقاف")
+            ) {
+              autoReplyText =
+                "You’ve been unsubscribed. won’t receive further messages, but you can reach out anytime if you need assistance.";
+              await Contact.findOneAndUpdate(
                 { phoneNumber: message.from },
-                { isSubscribed: true }
+                { isSubscribed: false }
               );
-
-              autoReplyText = "Welcome back! How can we assist you today?";
-              console.log(`✅ Contact ${message.from} has been re-subscribed.`);
             } else {
-              /* ------------------------------
-               * C3) BOT FLOW & GREETING
-               * ------------------------------ */
-
-              // GREETING LOGIC:
-              // Valid only if NOT Campaign AND Config Enabled
-              if (!isCampaignReply && config && config.greetingEnabled) {
-                // Check if first message ever?
-                const totalIncoming = await Reply.countDocuments({
-                  from: message.from,
-                  direction: "incoming",
-                });
-                if (totalIncoming <= 1) {
-                  // 1 because we just saved the current one
-                  autoReplyText = config.greetingText;
-                  console.log("👋 Sending First-Time Greeting.");
-                }
+              const contact = await Contact.findOne({
+                phoneNumber: message.from,
+              });
+              if (contact && !contact.isSubscribed) {
+                contact.isSubscribed = true;
+                await contact.save();
+                autoReplyText =
+                  "Hello and welcome back to Capital Avenue! How can we help you";
+                console.log(
+                  `✅ Contact ${message.from} has been re-subscribed.`
+                );
               }
 
-              // If no greeting/away set, TRY BOT or AI
-              if (
-                !autoReplyText &&
-                !isCampaignReply &&
-                (message.type === "text" || message.type === "interactive")
-              ) {
-                if (credentials?.accessToken) {
-                  try {
-                    // --- AI AGENT CHECK ---
-                    // By default, we try AI if the user isn't in a specific strict flow or if we want to replace the bot.
-                    // For now, let's prioritize AI if 'AI_ENABLED' is not explicitly false, or just use it.
-                    // We'll check if there's an active Bot Flow first. If there IS a bot flow, we might want to respect it,
-                    // BUT the user wants to "create a system that works in ai".
-                    // Let's TRY AI first. If AI returns 'handover' or valid text, we use it.
-
-                    console.log("🤖 Passing message to AI Service...");
-                    const {
-                      generateResponse,
-                    } = require("../services/aiService");
-
-                    // Fetch existing enquiry for context
-                    const existingEnquiry = await Enquiry.findOne({
-                      phoneNumber: message.from,
-                      recipientId,
-                    });
-
-                    const aiResult = await generateResponse(
-                      message.from,
-                      messageBody,
-                      existingEnquiry
-                    );
-
-                    if (aiResult && aiResult.text) {
-                      // AI produced a response
-                      console.log("✨ AI Response generated:", aiResult.text);
-
-                      // 1. Send AI Text
-                      const aiReplyMsg = await sendTextMessage(
-                        message.from,
-                        aiResult.text,
-                        credentials.accessToken,
-                        recipientId
-                      );
-
-                      // 2. Save Reply to DB
-                      if (aiReplyMsg?.messages?.[0]?.id) {
-                        const aiDbReply = new Reply({
-                          messageId: aiReplyMsg.messages[0].id,
-                          from: message.from,
-                          recipientId,
-                          body: aiResult.text,
-                          timestamp: new Date(),
-                          direction: "outgoing",
-                          read: true,
-                          isAiGenerated: true,
-                        });
-                        await aiDbReply.save();
-
-                        io.emit("newMessage", {
-                          from: message.from,
-                          recipientId,
-                          message: aiDbReply,
-                        });
-                      }
-
-                      // 3. Handle Data Extraction (Update Enquiry)
-                      if (aiResult.extractedData) {
-                        const updates = aiResult.extractedData;
-                        if (!existingEnquiry) {
-                          await Enquiry.create({
-                            phoneNumber: message.from,
-                            recipientId,
-                            name: updates.name,
-                            email: updates.email,
-                            budget: updates.budget,
-                            projectName: updates.projectType, // Mapping
-                          });
-                        } else {
-                          if (updates.name) existingEnquiry.name = updates.name;
-                          if (updates.email)
-                            existingEnquiry.email = updates.email;
-                          if (updates.budget)
-                            existingEnquiry.budget = updates.budget;
-                          await existingEnquiry.save();
-                        }
-                      }
-
-                      // 4. Handle Handover
-                      if (aiResult.handover) {
-                        console.log(
-                          "👤 AI requested HUMAN HANDOVER:",
-                          aiResult.handoverReason
-                        );
-                        // We could trigger a notification here or mark the chat as "Needs Attention"
-                        if (existingEnquiry) {
-                          existingEnquiry.needsImmediateAttention = true;
-                          await existingEnquiry.save();
-                        }
-                        // Optionally send a "Connecting you to an agent..." message if the AI didn't say it.
-                      }
-
-                      // STOP HERE - Do not fall through to old bot
-                      return res.sendStatus(200);
+              // 3. Handle normal keyword logic
+              if (!autoReplyText) {
+                // Only if not already responding
+                if (messageBodyLower.includes("yes, i am interested")) {
+                  autoReplyText =
+                    "Your interest has been noted. We will contact you shortly. Thank you for your response.";
+                } else if (messageBodyLower.includes("نعم، مهتم")) {
+                  autoReplyText =
+                    ".تم تسجيل اهتمامك. سنتواصل معك قريبًا. شكرًا على ردك";
+                } else if (messageBodyLower.includes("not interested")) {
+                  autoReplyText =
+                    "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+                } else {
+                  // GREETING Check
+                  const incomingMessageCount = await Reply.countDocuments({
+                    from: message.from,
+                    direction: "incoming", // Ensure direction check
+                  });
+                  // User said "countDocuments({from: message.from})", but usually we filter by direction or it counts bot replies too?
+                  // User's snippet: countDocuments({from: message.from}) -> likely counts user messages.
+                  // If count === 1, it means THIS message is the first one.
+                  if (incomingMessageCount === 1) {
+                    if (!isCampaignReply) {
+                      // Usually greeting only if not campaign
+                      autoReplyText =
+                        "Hello and welcome to Capital Avenue! It’s a pleasure to connect with you. How can we help you today?";
                     }
-
-                    // Fallback to old bot if AI fails or returns nothing?
-                    console.log(
-                      "🤖 AI yielded no result, passing to legacy botService..."
-                    );
-                    const botReplies = await handleBotConversation(
-                      message,
-                      messageBody,
-                      recipientId,
-                      credentials
-                    );
-                    // Emit socket events for bot replies...
-                    if (Array.isArray(botReplies)) {
-                      botReplies.forEach((reply) => {
-                        io.emit("newMessage", {
-                          from: message.from,
-                          recipientId,
-                          message: reply,
-                        });
-                      });
-                    } else if (botReplies) {
-                      io.emit("newMessage", {
-                        from: message.from,
-                        recipientId,
-                        message: botReplies,
-                      });
-                    }
-                  } catch (err) {
-                    console.error("❌ Bot Error:", err);
                   }
                 }
               }
+            }
+          }
+        }
+
+        // OLD: if (!autoReplyText && !isCampaignReply && ...)
+        // NEW: We allow AI to handle campaign replies too, to be "smart".
+        // User Request 227: "for cmapign replay dont transfer to ai"
+        // So we RESTORE !isCampaignReply
+        if (
+          !autoReplyText &&
+          !isCampaignReply &&
+          (message.type === "text" || message.type === "interactive")
+        ) {
+          if (credentials?.accessToken) {
+            try {
+              // --- AI AGENT CHECK ---
+              console.log("🤖 Passing message to AI Service...");
+              const { generateResponse } = require("../services/aiService");
+
+              // Fetch existing enquiry for context
+              let existingEnquiry = await Enquiry.findOne({
+                phoneNumber: message.from,
+                recipientId,
+              });
+
+              // Update entry source if campaign detected and enquiry is new-ish
+              if (existingEnquiry && campaignToCredit) {
+                existingEnquiry.entrySource = `Campaign: ${campaignToCredit.name}`;
+                existingEnquiry.projectName = campaignToCredit.name; // Infer interest
+                await existingEnquiry.save();
+              }
+
+              // If no enquiry, create temp object for context
+              if (!existingEnquiry && campaignToCredit) {
+                existingEnquiry = {
+                  name: "Guest",
+                  entrySource: `Campaign: ${campaignToCredit.name}`,
+                  projectName: campaignToCredit.name,
+                };
+              }
+
+              const aiResult = await generateResponse(
+                message.from,
+                messageBody,
+                existingEnquiry
+              );
+
+              if (aiResult && aiResult.text) {
+                // AI produced a response
+                console.log("✨ AI Response generated:", aiResult.text);
+
+                // 1. Send AI Text
+                const aiReplyMsg = await sendTextMessage(
+                  message.from,
+                  aiResult.text,
+                  credentials.accessToken,
+                  recipientId
+                );
+
+                // 2. Save Reply to DB
+                if (aiReplyMsg?.messages?.[0]?.id) {
+                  const aiDbReply = new Reply({
+                    messageId: aiReplyMsg.messages[0].id,
+                    from: message.from,
+                    recipientId,
+                    body: aiResult.text,
+                    timestamp: new Date(),
+                    direction: "outgoing",
+                    read: true,
+                    isAiGenerated: true,
+                  });
+                  await aiDbReply.save();
+
+                  io.emit("newMessage", {
+                    from: message.from,
+                    recipientId,
+                    message: aiDbReply,
+                  });
+                }
+
+                // 3. Handle Data Extraction (Update Enquiry & Contact)
+                if (aiResult.extractedData) {
+                  const updates = aiResult.extractedData;
+
+                  // A) Upsert Enquiry
+                  if (!existingEnquiry || !existingEnquiry._id) {
+                    existingEnquiry = await Enquiry.create({
+                      phoneNumber: message.from,
+                      recipientId,
+                      name: updates.name,
+                      email: updates.email,
+                      budget: updates.budget,
+                      projectName: updates.projectType,
+                      entrySource: campaignToCredit
+                        ? `Campaign: ${campaignToCredit.name}`
+                        : "Direct",
+                    });
+                  } else {
+                    if (updates.name) existingEnquiry.name = updates.name;
+                    if (updates.email) existingEnquiry.email = updates.email;
+                    if (updates.budget) existingEnquiry.budget = updates.budget;
+                    if (updates.projectType)
+                      existingEnquiry.projectName = updates.projectType;
+                    await existingEnquiry.save();
+                  }
+
+                  // B) Upsert Contact
+                  let contact = await Contact.findOne({
+                    phoneNumber: message.from,
+                  });
+                  if (!contact) {
+                    contact = await Contact.create({
+                      phoneNumber: message.from,
+                      name: updates.name || existingEnquiry.name || "Unknown",
+                      email: updates.email || existingEnquiry.email,
+                      isSubscribed: true,
+                    });
+                    console.log("👤 Created new Contact from AI data.");
+                  } else {
+                    if (updates.name && contact.name === "Unknown")
+                      contact.name = updates.name;
+                    if (updates.email && !contact.email)
+                      contact.email = updates.email;
+                    await contact.save();
+                    console.log("👤 Updated existing Contact from AI data.");
+                  }
+                }
+
+                // 4. Handle Handover
+                if (aiResult.handover) {
+                  console.log(
+                    "👤 AI requested HUMAN HANDOVER:",
+                    aiResult.handoverReason
+                  );
+                  if (existingEnquiry && existingEnquiry._id) {
+                    existingEnquiry.needsImmediateAttention = true;
+                    await existingEnquiry.save();
+                  }
+                }
+
+                // STOP HERE - Success
+                return res.sendStatus(200);
+              }
+
+              // Fallback to old bot if AI fails (returns null)
+              console.log(
+                "🤖 AI yielded no result (or error), passing to legacy botService... (Fallback)"
+              );
+
+              // Fallthrough to handleBotConversation below...
+            } catch (err) {
+              console.error("❌ AI/Bot Error:", err);
+              // Fallthrough to handleBotConversation below...
+            }
+
+            // --- LEGACY BOT FALLBACK ---
+            const botReplies = await handleBotConversation(
+              message,
+              messageBody,
+              recipientId,
+              credentials
+            );
+            // Emit socket events for bot replies...
+            if (Array.isArray(botReplies)) {
+              botReplies.forEach((reply) => {
+                io.emit("newMessage", {
+                  from: message.from,
+                  recipientId,
+                  message: reply,
+                });
+              });
+            } else if (botReplies) {
+              io.emit("newMessage", {
+                from: message.from,
+                recipientId,
+                message: botReplies,
+              });
             }
           }
         }
