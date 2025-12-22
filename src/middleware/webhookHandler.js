@@ -461,8 +461,11 @@ const processWebhook = async (req, res) => {
                       2
                     )}h)`
                   );
-                  // If it was "handover", we might want to set it back to "pending" if the AI is continuing?
-                  // For now, let's keep it simple: just update the existing doc.
+                  // Reset status to pending so AI treats it as active
+                  if (existingEnquiry.status === "handover") {
+                    existingEnquiry.status = "pending";
+                    await existingEnquiry.save();
+                  }
                 } else {
                   console.log(
                     `✨ Enquiry older than 24h. Creating NEW enquiry.`
