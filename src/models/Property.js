@@ -11,6 +11,7 @@ const propertySchema = new mongoose.Schema(
     unitType: { type: String }, // e.g., "1BR, 2BR"
     handoverDate: { type: String },
     description: { type: String },
+    tags: { type: [String], default: [] }, // e.g. ["Hot Deal", "New Listing"]
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
