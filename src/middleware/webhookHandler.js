@@ -443,12 +443,33 @@ const processWebhook = async (req, res) => {
               console.log("🤖 Passing message to AI Service...");
               const { generateResponse } = require("../services/aiService");
 
-              // Fetch existing open enquiry for context
+              // Fetch existing enquiry for context (Logic: Reuse if < 24 hours)
               let existingEnquiry = await Enquiry.findOne({
                 phoneNumber: message.from,
                 recipientId,
-                status: "pending", // Only find active/pending enquiries
-              });
+              }).sort({ updatedAt: -1 });
+
+              // Check time window (24 hours)
+              if (existingEnquiry) {
+                const now = new Date();
+                const diffMs = now - new Date(existingEnquiry.updatedAt);
+                const diffHours = diffMs / (1000 * 60 * 60);
+
+                if (diffHours < 24) {
+                  console.log(
+                    `🔄 Reusing existing enquiry (Age: ${diffHours.toFixed(
+                      2
+                    )}h)`
+                  );
+                  // If it was "handover", we might want to set it back to "pending" if the AI is continuing?
+                  // For now, let's keep it simple: just update the existing doc.
+                } else {
+                  console.log(
+                    `✨ Enquiry older than 24h. Creating NEW enquiry.`
+                  );
+                  existingEnquiry = null; // Too old, create fresh
+                }
+              }
 
               // Update entry source if campaign detected and enquiry is new-ish
               if (existingEnquiry && campaignToCredit) {
