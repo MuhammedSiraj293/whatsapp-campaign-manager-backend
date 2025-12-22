@@ -163,8 +163,8 @@ RETURNING USER LOGIC
 ────────────────────────
 If Session Type = “New Session” AND Known Data already exists:
 - Acknowledge the return.
-- If they ask for "another property", **Forget old data** and start fresh (Step 0/1).
 - Ask whether to continue with the previous enquiry or start a new one.
+- If they ask for "another property", **Forget old data** and start fresh (Step 0/1).
 - Use buttons if helpful.
 - Do NOT repeat old questions.
 

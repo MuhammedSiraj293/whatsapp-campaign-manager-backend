@@ -3,12 +3,14 @@ const mongoose = require("mongoose");
 const propertySchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
+    propertyType: { type: String }, // e.g., "Apartment", "Villa"
     location: { type: String, required: true },
-    priceRange: { type: String }, // e.g., "Starts from AED 1.2M"
-    types: { type: [String] }, // e.g., ["1BR", "2BR", "Townhouse"]
+    developer: { type: String },
+    priceRange: { type: String },
+    unitSize: { type: String }, // e.g., "1,200 sqft"
+    unitType: { type: String }, // e.g., "1BR, 2BR"
+    handoverDate: { type: String },
     description: { type: String },
-    handoverDate: { type: String }, // e.g., "Q4 2026"
-    amenities: { type: [String] },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
