@@ -255,11 +255,14 @@ const getPropertyKnowledge = async () => {
     .map(
       (p) => `
     Project: ${p.name}
+    Developer: ${p.developer || "N/A"}
     Location: ${p.location}
-    Types: ${p.types.join(", ")}
-    Prices: ${p.priceRange}
-    Handover: ${p.handoverDate}
-    Desc: ${p.description}
+    Type: ${p.propertyType || "N/A"}
+    Unit Types: ${p.unitType || "N/A"}
+    Prices: ${p.priceRange || "N/A"}
+    Size: ${p.unitSize || "N/A"}
+    Handover: ${p.handoverDate || "N/A"}
+    Desc: ${p.description || "N/A"}
   `
     )
     .join("\n---\n");
