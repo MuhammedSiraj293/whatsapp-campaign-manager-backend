@@ -633,13 +633,26 @@ const processWebhook = async (req, res) => {
                     phoneNumber: message.from,
                   });
                   if (!contact) {
+                    // Find or create 'Enquiries' list
+                    let enquiresList = await ContactList.findOne({
+                      name: "Enquiries",
+                    });
+                    if (!enquiresList) {
+                      enquiresList = await ContactList.create({
+                        name: "Enquiries",
+                      });
+                    }
+
                     contact = await Contact.create({
                       phoneNumber: message.from,
                       name: updates.name || existingEnquiry.name || "Unknown",
                       email: updates.email || existingEnquiry.email,
                       isSubscribed: true,
+                      contactList: enquiresList._id,
                     });
-                    console.log("👤 Created new Contact from AI data.");
+                    console.log(
+                      "👤 Created new Contact from AI data in 'Enquiries' list."
+                    );
                   } else {
                     if (updates.name && contact.name === "Unknown")
                       contact.name = updates.name;
