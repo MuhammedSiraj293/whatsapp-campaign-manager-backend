@@ -474,9 +474,118 @@ const processWebhook = async (req, res) => {
               );
 
               if (aiResult && aiResult.text) {
-                // ... (sending logic is unchanged) ...
+                let aiReplyMsg;
+                const {
+                  sendButtonMessage,
+                  sendListMessage,
+                  sendTextMessage,
+                } = require("../integrations/whatsappAPI");
 
-                /* [CODE OMITTED FOR BREVITY - SENDING LOGIC] */
+                // 1. Send Message via WhatsApp API (with Fallback)
+                if (aiResult.replyType === "buttons" && aiResult.buttons) {
+                  console.log("🔘 Sending AI Button Message");
+                  try {
+                    aiReplyMsg = await sendButtonMessage(
+                      message.from,
+                      aiResult.text,
+                      aiResult.buttons,
+                      credentials.accessToken,
+                      recipientId
+                    );
+                    console.log(
+                      "✅ Button Message SENT. ID:",
+                      aiReplyMsg?.messages?.[0]?.id
+                    );
+                  } catch (btnErr) {
+                    console.error(
+                      "⚠️ Button Message Failed. Falling back to Text.",
+                      btnErr.message
+                    );
+                    const fallbackText = `${
+                      aiResult.text
+                    }\n\n[Options: ${aiResult.buttons
+                      .map((b) => b.title)
+                      .join(" | ")}]`;
+                    aiReplyMsg = await sendTextMessage(
+                      message.from,
+                      fallbackText,
+                      credentials.accessToken,
+                      recipientId
+                    );
+                  }
+                } else if (
+                  aiResult.replyType === "list" &&
+                  aiResult.listItems
+                ) {
+                  console.log("📜 Sending AI List Message");
+                  const sections = [
+                    {
+                      title: aiResult.listTitle || "Options",
+                      rows: aiResult.listItems,
+                    },
+                  ];
+                  try {
+                    aiReplyMsg = await sendListMessage(
+                      message.from,
+                      aiResult.text,
+                      aiResult.listButtonText || "Select",
+                      sections,
+                      credentials.accessToken,
+                      recipientId
+                    );
+                    console.log(
+                      "✅ List Message SENT. ID:",
+                      aiReplyMsg?.messages?.[0]?.id
+                    );
+                  } catch (listErr) {
+                    console.error(
+                      "⚠️ List Message Failed. Falling back to Text.",
+                      listErr.message
+                    );
+                    const fallbackText = `${
+                      aiResult.text
+                    }\n\n[Options: ${aiResult.listItems
+                      .map((i) => i.title)
+                      .join(" | ")}]`;
+                    aiReplyMsg = await sendTextMessage(
+                      message.from,
+                      fallbackText,
+                      credentials.accessToken,
+                      recipientId
+                    );
+                  }
+                } else {
+                  // Default Text
+                  aiReplyMsg = await sendTextMessage(
+                    message.from,
+                    aiResult.text,
+                    credentials.accessToken,
+                    recipientId
+                  );
+                }
+
+                // 2. Save Reply to DB
+                if (
+                  aiReplyMsg &&
+                  aiReplyMsg.messages &&
+                  aiReplyMsg.messages[0]
+                ) {
+                  const sentMsg = new Reply({
+                    messageId: aiReplyMsg.messages[0].id,
+                    from: message.from,
+                    recipientId,
+                    body: aiResult.text, // Save the AI text
+                    timestamp: new Date(),
+                    direction: "outgoing",
+                    read: true,
+                  });
+                  await sentMsg.save();
+                  io.emit("newMessage", {
+                    from: message.from,
+                    recipientId,
+                    message: sentMsg,
+                  });
+                }
 
                 // 2. Save Reply to DB
                 // ... (saving logic unchanged)
