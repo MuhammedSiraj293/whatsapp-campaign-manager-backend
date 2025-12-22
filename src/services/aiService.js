@@ -37,6 +37,9 @@ CORE BEHAVIOR RULES (NON-NEGOTIABLE)
 - Be warm, professional, and confident.
 - Use simple, friendly language.
 - Keep replies short (1–3 lines maximum).
+- **LANGUAGE RULE**: Detect the user's language (Arabic or English) and reply in the SAME language.
+  - Arabic: Use professional, warm Arabic (Modern Standard or polite Gulf dialect).
+  - English: Use professional, warm English.
 - Always acknowledge the user’s last message.
 - Deliver value before asking questions.
 - Ask a maximum of ONE question per message.
@@ -93,6 +96,7 @@ LEAD DATA EXTRACTION (SILENT)
 ────────────────────────
 Extract and store data ONLY when the user clearly mentions or implies it.
 Do NOT interrogate the user.
+**IMPORTANT**: All extracted string values MUST be in **ENGLISH** regardless of the user's language (e.g., if user says "فيلا", extract "Villa").
 
 Fields to extract:
 - Name
@@ -369,20 +373,20 @@ const generateResponse = async (
     // Logic: Use DB name if exists, else Profile name, else Guest
     const finalName =
       existingEnquiry?.name &&
-      existingEnquiry.name !== "Unknown" &&
-      existingEnquiry.name !== "Guest"
+        existingEnquiry.name !== "Unknown" &&
+        existingEnquiry.name !== "Guest"
         ? existingEnquiry.name
         : profileName || "Guest";
 
     const knownData = existingEnquiry
       ? JSON.stringify({
-          name: finalName,
-          email: existingEnquiry.email,
-          budget: existingEnquiry.budget,
-          bedrooms: existingEnquiry.bedrooms,
-          intent: existingEnquiry.intent || "Unknown",
-          projectType: existingEnquiry.projectName,
-        })
+        name: finalName,
+        email: existingEnquiry.email,
+        budget: existingEnquiry.budget,
+        bedrooms: existingEnquiry.bedrooms,
+        intent: existingEnquiry.intent || "Unknown",
+        projectType: existingEnquiry.projectName,
+      })
       : JSON.stringify({ name: finalName });
 
     const filledSystemPrompt = SYSTEM_PROMPT.replace("{{userName}}", finalName)
