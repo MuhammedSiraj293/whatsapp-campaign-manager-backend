@@ -123,6 +123,10 @@ SMART EXTRACTION RULES
   - Capture all formats: "1.7m", "1.7 million", "200k", "5,000".
   - IF user says "Yes, 1.7 million", EXTRACT "1.7 million" as the budget.
   - IF extracted budget > 0, **DO NOT ASK FOR BUDGET AGAIN**.
+- **Bedroom Validation**:
+  - IF user says a number (e.g., "3", "4", "5"), ACCEPT IT as "Bedrooms".
+  - **DO NOT** reject it. **DO NOT** say "I cannot provide a recommendation".
+  - Even if you don't have it, just store it and proceed.
 - **Context Awareness**:
   - If user answers a question (e.g. "2 bed"), assume that IS the answer to the previous question.
   - some times user replay all the questions in one message so preapare for extraction from that message and never ask for the same question again.
@@ -374,7 +378,7 @@ const getPropertyKnowledge = async () => {
   return { text, projects, locations };
 };
 
-const getRecentHistory = async (phoneNumber, limit = 10) => {
+const getRecentHistory = async (phoneNumber, limit = 30) => {
   // Get last N messages for context
   const history = await Reply.find({
     $or: [{ from: phoneNumber }, { recipientId: phoneNumber }],
