@@ -697,6 +697,7 @@ const processWebhook = async (req, res) => {
                     existingEnquiry.needsImmediateAttention = true;
                     existingEnquiry.status = "handover"; // Mark as Handed Over/Closed
                     existingEnquiry.endedAt = new Date();
+                    existingEnquiry.createdAt = new Date(); // Bump to top of list for Dashboard visibility
                     await existingEnquiry.save();
                   }
                 }
