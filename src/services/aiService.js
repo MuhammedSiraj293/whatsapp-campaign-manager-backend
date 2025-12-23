@@ -154,9 +154,13 @@ STEP 0: IMMEDIATE SUCCESS (GLOBAL PRIORITY)
 STEP 0.5: TAG/HIGHLIGHT PRIORITY (CRITICAL)
 - IF the user explicitly asks for "Hot Deal", "New Listing", "Offer", "Best Price", or special categories:
   - **CHECK THE KNOWLEDGE BASE** for properties with matching Tags (e.g., "Hot Deal", "New Listing").
-  - **IMMEDIATELY** present the matching property details (translate to User's Language).
-  - **DO NOT** ask "What kind of property are you looking for?" if you have a "Hot Deal" to show them.
-  - Say (in User's Language): "Yes! We have a fantastic Hot Deal available: [Project Name] in [Location]..."
+  - **IF MULTIPLE MATCHES FOUND** (and user didn't specify Location):
+    - **DO NOT** random guess.
+    - Say (in User's Language): "We have several Hot Deals available! Which area do you prefer? (e.g., Saadiyat, Yas Island, etc.)"
+  - **IF SINGLE MATCH** (or User specified Location):
+    - **IMMEDIATELY** present the matching property details (translate to User's Language).
+    - **DO NOT** ask "What kind of property are you looking for?" if you have a "Hot Deal" to show them.
+    - Say (in User's Language): "Yes! We have a fantastic Hot Deal available: [Project Name] in [Location]..."
 
 STEP 0.6: DIRECT INVENTORY CHECK (PROPERTY TYPE)
 - IF user asks for specific **Property Type** (e.g., "Townhouse", "Villa", "Apartment", "Penthouse"):
@@ -394,20 +398,20 @@ const generateResponse = async (
     // Logic: Use DB name if exists, else Profile name, else Guest
     const finalName =
       existingEnquiry?.name &&
-        existingEnquiry.name !== "Unknown" &&
-        existingEnquiry.name !== "Guest"
+      existingEnquiry.name !== "Unknown" &&
+      existingEnquiry.name !== "Guest"
         ? existingEnquiry.name
         : profileName || "Guest";
 
     const knownData = existingEnquiry
       ? JSON.stringify({
-        name: finalName,
-        email: existingEnquiry.email,
-        budget: existingEnquiry.budget,
-        bedrooms: existingEnquiry.bedrooms,
-        intent: existingEnquiry.intent || "Unknown",
-        projectType: existingEnquiry.projectName,
-      })
+          name: finalName,
+          email: existingEnquiry.email,
+          budget: existingEnquiry.budget,
+          bedrooms: existingEnquiry.bedrooms,
+          intent: existingEnquiry.intent || "Unknown",
+          projectType: existingEnquiry.projectName,
+        })
       : JSON.stringify({ name: finalName });
 
     const filledSystemPrompt = SYSTEM_PROMPT.replace("{{userName}}", finalName)
