@@ -5,8 +5,71 @@ const Property = require("../models/Property");
 // @access  Public (or Private depending on auth)
 const getProperties = async (req, res) => {
   try {
-    const properties = await Property.find({}).sort({ createdAt: -1 });
-    res.status(200).json(properties);
+    let {
+      page = 1,
+      limit = 10,
+      search = "",
+      location = "",
+      propertyType = "",
+      developer = "",
+      status = "all",
+    } = req.query;
+
+    // Convert to numbers
+    page = parseInt(page);
+    limit = parseInt(limit);
+    const skip = (page - 1) * limit;
+
+    // Build Query
+    const query = {};
+
+    // 1. Search (Name OR Description OR Tags)
+    if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
+      query.$or = [
+        { name: searchRegex },
+        { description: searchRegex },
+        { tags: { $in: [new RegExp(search, "i")] } }, // Search inside tags array
+      ];
+    }
+
+    // 2. Filters
+    if (location) {
+      query.location = { $regex: location, $options: "i" };
+    }
+    if (propertyType) {
+      query.propertyType = { $regex: propertyType, $options: "i" };
+    }
+    if (developer) {
+      query.developer = { $regex: developer, $options: "i" };
+    }
+    if (status !== "all") {
+      query.isActive = status === "active";
+    }
+
+    // 3. Execute Query
+    const properties = await Property.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // 4. Counts
+    const total = await Property.countDocuments(query);
+    const totalPages = Math.ceil(total / limit);
+
+    // 5. Response
+    res.status(200).json({
+      success: true,
+      count: total,
+      pagination: {
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+      data: properties,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
