@@ -18,7 +18,6 @@ const EnquirySchema = new mongoose.Schema(
     },
 
     name: { type: String, trim: true },
-    email: { type: String, trim: true },
     projectName: { type: String, trim: true },
     location: { type: String, trim: true },
     pageUrl: { type: String, trim: true },
@@ -81,8 +80,8 @@ const EnquirySchema = new mongoose.Schema(
       default: false,
     },
 
-    // Skip asking for email if we already have it from previous enquiry
-    skipEmail: {
+    // Skip asking for name if we already have it from previous enquiry
+    skipName: {
       type: Boolean,
       default: false,
     },

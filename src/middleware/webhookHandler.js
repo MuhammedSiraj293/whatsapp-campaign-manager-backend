@@ -490,11 +490,34 @@ const processWebhook = async (req, res) => {
                 };
               }
 
+              // --- SMART NAME RESOLUTION ---
+              // 1. Default to WhatsApp Profile Name
+              let effectiveName = contactName;
+              // 2. Check DB for a better name (if we have a Contact)
+              try {
+                const dbContact = await Contact.findOne({
+                  phoneNumber: message.from,
+                });
+                if (
+                  dbContact &&
+                  dbContact.name &&
+                  dbContact.name !== "Unknown" &&
+                  dbContact.name !== "Guest"
+                ) {
+                  effectiveName = dbContact.name;
+                  console.log(
+                    `👤 Uses identified name from DB: ${effectiveName}`
+                  );
+                }
+              } catch (err) {
+                console.error("⚠️ Contact lookup failed:", err);
+              }
+
               const aiResult = await generateResponse(
                 message.from,
                 messageBody,
                 existingEnquiry,
-                contactName // Pass WhatsApp Profile Name
+                effectiveName // Pass DB Name (preferred) or Profile Name
               );
 
               if (aiResult && aiResult.text) {
@@ -624,7 +647,6 @@ const processWebhook = async (req, res) => {
                       phoneNumber: message.from,
                       recipientId,
                       name: updates.name,
-                      email: updates.email,
                       budget: updates.budget,
                       bedrooms: updates.bedrooms,
                       projectName: updates.projectType,
@@ -638,7 +660,6 @@ const processWebhook = async (req, res) => {
                   } else {
                     // Update fields
                     if (updates.name) existingEnquiry.name = updates.name;
-                    if (updates.email) existingEnquiry.email = updates.email;
                     if (updates.budget) existingEnquiry.budget = updates.budget;
                     if (updates.bedrooms)
                       existingEnquiry.bedrooms = updates.bedrooms;
@@ -670,7 +691,6 @@ const processWebhook = async (req, res) => {
                     contact = await Contact.create({
                       phoneNumber: message.from,
                       name: updates.name || existingEnquiry.name || "Unknown",
-                      email: updates.email || existingEnquiry.email,
                       isSubscribed: true,
                       contactList: enquiresList._id,
                     });
@@ -680,8 +700,6 @@ const processWebhook = async (req, res) => {
                   } else {
                     if (updates.name && contact.name === "Unknown")
                       contact.name = updates.name;
-                    if (updates.email && !contact.email)
-                      contact.email = updates.email;
                     await contact.save();
                     console.log("👤 Updated existing Contact from AI data.");
                   }
