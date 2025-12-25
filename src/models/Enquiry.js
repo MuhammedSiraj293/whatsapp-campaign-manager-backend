@@ -23,6 +23,9 @@ const EnquirySchema = new mongoose.Schema(
     pageUrl: { type: String, trim: true },
     budget: { type: String, trim: true },
     bedrooms: { type: String, trim: true },
+    intent: { type: String, trim: true }, // Investment / Living
+    entrySource: { type: String, trim: true }, // Campaign Name / Direct
+    propertyType: { type: String, trim: true }, // Villa / Apartment
 
     // Tracks the bot's progress
     conversationState: {

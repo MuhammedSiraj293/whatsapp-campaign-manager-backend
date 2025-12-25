@@ -107,6 +107,7 @@ Fields to extract:
 - Budget
 - Bedrooms
 - Intent (Living / Investment)
+- Property Type (Villa / Apartment)
 
 MATCHING RULES:
 - Project must strictly match one of: {{validProjects}}
@@ -412,7 +413,8 @@ Return ONLY a valid JSON object:
     "project": "",
     "area": "",
     "bedrooms": "",
-    "intent": ""
+    "intent": "",
+    "propertyType": ""
   }
 }
 `;
@@ -614,6 +616,7 @@ const generateResponse = async (
           bedrooms: existingEnquiry.bedrooms,
           intent: existingEnquiry.intent || "Unknown",
           projectType: existingEnquiry.projectName,
+          propertyType: existingEnquiry.propertyType,
         })
       : JSON.stringify({ name: finalName });
 

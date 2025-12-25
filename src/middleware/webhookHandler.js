@@ -663,13 +663,16 @@ const processWebhook = async (req, res) => {
                       name: updates.name,
                       budget: updates.budget,
                       bedrooms: updates.bedrooms,
-                      projectName: updates.projectType,
+                      projectName: updates.project || updates.projectType, // FIX: Accept 'project' from AI
                       location: updates.area || updates.location,
                       intent: updates.intent,
                       status: "pending", // Explicitly set status
-                      entrySource: campaignToCredit
-                        ? `Campaign: ${campaignToCredit.name}`
-                        : "Direct",
+                      entrySource:
+                        updates.entrySource ||
+                        (campaignToCredit
+                          ? `Campaign: ${campaignToCredit.name}`
+                          : "Direct"),
+                      propertyType: updates.propertyType,
                     });
                   } else {
                     // Update fields
@@ -677,12 +680,17 @@ const processWebhook = async (req, res) => {
                     if (updates.budget) existingEnquiry.budget = updates.budget;
                     if (updates.bedrooms)
                       existingEnquiry.bedrooms = updates.bedrooms;
-                    if (updates.projectType)
-                      existingEnquiry.projectName = updates.projectType;
+                    if (updates.project || updates.projectType)
+                      existingEnquiry.projectName =
+                        updates.project || updates.projectType; // FIX: Accept 'project'
                     if (updates.area || updates.location)
                       existingEnquiry.location =
                         updates.area || updates.location;
                     if (updates.intent) existingEnquiry.intent = updates.intent;
+                    if (updates.entrySource)
+                      existingEnquiry.entrySource = updates.entrySource;
+                    if (updates.propertyType)
+                      existingEnquiry.propertyType = updates.propertyType;
 
                     await existingEnquiry.save();
                   }
