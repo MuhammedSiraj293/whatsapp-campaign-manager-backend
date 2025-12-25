@@ -417,7 +417,50 @@ Return ONLY a valid JSON object:
 }
 `;
 
+const SYNONYM_MAP = {
+  // Property Types
+  villa: ["house", "mansion", "compound", "family home"],
+  apartment: ["flat", "studio", "penthouse", "residence", "unit"],
+  townhouse: ["duplex", "row house"],
+
+  // Features / Vibe
+  luxury: ["high-end", "premium", "fancy", "upscale", "exclusive", "rich"],
+  cheap: ["affordable", "budget", "low price", "deal", "investment", "value"],
+  family: ["school", "kids", "garden", "spacious", "park", "safe", "community"],
+  quiet: ["serene", "calm", "peaceful", "private", "secluded"],
+  modern: ["new", "contemporary", "sleek", "smart home"],
+  view: ["sea", "water", "canal", "skyline", "beach"],
+  investment: ["roi", "yield", "capital", "rent", "profit"],
+};
+
 const getPropertyKnowledge = async (userQuery = "") => {
+  const queryLower = userQuery.toLowerCase();
+
+  // 0. Greeting Optimization (Save Tokens)
+  // If the message is just a greeting or very short common words, skip DB.
+  const greetings = [
+    "hi",
+    "hello",
+    "hey",
+    "start",
+    "restart",
+    "reset",
+    "salam",
+    "marhaba",
+    "thanks",
+    "ok",
+    "okay",
+    "bye",
+  ];
+  const cleanKey = queryLower.trim().replace(/[^\w\s]/gi, "");
+  if (greetings.includes(cleanKey) || cleanKey.length < 2) {
+    return {
+      text: "No specific property details needed for this greeting.",
+      projects: [],
+      locations: [],
+    };
+  }
+
   const allProperties = await Property.find({ isActive: true });
 
   if (!allProperties || allProperties.length === 0)
@@ -427,44 +470,80 @@ const getPropertyKnowledge = async (userQuery = "") => {
       locations: [],
     };
 
-  const queryLower = userQuery.toLowerCase();
+  // 1. Smart Keyword Expansion
+  let searchTerms = queryLower.split(/\s+/).filter((w) => w.length > 3);
 
-  // 1. Filter Logic
-  // Extract potential keywords (>3 chars) to avoid noise like "the", "and", "in"
-  const queryKeywords = queryLower.split(/\s+/).filter((w) => w.length > 3);
-
-  let filteredProps = allProperties.filter((p) => {
-    // A) Direct Matches (Project Name / Location)
-    const nameMatch = p.name && queryLower.includes(p.name.toLowerCase());
-    const locMatch =
-      p.location && queryLower.includes(p.location.toLowerCase());
-
-    // B) Tag Match: query mentions a tag (e.g. "Waterfront")
-    const tagMatch =
-      p.tags && p.tags.some((t) => queryLower.includes(t.toLowerCase()));
-
-    // C) Description/Keyword Match: deep search for "school", "mall", etc.
-    const descMatch = queryKeywords.some(
-      (kw) =>
-        (p.description && p.description.toLowerCase().includes(kw)) ||
-        (p.tags && p.tags.some((t) => t.toLowerCase().includes(kw)))
-    );
-
-    return nameMatch || locMatch || tagMatch || descMatch;
+  // Add Synonyms
+  Object.keys(SYNONYM_MAP).forEach((key) => {
+    if (queryLower.includes(key)) {
+      searchTerms = [...searchTerms, ...SYNONYM_MAP[key]];
+    }
   });
 
-  // 2. Fallback: If no specific match, show FRESH inventory
-  if (filteredProps.length === 0) {
-    // Sort by Newest (updatedAt)
-    filteredProps = allProperties
-      .sort((a, b) => {
-        return new Date(b.updatedAt) - new Date(a.updatedAt);
-      })
-      .slice(0, 30);
+  // 2. Score & Filter
+  let scoredProps = allProperties.map((p) => {
+    let score = 0;
+    const textToSearch = `${p.name} ${p.location} ${
+      p.description
+    } ${p.tags.join(" ")} ${p.propertyType}`.toLowerCase();
+
+    // Exact Location Match (High Priority)
+    if (p.location && queryLower.includes(p.location.toLowerCase()))
+      score += 10;
+    if (p.name && queryLower.includes(p.name.toLowerCase())) score += 20;
+
+    // Keyword/Synonym Match
+    searchTerms.forEach((term) => {
+      if (textToSearch.includes(term)) score += 1;
+    });
+
+    return { p, score };
+  });
+
+  // Filter out zero scores if we have specific search terms
+  // If user said "Saadiyat", we only want Saadiyat properties (score > 0).
+  // If user said generic "Show me homes", everything might be 0, so we keep them for the fallback.
+  let activeMatches = scoredProps.filter((item) => item.score > 0);
+
+  let finalSelection = [];
+
+  if (activeMatches.length > 0) {
+    // We found matches!
+    // Sort by Score (Desc) -> Then by Date (Newest)
+    activeMatches.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.p.updatedAt) - new Date(a.p.updatedAt);
+    });
+
+    // Take Top 5 Matches
+    finalSelection = activeMatches.slice(0, 5).map((item) => item.p);
+  } else {
+    // 3. Fallback: Smart Rotation (Mix New + Random)
+    // No specific matches found suitable. Show general inventory.
+
+    // A) Get 3 Newest
+    const sortedByDate = [...allProperties].sort(
+      (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+    );
+    const newest = sortedByDate.slice(0, 3);
+
+    // B) Get 2 Random (from the rest)
+    const others = sortedByDate.slice(3);
+    const randoms = [];
+    if (others.length > 0) {
+      // Shuffle 'others' array
+      for (let i = others.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [others[i], others[j]] = [others[j], others[i]];
+      }
+      randoms.push(...others.slice(0, 2));
+    }
+
+    finalSelection = [...newest, ...randoms];
   }
 
-  // 3. Format as Text
-  const text = filteredProps
+  // 4. Format as Text
+  const text = finalSelection
     .map(
       (p) => `
     Project: ${p.name}
