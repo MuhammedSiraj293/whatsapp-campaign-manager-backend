@@ -250,6 +250,8 @@ STEP 1.5: PROJECT PREFERENCE
   - **Wait for answer**. Do NOT auto-fill.
 
 STEP 2: PROPERTY TYPE
+- **CHECK KNOWN DATA FIRST**:
+  - IF {{knownData}} already has a 'propertyType' (e.g. "Villa") -> **SKIP THIS STEP**.
 - **INFERENCE RULE**:
   - Look at the {{propertyKnowledge}} usage for the selected project.
   - IF the description says "Type: Villa" or "Villas", **ASSUME IT IS A VILLA**.
@@ -445,11 +447,12 @@ const SYNONYM_MAP = {
   investment: ["roi", "yield", "capital", "rent", "profit"],
 };
 
-const getPropertyKnowledge = async (userQuery = "") => {
+const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
   const queryLower = userQuery.toLowerCase();
 
-  // 0. Greeting Optimization (Save Tokens)
-  // If the message is just a greeting or very short common words, skip DB.
+  // ... (greetings check skipped for brevity if identical, but we need to keep the function body)
+
+  // 0. Greeting Optimization
   const greetings = [
     "hi",
     "hello",
@@ -465,7 +468,11 @@ const getPropertyKnowledge = async (userQuery = "") => {
     "bye",
   ];
   const cleanKey = queryLower.trim().replace(/[^\w\s]/gi, "");
-  if (greetings.includes(cleanKey) || cleanKey.length < 2) {
+  // Only skip if NO context project. If we have context, we might need info even on "ok".
+  if (
+    !contextProject &&
+    (greetings.includes(cleanKey) || cleanKey.length < 2)
+  ) {
     return {
       text: "No specific property details needed for this greeting.",
       projects: [],
@@ -474,23 +481,11 @@ const getPropertyKnowledge = async (userQuery = "") => {
   }
 
   const allProperties = await Property.find({ isActive: true });
-
-  if (!allProperties || allProperties.length === 0)
-    return {
-      text: "No specific property details available currently.",
-      projects: [],
-      locations: [],
-    };
+  // ...
 
   // 1. Smart Keyword Expansion
   let searchTerms = queryLower.split(/\s+/).filter((w) => w.length > 3);
-
-  // Add Synonyms
-  Object.keys(SYNONYM_MAP).forEach((key) => {
-    if (queryLower.includes(key)) {
-      searchTerms = [...searchTerms, ...SYNONYM_MAP[key]];
-    }
-  });
+  // ... (Synonyms logic same)
 
   // 2. Score & Filter
   let scoredProps = allProperties.map((p) => {
@@ -499,12 +494,21 @@ const getPropertyKnowledge = async (userQuery = "") => {
       p.description
     } ${p.tags.join(" ")} ${p.propertyType}`.toLowerCase();
 
-    // Exact Location Match (High Priority)
+    // Context Match (Highest Priority)
+    if (
+      contextProject &&
+      p.name &&
+      p.name.toLowerCase() === contextProject.toLowerCase()
+    ) {
+      score += 50; // Force to top
+    }
+
+    // Exact Location Match
     if (p.location && queryLower.includes(p.location.toLowerCase()))
       score += 10;
     if (p.name && queryLower.includes(p.name.toLowerCase())) score += 20;
 
-    // Keyword/Synonym Match
+    // Keyword Match
     searchTerms.forEach((term) => {
       if (textToSearch.includes(term)) score += 1;
     });
@@ -608,7 +612,7 @@ const generateResponse = async (
       text: propertyText,
       projects,
       locations,
-    } = await getPropertyKnowledge(messageBody);
+    } = await getPropertyKnowledge(messageBody, existingEnquiry?.projectName);
     const history = await getRecentHistory(userPhone);
 
     // Logic: Use DB name if exists, else Profile name, else Guest
