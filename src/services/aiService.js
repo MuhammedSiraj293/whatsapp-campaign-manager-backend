@@ -301,8 +301,8 @@ STEP 5.5: PHONE CONFIRMATION (MANDATORY)
 STEP 5.8: PREFERRED CALL TIME (MANDATORY)
 - **TRIGGER**: AFTER Phone Number is confirmed.
 - **ACTION**: Ask for the best time to call.
-- **English**: "What is the best time for our consultant to call you?" (USE LIST: Title="Select Time", Button="Open Options", Items=["Morning", "Afternoon", "Evening", "Anytime"])
-- **Arabic**: "ما هو الوقت المناسب لاتصال المستشار بك؟" (USE LIST: Title="اختر الوقت", Button="الخيارات", Items=["صباحاً", "بعد الظهر", "مساءً", "أي وقت"])
+- **English (IF User supports English)**: "What is the best time for our consultant to call you?" (USE LIST: Title="Select Time", Button="Open Options", Items=["Morning", "Afternoon", "Evening", "Anytime"])
+- **Arabic (IF User supports Arabic)**: "ما هو الوقت المناسب لاتصال المستشار بك؟" (USE LIST: Title="اختر الوقت", Button="الخيارات", Items=["صباحاً", "بعد الظهر", "مساءً", "أي وقت"])
 - **HANDLING**:
   - After user replies (or clicks button) -> Proceed to STEP 6.
 
@@ -416,7 +416,7 @@ Return ONLY a valid JSON object:
     { "id": "unique_id", "title": "Label", "description": "Optional" }
   ],
   "listTitle": "Menu Title",
-  "listButtonText": "Select Option",
+  "listButtonText": "Select Option (MUST MATCH RESPONSE LANGUAGE)",
   "handover": boolean,
   "handoverReason": "reason",
   "extractedData": {
@@ -506,7 +506,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
     // Exact Location Match
     if (p.location && queryLower.includes(p.location.toLowerCase()))
       score += 10;
-    if (p.name && queryLower.includes(p.name.toLowerCase())) score += 20;
+    if (p.name && queryLower.includes(p.name.toLowerCase())) score += 100; // Explicit Match beats Context (50)
 
     // Keyword Match
     searchTerms.forEach((term) => {

@@ -181,6 +181,16 @@ const processWebhook = async (req, res) => {
       }
 
       /* -------------------------------------------
+       * A3.5) DEDUPLICATION CHECK
+       * ------------------------------------------- */
+      // Meta retries messages if we don't reply in time. Check if we already processed this ID.
+      const existingReply = await Reply.findOne({ messageId: message.id });
+      if (existingReply) {
+        console.log(`⚠️ Duplicate Message Ignored (ID: ${message.id})`);
+        return res.sendStatus(200);
+      }
+
+      /* -------------------------------------------
        * A4) SAVE INCOMING MESSAGE
        * ------------------------------------------- */
       const incomingReply = new Reply(newReplyData);
