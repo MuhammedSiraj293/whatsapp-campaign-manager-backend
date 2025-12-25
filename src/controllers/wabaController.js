@@ -135,7 +135,7 @@ const deletePhoneNumber = async (req, res) => {
 const updatePhoneNumber = async (req, res) => {
   try {
     // Only update the 'activeBotFlow' field
-    const { activeBotFlow } = req.body;
+    const { activeBotFlow, isAiEnabled } = req.body;
 
     const phone = await PhoneNumber.findById(req.params.id);
     if (!phone) {
@@ -145,7 +145,10 @@ const updatePhoneNumber = async (req, res) => {
     }
 
     // Set to new ID or null if "None" is selected
-    phone.activeBotFlow = activeBotFlow || null;
+    if (activeBotFlow !== undefined)
+      phone.activeBotFlow = activeBotFlow || null;
+    if (isAiEnabled !== undefined) phone.isAiEnabled = isAiEnabled;
+
     await phone.save();
 
     res.status(200).json({ success: true, data: phone });

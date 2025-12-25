@@ -440,6 +440,12 @@ const processWebhook = async (req, res) => {
           if (credentials?.accessToken) {
             try {
               // --- AI AGENT CHECK ---
+              // Only run if AI is ENABLED for this phone number
+              if (!phoneNumberDoc || !phoneNumberDoc.isAiEnabled) {
+                // Skip AI
+                throw new Error("AI_DISABLED");
+              }
+
               console.log("🤖 Passing message to AI Service...");
               const { generateResponse } = require("../services/aiService");
 
@@ -731,7 +737,9 @@ const processWebhook = async (req, res) => {
 
               // Fallthrough to handleBotConversation below...
             } catch (err) {
-              console.error("❌ AI/Bot Error:", err);
+              if (err.message !== "AI_DISABLED") {
+                console.error("❌ AI/Bot Error:", err);
+              }
               // Fallthrough to handleBotConversation below...
             }
 
