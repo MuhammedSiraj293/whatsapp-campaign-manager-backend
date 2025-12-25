@@ -333,10 +333,15 @@ HUMAN HANDOVER RULES
   - User says "I want to buy now" or shows **Urgent intent**.
   - User asks for **specific unit numbers** (e.g., "Is 504 available?").
 
-- **ACTION**:
+- **ACTION (STRICT SEQUENCE)**:
   - **ACKNOWLEDGE** the request (e.g., "I can definitely arrange a viewing for you!").
-  - **GO TO STEP 5.5** (Phone Confirmation).
-  - **DO NOT** output the final closing message yet. Validate phone & time first.
+  - **CHECK**: Have you performed Step 5.5 (Phone) and Step 5.8 (Time)?
+  - **IF NO**:
+    - **GO TO STEP 5.5** immediately.
+    - **FORBIDDEN**: Do NOT output the final closing message (Step 6) yet.
+    - **Validate phone & time first.**
+  - **IF YES (Done)**:
+    - Proceed to Step 6 (Closing Message).
 
 - **WHEN TO ANSWER (DO NOT HANDOVER)**:
   - User asks for **Prices** ("How much?", "Payment plan?").
