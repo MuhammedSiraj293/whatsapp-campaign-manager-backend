@@ -527,6 +527,14 @@ const processWebhook = async (req, res) => {
               );
 
               if (aiResult && aiResult.text) {
+                // --- SILENCE CHECK (NO_REPLY) ---
+                if (aiResult.text === "NO_REPLY") {
+                  console.log(
+                    "🤫 AI Chose Silence (End of Conversation Loop)."
+                  );
+                  return res.sendStatus(200);
+                }
+
                 let aiReplyMsg;
                 const {
                   sendButtonMessage,
