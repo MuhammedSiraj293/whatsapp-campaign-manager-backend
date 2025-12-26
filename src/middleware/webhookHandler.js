@@ -10,7 +10,10 @@ const Enquiry = require("../models/Enquiry");
 const ContactList = require("../models/ContactList");
 const AutoReplyConfig = require("../models/AutoReplyConfig");
 
-const { sendTextMessage } = require("../integrations/whatsappAPI");
+const { sendTextMessage, getMediaUrl } = require("../integrations/whatsappAPI");
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
 const { getIO } = require("../socketManager");
 
 // Google Sheets API helpers
@@ -173,6 +176,86 @@ const processWebhook = async (req, res) => {
         case "voice":
           newReplyData.mediaId = message[message.type].id;
           newReplyData.mediaType = message.type;
+
+          // --- MEDIA DOWNLOAD LOGIC ---
+          if (credentials && credentials.accessToken) {
+            try {
+              const mediaUrl = await getMediaUrl(
+                newReplyData.mediaId,
+                credentials.accessToken
+              );
+              if (mediaUrl) {
+                const response = await axios({
+                  url: mediaUrl,
+                  method: "GET",
+                  responseType: "stream",
+                  headers: {
+                    Authorization: `Bearer ${credentials.accessToken}`,
+                  },
+                });
+
+                // Determine extension
+                let ext = "dat";
+                const contentType = response.headers["content-type"];
+
+                const mimeMap = {
+                  "image/jpeg": "jpg",
+                  "image/png": "png",
+                  "image/webp": "webp",
+                  "audio/mpeg": "mp3",
+                  "audio/ogg": "ogg",
+                  "audio/amr": "amr",
+                  "video/mp4": "mp4",
+                  "application/pdf": "pdf",
+                  "application/msword": "doc",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                    "docx",
+                  "application/vnd.ms-excel": "xls",
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                    "xlsx",
+                  "text/plain": "txt",
+                };
+
+                if (contentType) {
+                  const cleanType = contentType.split(";")[0].trim();
+                  if (mimeMap[cleanType]) {
+                    ext = mimeMap[cleanType];
+                  } else {
+                    // Fallback
+                    ext = contentType.split("/")[1].split(";")[0];
+                  }
+                }
+
+                // Fix for possible 'quicktime'
+                if (ext === "quicktime") ext = "mov";
+
+                const filename = `${newReplyData.mediaId}.${ext}`;
+                const uploadsDir = path.join(__dirname, "../../uploads");
+
+                // Ensure directory exists
+                if (!fs.existsSync(uploadsDir)) {
+                  fs.mkdirSync(uploadsDir, { recursive: true });
+                }
+
+                const savePath = path.join(uploadsDir, filename);
+
+                const writer = fs.createWriteStream(savePath);
+                response.data.pipe(writer);
+
+                await new Promise((resolve, reject) => {
+                  writer.on("finish", resolve);
+                  writer.on("error", reject);
+                });
+
+                newReplyData.mediaUrl = `/uploads/${filename}`;
+                console.log(`📥 Downloaded media to ${newReplyData.mediaUrl}`);
+              }
+            } catch (mediaErr) {
+              console.error("❌ Failed to download media:", mediaErr.message);
+            }
+          }
+          // ---------------------------
+
           if (message[message.type].caption) {
             messageBody = message[message.type].caption;
             newReplyData.body = messageBody;

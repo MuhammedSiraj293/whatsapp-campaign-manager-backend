@@ -39,6 +39,9 @@ const ReplySchema = new mongoose.Schema(
     mediaType: {
       type: String,
     },
+    mediaUrl: {
+      type: String,
+    },
     campaign: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Campaign",

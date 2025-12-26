@@ -340,8 +340,8 @@ STEP 5.8: PREFERRED CALL TIME (MANDATORY)
 STEP 6: SERVICE CONFIRMATION (CLOSING)
 - **Goal**: Clearly confirm what will happen next.
 - **Summarise**: Project / area / type / number / time.
-- **Example (English)**: "Perfect, [Name]. Our consultant will call you on **your number** in the [Preferred Time] to discuss [Property Type] in [Location/Project] and share the best available options for you."
-- **Example (Arabic)**: "رائع يا [الاسم]. سيتواصل معك مستشارنا على **رقمك** في فترة [الوقت المناسب] لمناقشة [نوع العقار] في [المشروع/المنطقة] وتقديم أفضل الخيارات المتاحة لك."
+- **Example (English)**: "Perfect, [Name]. Our consultant will call you on *your number* in the [Preferred Time] to discuss [Property Type] in [Location/Project] and share the best available options for you."
+- **Example (Arabic)**: "رائع يا [الاسم]. سيتواصل معك مستشارنا على *رقمك* في فترة [الوقت المناسب] لمناقشة [نوع العقار] في [المشروع/المنطقة] وتقديم أفضل الخيارات المتاحة لك."
 
 GLOBAL RULE:
 - One question per message.
