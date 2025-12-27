@@ -36,6 +36,7 @@ const getConversations = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const search = req.query.search || ""; // Extract search term
+    const unread = req.query.unread === "true"; // Extract unread filter
     const skip = (page - 1) * limit;
 
     // Build Match Stage
@@ -48,7 +49,7 @@ const getConversations = async (req, res) => {
       ];
     }
 
-    const conversations = await Reply.aggregate([
+    const pipeline = [
       { $match: matchStage },
       { $sort: { timestamp: -1 } },
       {
@@ -90,10 +91,20 @@ const getConversations = async (req, res) => {
           isSubscribed: { $arrayElemAt: ["$contactInfo.isSubscribed", 0] }, // Include subscription status
         },
       },
+    ];
+
+    // Filter by Unread if requested
+    if (unread) {
+      pipeline.push({ $match: { unreadCount: { $gt: 0 } } });
+    }
+
+    pipeline.push(
       { $sort: { lastMessageTimestamp: -1 } },
       { $skip: skip },
-      { $limit: limit },
-    ]);
+      { $limit: limit }
+    );
+
+    const conversations = await Reply.aggregate(pipeline);
 
     res.status(200).json({ success: true, data: conversations });
   } catch (error) {
