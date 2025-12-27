@@ -37,6 +37,7 @@ const getConversations = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const search = req.query.search || ""; // Extract search term
     const unread = req.query.unread === "true"; // Extract unread filter
+    const activeId = req.query.activeId; // Extract active chat ID
     const skip = (page - 1) * limit;
 
     // Build Match Stage
@@ -95,7 +96,16 @@ const getConversations = async (req, res) => {
 
     // Filter by Unread if requested
     if (unread) {
-      pipeline.push({ $match: { unreadCount: { $gt: 0 } } });
+      if (activeId) {
+        // If there's an active chat, keep it visible even if read
+        pipeline.push({
+          $match: {
+            $or: [{ unreadCount: { $gt: 0 } }, { _id: activeId }],
+          },
+        });
+      } else {
+        pipeline.push({ $match: { unreadCount: { $gt: 0 } } });
+      }
     }
 
     pipeline.push(
