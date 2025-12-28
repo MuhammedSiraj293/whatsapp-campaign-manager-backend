@@ -625,10 +625,37 @@ const getRecentHistory = async (phoneNumber, limit = 30) => {
     .sort({ timestamp: -1 })
     .limit(limit);
 
-  return history.reverse().map((h) => ({
-    role: h.direction === "incoming" ? "user" : "model",
-    parts: [{ text: h.body }],
-  }));
+  const formattedHistory = [];
+
+  for (const h of history.reverse()) {
+    let text = h.body;
+
+    // Handle Media Messages
+    if (!text && h.mediaUrl) {
+      text = `[User sent media: ${h.mediaType || "file"}]`;
+    }
+
+    // Handle Interactive Messages (if body is empty but has interactive content)
+    if (!text && h.interactive) {
+      if (h.interactive.type === "button") {
+        text = `[User selected button: ${h.interactive.action.buttons[0].reply.title}]`;
+      } else if (h.interactive.type === "list") {
+        text = `[User selected list option: ${h.interactive.action.sections[0].rows[0].title}]`;
+      } else {
+        text = `[Interactive Message]`;
+      }
+    }
+
+    // Only include if we have valid text
+    if (text && text.trim().length > 0) {
+      formattedHistory.push({
+        role: h.direction === "incoming" ? "user" : "model",
+        parts: [{ text: text }],
+      });
+    }
+  }
+
+  return formattedHistory;
 };
 
 const generateResponse = async (
