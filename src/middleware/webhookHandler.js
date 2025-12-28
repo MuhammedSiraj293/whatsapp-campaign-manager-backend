@@ -746,44 +746,55 @@ const processWebhook = async (req, res) => {
 
                 // 3. Handle Data Extraction (Update Enquiry & Contact)
                 if (aiResult.extractedData) {
-                  const updates = aiResult.extractedData;
+                  const data = aiResult.extractedData;
+                  // Case-insensitive getter helper
+                  const getVal = (key) => {
+                    const k = Object.keys(data).find(
+                      (k) => k.toLowerCase() === key.toLowerCase()
+                    );
+                    return k ? data[k] : null;
+                  };
+
+                  const eName = getVal("name");
+                  const eBudget = getVal("budget");
+                  const eBedrooms = getVal("bedrooms");
+                  const eProject =
+                    getVal("project") ||
+                    getVal("projectType") ||
+                    getVal("projectName");
+                  const eArea = getVal("area") || getVal("location");
+                  const eIntent = getVal("intent");
+                  const ePropType = getVal("propertyType");
 
                   // A) Upsert Enquiry
                   if (!existingEnquiry || !existingEnquiry._id) {
                     existingEnquiry = await Enquiry.create({
                       phoneNumber: message.from,
                       recipientId,
-                      name: updates.name,
-                      budget: updates.budget,
-                      bedrooms: updates.bedrooms,
-                      projectName: updates.project || updates.projectType, // FIX: Accept 'project' from AI
-                      location: updates.area || updates.location,
-                      intent: updates.intent,
-                      status: "pending", // Explicitly set status
+                      name: eName,
+                      budget: eBudget,
+                      bedrooms: eBedrooms,
+                      projectName: eProject,
+                      location: eArea,
+                      intent: eIntent,
+                      status: "pending",
                       entrySource:
-                        updates.entrySource ||
+                        data.entrySource ||
                         (campaignToCredit
                           ? `Campaign: ${campaignToCredit.name}`
                           : "Direct"),
-                      propertyType: updates.propertyType,
+                      propertyType: ePropType,
                     });
                   } else {
                     // Update fields
-                    if (updates.name) existingEnquiry.name = updates.name;
-                    if (updates.budget) existingEnquiry.budget = updates.budget;
-                    if (updates.bedrooms)
-                      existingEnquiry.bedrooms = updates.bedrooms;
-                    if (updates.project || updates.projectType)
-                      existingEnquiry.projectName =
-                        updates.project || updates.projectType; // FIX: Accept 'project'
-                    if (updates.area || updates.location)
-                      existingEnquiry.location =
-                        updates.area || updates.location;
-                    if (updates.intent) existingEnquiry.intent = updates.intent;
-                    if (updates.entrySource)
-                      existingEnquiry.entrySource = updates.entrySource;
-                    if (updates.propertyType)
-                      existingEnquiry.propertyType = updates.propertyType;
+                    if (eName) existingEnquiry.name = eName;
+                    if (eBudget) existingEnquiry.budget = eBudget;
+                    if (eBedrooms) existingEnquiry.bedrooms = eBedrooms;
+                    if (eProject) existingEnquiry.projectName = eProject;
+                    if (eArea) existingEnquiry.location = eArea;
+                    if (eIntent) existingEnquiry.intent = eIntent;
+                    // entrySource is usually not updated unless explicitly different
+                    if (ePropType) existingEnquiry.propertyType = ePropType;
 
                     await existingEnquiry.save();
                   }
