@@ -814,7 +814,7 @@ const processWebhook = async (req, res) => {
 
                     contact = await Contact.create({
                       phoneNumber: message.from,
-                      name: updates.name || existingEnquiry.name || "Unknown",
+                      name: eName || existingEnquiry.name || "Unknown",
                       isSubscribed: true,
                       contactList: enquiresList._id,
                     });
@@ -822,8 +822,8 @@ const processWebhook = async (req, res) => {
                       "👤 Created new Contact from AI data in 'Enquiries' list."
                     );
                   } else {
-                    if (updates.name && contact.name === "Unknown")
-                      contact.name = updates.name;
+                    if (eName && contact.name === "Unknown")
+                      contact.name = eName;
                     await contact.save();
                     console.log("👤 Updated existing Contact from AI data.");
                   }

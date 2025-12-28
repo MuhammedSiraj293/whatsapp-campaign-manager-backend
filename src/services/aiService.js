@@ -476,7 +476,7 @@ Return ONLY a valid JSON object:
     { "id": "unique_id", "title": "Label", "description": "Optional" }
   ],
   "listTitle": "Menu Title",
-  "listButtonText": "Select Option (MUST MATCH RESPONSE LANGUAGE)",
+  "listButtonText": "Select",
   "handover": boolean,
   "handoverReason": "reason",
   "extractedData": {
