@@ -126,9 +126,33 @@ const deleteProperty = async (req, res) => {
   }
 };
 
+// @desc    Bulk delete properties
+// @route   POST /api/properties/bulk-delete
+// @access  Private
+const deleteProperties = async (req, res) => {
+  try {
+    const { ids } = req.body; // Expecting an array of IDs
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "No IDs provided for deletion" });
+    }
+
+    const result = await Property.deleteMany({ _id: { $in: ids } });
+
+    res.status(200).json({
+      success: true,
+      message: `${result.deletedCount} properties deleted`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getProperties,
   createProperty,
   updateProperty,
   deleteProperty,
+  deleteProperties,
 };
