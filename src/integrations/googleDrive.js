@@ -42,6 +42,13 @@ const uploadToDrive = async (
   folderId = process.env.GOOGLE_DRIVE_FOLDER_ID
 ) => {
   try {
+    console.log(`📂 Attempting upload to Folder ID: "${folderId}"`);
+    if (!folderId) {
+      throw new Error(
+        "Missing GOOGLE_DRIVE_FOLDER_ID in environment variables. Cannot upload to Service Account root."
+      );
+    }
+
     const fileMetadata = {
       name: filename,
     };
