@@ -11,9 +11,8 @@ const ContactList = require("../models/ContactList");
 const AutoReplyConfig = require("../models/AutoReplyConfig");
 
 const { sendTextMessage, getMediaUrl } = require("../integrations/whatsappAPI");
-const fs = require("fs");
-const path = require("path");
 const axios = require("axios");
+const { uploadToDrive } = require("../integrations/googleDrive");
 const { getIO } = require("../socketManager");
 
 // Google Sheets API helpers
@@ -226,32 +225,36 @@ const processWebhook = async (req, res) => {
                   }
                 }
 
-                // Fix for possible 'quicktime'
+                // Fix common extensions
+                if (ext === "plain") ext = "txt";
                 if (ext === "quicktime") ext = "mov";
 
                 const filename = `${newReplyData.mediaId}.${ext}`;
-                const uploadsDir = path.join(__dirname, "../../uploads");
 
-                // Ensure directory exists
-                if (!fs.existsSync(uploadsDir)) {
-                  fs.mkdirSync(uploadsDir, { recursive: true });
+                // Upload to Google Drive (Streaming directly)
+                console.log(`📤 Uploading ${filename} to Google Drive...`);
+                const driveResult = await uploadToDrive(
+                  response.data, // Stream
+                  filename,
+                  cleanType || contentType
+                );
+
+                if (driveResult && driveResult.webViewLink) {
+                  newReplyData.mediaUrl = driveResult.webViewLink;
+                  console.log(
+                    `✅ Media saved to Drive: ${newReplyData.mediaUrl}`
+                  );
+                } else {
+                  console.warn(
+                    "⚠️ Drive upload succeeded but no link returned."
+                  );
                 }
-
-                const savePath = path.join(uploadsDir, filename);
-
-                const writer = fs.createWriteStream(savePath);
-                response.data.pipe(writer);
-
-                await new Promise((resolve, reject) => {
-                  writer.on("finish", resolve);
-                  writer.on("error", reject);
-                });
-
-                newReplyData.mediaUrl = `/uploads/${filename}`;
-                console.log(`📥 Downloaded media to ${newReplyData.mediaUrl}`);
               }
             } catch (mediaErr) {
-              console.error("❌ Failed to download media:", mediaErr.message);
+              console.error(
+                "❌ Failed to download/upload media:",
+                mediaErr.message
+              );
             }
           }
           // ---------------------------
