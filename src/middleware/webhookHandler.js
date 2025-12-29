@@ -12,7 +12,7 @@ const AutoReplyConfig = require("../models/AutoReplyConfig");
 
 const { sendTextMessage, getMediaUrl } = require("../integrations/whatsappAPI");
 const axios = require("axios");
-const { uploadToDrive } = require("../integrations/googleDrive");
+const { uploadToCloudinary } = require("../integrations/cloudinary");
 const { getIO } = require("../socketManager");
 
 // Google Sheets API helpers
@@ -232,22 +232,22 @@ const processWebhook = async (req, res) => {
 
                 const filename = `${newReplyData.mediaId}.${ext}`;
 
-                // Upload to Google Drive (Streaming directly)
-                console.log(`📤 Uploading ${filename} to Google Drive...`);
-                const driveResult = await uploadToDrive(
-                  response.data, // Stream
-                  filename,
-                  cleanType || contentType
+                // Upload to Cloudinary (Streaming directly)
+                console.log(`📤 Uploading ${filename} to Cloudinary...`);
+
+                const cloudResult = await uploadToCloudinary(
+                  response.data,
+                  filename
                 );
 
-                if (driveResult && driveResult.webViewLink) {
-                  newReplyData.mediaUrl = driveResult.webViewLink;
+                if (cloudResult && cloudResult.secure_url) {
+                  newReplyData.mediaUrl = cloudResult.secure_url;
                   console.log(
-                    `✅ Media saved to Drive: ${newReplyData.mediaUrl}`
+                    `✅ Media saved to Cloudinary: ${newReplyData.mediaUrl}`
                   );
                 } else {
                   console.warn(
-                    "⚠️ Drive upload succeeded but no link returned."
+                    "⚠️ Cloudinary upload succeeded but no URL returned."
                   );
                 }
               }
