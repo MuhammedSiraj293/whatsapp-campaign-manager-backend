@@ -215,8 +215,9 @@ const processWebhook = async (req, res) => {
                   "text/plain": "txt",
                 };
 
+                let cleanType = contentType; // Default to full content-type
                 if (contentType) {
-                  const cleanType = contentType.split(";")[0].trim();
+                  cleanType = contentType.split(";")[0].trim();
                   if (mimeMap[cleanType]) {
                     ext = mimeMap[cleanType];
                   } else {
