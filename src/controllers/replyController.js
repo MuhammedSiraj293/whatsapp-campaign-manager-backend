@@ -188,6 +188,8 @@ const getMessagesByNumber = async (req, res) => {
           status: { $arrayElemAt: ["$analyticsData.status", 0] },
           reactions: 1,
           quotedMessage: { $arrayElemAt: ["$quotedMessageData", 0] },
+          mediaUrl: 1,
+          mediaId: 1,
         },
       },
     ]);
