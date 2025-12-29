@@ -17,6 +17,14 @@ const auth = new google.auth.GoogleAuth({
   scopes: SCOPES,
 });
 
+if (credentials.client_email) {
+  console.log(
+    `🔍 Google Drive Integration initialized with: ${credentials.client_email}`
+  );
+} else {
+  console.warn("⚠️ Google Credentials missing client_email.");
+}
+
 const drive = google.drive({ version: "v3", auth });
 
 /**
