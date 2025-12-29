@@ -24,14 +24,14 @@ const drive = google.drive({ version: "v3", auth });
  * @param {ReadableStream} fileStream - The stream of the file to upload
  * @param {string} filename - The name of the file
  * @param {string} mimeType - The MIME type of the file
- * @param {string} [folderId] - Optional folder ID to upload into
+ * @param {string} [folderId] - Optional folder ID to upload into. Defaults to env var.
  * @returns {Promise<object>} - Returns object with fileId and webViewLink
  */
 const uploadToDrive = async (
   fileStream,
   filename,
   mimeType,
-  folderId = null
+  folderId = process.env.GOOGLE_DRIVE_FOLDER_ID
 ) => {
   try {
     const fileMetadata = {
@@ -40,6 +40,10 @@ const uploadToDrive = async (
 
     if (folderId) {
       fileMetadata.parents = [folderId];
+    } else {
+      console.warn(
+        "⚠️ No GOOGLE_DRIVE_FOLDER_ID set. Uploading to root (might fail for Service Accounts)."
+      );
     }
 
     const media = {
