@@ -37,27 +37,66 @@ const createContactList = async (req, res) => {
 // --- THIS FUNCTION IS UPGRADED ---
 const getAllContactLists = async (req, res) => {
   try {
-    // Use aggregation to join with contacts and get a count
-    const contactLists = await ContactList.aggregate([
+    const { search } = req.query;
+    let listIdsToInclude = null;
+
+    // 1. If search term exists, find matching Lists via Contacts OR List Name
+    if (search) {
+      const searchRegex = new RegExp(search, "i");
+
+      // A. Find contacts matching name/phone
+      const matchingContacts = await Contact.find({
+        $or: [{ name: searchRegex }, { phoneNumber: searchRegex }],
+      }).select("contactList");
+
+      const contactListIds = matchingContacts.map((c) => c.contactList);
+
+      // B. Find lists matching name (we'll filter the main agg by this OR contact match)
+      const matchingLists = await ContactList.find({
+        name: searchRegex,
+      }).select("_id");
+      const nameListIds = matchingLists.map((l) => l._id);
+
+      // Combine unique IDs
+      listIdsToInclude = [
+        ...new Set([
+          ...contactListIds.map((id) => id.toString()),
+          ...nameListIds.map((id) => id.toString()),
+        ]),
+      ].map((id) => new mongoose.Types.ObjectId(id));
+    }
+
+    // 2. Build Aggregation Pipeline
+    const pipeline = [];
+
+    // Filter by IDs if search was performed
+    if (listIdsToInclude) {
+      pipeline.push({ $match: { _id: { $in: listIdsToInclude } } });
+    }
+
+    pipeline.push(
       { $sort: { createdAt: -1 } },
       {
         $lookup: {
-          from: "contacts", // The collection to join with
+          from: "contacts",
           localField: "_id",
           foreignField: "contactList",
-          as: "contacts", // The name of the new array field
+          as: "contacts",
         },
       },
       {
         $project: {
           name: 1,
           createdAt: 1,
-          contactCount: { $size: "$contacts" }, // Count the items in the array
+          contactCount: { $size: "$contacts" },
         },
-      },
-    ]);
+      }
+    );
+
+    const contactLists = await ContactList.aggregate(pipeline);
     res.status(200).json({ success: true, data: contactLists });
   } catch (error) {
+    console.error("Error fetching contact lists:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -83,7 +122,7 @@ const bulkAddContacts = async (req, res) => {
 
   try {
     await Contact.insertMany(processedContacts, { ordered: false });
-    getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
+    getIO().emit("campaignsUpdated"); // <-- 2. EMIT EVENT
     res.status(201).json({
       success: true,
       message: `${contacts.length} contacts were processed successfully.`,
@@ -140,7 +179,7 @@ const deleteContactList = async (req, res) => {
     }
 
     await list.deleteOne(); // This triggers the 'pre' hook in the model
-    getIO().emit('campaignsUpdated'); // <-- 2. EMIT EVENT
+    getIO().emit("campaignsUpdated"); // <-- 2. EMIT EVENT
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });
@@ -171,5 +210,5 @@ module.exports = {
   getContactsInList,
   deleteContactList,
   deleteContact,
-  updateContact
+  updateContact,
 };
