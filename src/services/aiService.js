@@ -299,12 +299,12 @@ STEP 2: PROPERTY TYPE
 - **If propertyType is already known** → SKIP this step.
 - **If Project = "Any" or “Unknown” and Location has multiple types**:
   - **Ask**:
-    - **English**: "To find the best match in [Location], are you looking for a villa, an apartment, or something else?"
-    - **Arabic**: "للوصول لأفضل خيار في [اسم المنطقة]، هل تبحث عن فيلا، شقة، أم نوع آخر من العقار؟"
-- **If Project is specific**:
-  - **Infer** propertyType from Knowledge Base (e.g. "Type: Villas"). **Do NOT ask**.
-  - **CHECK**: If Project is known but configuration (Bedrooms) is unknown -> **JUMP TO STEP 4**.
-- **If Project includes mixed types**: Ask user to choose type.
+    - **English**: "To find the best match in [Location], are you looking for a villa or an apartment?"
+    - **Arabic**: "للوصول لأفضل خيار في [اسم المنطقة]، هل تبحث عن فيلا أم شقة؟"
+- **If Project is specific (Known)**:
+  - **SKIP THIS STEP**.
+  - **JUMP DIRECTLY TO STEP 4 (BEDROOMS)**.
+  - (Reason: "How many bedrooms?" works for both villas and apartments, so Type is not strictly needed).
 
 STEP 3: BUDGET & PRICE (SILENT MODE)
 - **Rules**:
