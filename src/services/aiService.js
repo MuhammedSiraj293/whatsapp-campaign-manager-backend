@@ -304,7 +304,7 @@ STEP 2: PROPERTY TYPE
 - **If Project is specific (Known)**:
   - **SKIP THIS STEP**.
   - **JUMP DIRECTLY TO STEP 4 (BEDROOMS)**.
-  - (Reason: "How many bedrooms?" works for both villas and apartments, so Type is not strictly needed).
+  - **CRITICAL**: Do NOT ask "Villa or Apartment?". Just assume the user knows what they want or that the project implies it. Go to Step 4.
 
 STEP 3: BUDGET & PRICE (SILENT MODE)
 - **Rules**:
