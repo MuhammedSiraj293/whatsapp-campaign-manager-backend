@@ -2,6 +2,7 @@
 
 const Contact = require("../models/Contact");
 const ContactList = require("../models/ContactList");
+const mongoose = require("mongoose");
 const { getIO } = require("../socketManager"); // <-- 1. IMPORT getIO
 
 // Helper function to extract named variables from a row
