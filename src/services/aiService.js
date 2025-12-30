@@ -705,6 +705,25 @@ const generateResponse = async (
     } = await getPropertyKnowledge(messageBody, existingEnquiry?.projectName);
     const history = await getRecentHistory(userPhone);
 
+    // --- NEW: URL LOGIC TO DETECT PROJECT FROM LINK ---
+    let detectedProjectFromLink = null;
+    const linkMatch = messageBody.match(/properties\/([^/?\s]+)/);
+    if (linkMatch && linkMatch[1]) {
+      // Convert "the-arthouse" -> "The Arthouse"
+      detectedProjectFromLink = linkMatch[1]
+        .split("-")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+      console.log("🔗 Detected Project from Link:", detectedProjectFromLink);
+    }
+
+    // Determine the Project Name for Context
+    // Priority: DB > Link > General
+    const finalProjectName =
+      existingEnquiry?.projectName && existingEnquiry.projectName !== "General"
+        ? existingEnquiry.projectName
+        : detectedProjectFromLink || "General";
+
     // Logic: Use DB name if exists, else "Guest" (Prompt will handle "Guest" by not asking)
     // POLICY: Do NOT use profileName as fallback. We must ASK if not in DB.
     const finalName =
@@ -729,7 +748,7 @@ const generateResponse = async (
 
     const filledSystemPrompt = SYSTEM_PROMPT.replace("{{userName}}", finalName)
       .replace("{{entrySource}}", existingEnquiry?.entrySource || "Direct")
-      .replace("{{projectName}}", existingEnquiry?.projectName || "General")
+      .replace("{{projectName}}", finalProjectName)
       .replace("{{knownData}}", knownData)
       .replace("{{propertyKnowledge}}", propertyText)
       .replace("{{validProjects}}", projects || "None")
