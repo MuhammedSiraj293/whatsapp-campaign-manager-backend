@@ -546,34 +546,48 @@ const processWebhook = async (req, res) => {
               console.log("🤖 Passing message to AI Service...");
               const { generateResponse } = require("../services/aiService");
 
-              // Fetch existing enquiry for context (Logic: Reuse if < 24 hours)
-              let existingEnquiry = await Enquiry.findOne({
-                phoneNumber: message.from,
-                recipientId,
-              }).sort({ updatedAt: -1 });
+              // --- ENQUIRY CONTEXT MANAGEMENT ---
+              let existingEnquiry = null;
 
-              // Check time window (24 hours)
-              if (existingEnquiry) {
-                const now = new Date();
-                const diffMs = now - new Date(existingEnquiry.updatedAt);
-                const diffHours = diffMs / (1000 * 60 * 60);
+              // RESET RULE: If user sends a specific property link, FORCE FRESH CONTEXT.
+              // This prevents "4 bedrooms" from Project A carrying over to Project B.
+              const hasPropertyLink = messageBodyLower.includes("/properties/");
 
-                if (diffHours < 24) {
-                  console.log(
-                    `🔄 Reusing existing enquiry (Age: ${diffHours.toFixed(
-                      2
-                    )}h)`
-                  );
-                  // Reset status to pending so AI treats it as active
-                  if (existingEnquiry.status === "handover") {
-                    existingEnquiry.status = "pending";
-                    await existingEnquiry.save();
+              if (hasPropertyLink) {
+                console.log(
+                  "🔗 New Property Link detected. Forcing FRESH Context (Skipping reuse)."
+                );
+                existingEnquiry = null;
+              } else {
+                // Normal Logic: Reuse if < 24 hours
+                existingEnquiry = await Enquiry.findOne({
+                  phoneNumber: message.from,
+                  recipientId,
+                }).sort({ updatedAt: -1 });
+
+                // Check time window (24 hours)
+                if (existingEnquiry) {
+                  const now = new Date();
+                  const diffMs = now - new Date(existingEnquiry.updatedAt);
+                  const diffHours = diffMs / (1000 * 60 * 60);
+
+                  if (diffHours < 24) {
+                    console.log(
+                      `🔄 Reusing existing enquiry (Age: ${diffHours.toFixed(
+                        2
+                      )}h)`
+                    );
+                    // Reset status to pending so AI treats it as active
+                    if (existingEnquiry.status === "handover") {
+                      existingEnquiry.status = "pending";
+                      await existingEnquiry.save();
+                    }
+                  } else {
+                    console.log(
+                      `✨ Enquiry older than 24h. Creating NEW enquiry.`
+                    );
+                    existingEnquiry = null; // Too old, create fresh
                   }
-                } else {
-                  console.log(
-                    `✨ Enquiry older than 24h. Creating NEW enquiry.`
-                  );
-                  existingEnquiry = null; // Too old, create fresh
                 }
               }
 
