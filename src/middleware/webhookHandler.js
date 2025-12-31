@@ -625,6 +625,19 @@ const processWebhook = async (req, res) => {
                   console.log(
                     `👤 Uses identified name from DB: ${effectiveName}`
                   );
+
+                  // --- FIX: Sync DB Name to Enquiry so AI uses it ---
+                  if (
+                    existingEnquiry &&
+                    (existingEnquiry.name === "Guest" ||
+                      existingEnquiry.name === "Unknown")
+                  ) {
+                    existingEnquiry.name = effectiveName;
+                    // If it's a mongoose document, save it
+                    if (typeof existingEnquiry.save === "function") {
+                      await existingEnquiry.save();
+                    }
+                  }
                 }
               } catch (err) {
                 console.error("⚠️ Contact lookup failed:", err);
