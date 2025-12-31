@@ -560,13 +560,25 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
       p.description
     } ${p.tags.join(" ")} ${p.propertyType}`.toLowerCase();
 
-    // Context Match (Highest Priority)
-    if (
-      contextProject &&
-      p.name &&
-      p.name.toLowerCase() === contextProject.toLowerCase()
-    ) {
-      score += 50; // Force to top
+    // Context Match (Highest Priority) - FUZZY MATCHING
+    if (contextProject && p.name) {
+      const normalize = (s) =>
+        s
+          .toLowerCase()
+          .replace(/\s+by\s+.+/g, "") // remove " by Modon"
+          .replace(
+            /residences|villas|apartments|towers|residence|villa|apartment|tower/g,
+            ""
+          )
+          .replace(/s$/g, "") // remove trailing 's'
+          .trim();
+
+      const pNameNorm = normalize(p.name);
+      const ctxNameNorm = normalize(contextProject);
+
+      if (pNameNorm.includes(ctxNameNorm) || ctxNameNorm.includes(pNameNorm)) {
+        score += 50; // Force to top
+      }
     }
 
     // Exact Location Match
