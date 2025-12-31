@@ -623,11 +623,19 @@ const processWebhook = async (req, res) => {
                 }
               }
 
-              // Update entry source if campaign detected and enquiry is new-ish
+              // --- FIX: Force Update Enquiry Context if Campaign Detected ---
+              // Even if we are reusing an old enquiry (e.g. from 2 hours ago for Project A),
+              // if we now detected a NEW campaign (Project B), we must switch context.
               if (existingEnquiry && campaignToCredit) {
+                console.log(
+                  `🔄 Switching Context: ${existingEnquiry.projectName} -> ${campaignToCredit.name}`
+                );
                 existingEnquiry.entrySource = `Campaign: ${campaignToCredit.name}`;
-                existingEnquiry.projectName = campaignToCredit.name; // Infer interest
-                await existingEnquiry.save();
+                existingEnquiry.projectName = campaignToCredit.name;
+                // Save it so the DB is updated for next turn
+                if (typeof existingEnquiry.save === "function") {
+                  await existingEnquiry.save();
+                }
               }
 
               // If no enquiry, create temp object for context (or it will be created in upsert)
