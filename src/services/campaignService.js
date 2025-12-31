@@ -191,13 +191,27 @@ const sendCampaign = async (campaignId) => {
       if (response && response.messages && response.messages[0].id) {
         wamid = response.messages[0].id;
 
-        // --- THIS IS THE FIX ---
+        // --- FIX: Interpolate Variables into Body for History Context ---
+        let resolvedBody = campaign.message;
+        if (finalBodyVariables.length > 0) {
+          // Replace {{1}}, {{2}} etc with their corresponding values
+          finalBodyVariables.forEach((val, index) => {
+            // Create regex to replace {{1}}, {{2}} globally
+            // Whatsapp templates use {{1}}, {{2}}. Index is 0-based in array.
+            const placeholder = `{{${index + 1}}}`;
+            resolvedBody = resolvedBody.replace(
+              new RegExp(placeholder, "g"),
+              val
+            );
+          });
+        }
+
         // Save the outgoing campaign message to the 'replies' collection
         const campaignMessage = new Reply({
           messageId: wamid,
           from: contact.phoneNumber,
           recipientId: phoneNumberId, // Save which number sent it
-          body: campaign.message,
+          body: resolvedBody, // Use the resolved body!
           timestamp: new Date(),
           direction: "outgoing",
           read: true,
