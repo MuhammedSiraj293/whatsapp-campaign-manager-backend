@@ -126,11 +126,11 @@ const processWebhook = async (req, res) => {
           });
 
           if (contactForImplicit) {
-            // 2. Check for recent campaign sent to this contact (e.g., last 3 hours)
+            // 2. Check for recent campaign sent to this contact (e.g., last 16 hours)
             const threeHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000);
             const recentAnalytics = await Analytics.findOne({
               contact: contactForImplicit._id,
-              status: "sent",
+              status: { $in: ["sent", "delivered", "read"] }, // FIX: Allow any valid status (not just 'sent')
               createdAt: { $gte: threeHoursAgo },
             })
               .sort({ createdAt: -1 })
