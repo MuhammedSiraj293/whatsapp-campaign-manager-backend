@@ -116,6 +116,38 @@ const processWebhook = async (req, res) => {
         }
       }
 
+      // --- A2.5) IMPLICIT CAMPAIGN DETECTION (FALLBACK) ---
+      // If user didn't use the "Reply" feature (swiping right), check if we sent them a campaign recently.
+      if (!campaignToCredit) {
+        try {
+          // 1. Find the contact ID
+          const contactForImplicit = await Contact.findOne({
+            phoneNumber: message.from,
+          });
+
+          if (contactForImplicit) {
+            // 2. Check for recent campaign sent to this contact (e.g., last 3 hours)
+            const threeHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000);
+            const recentAnalytics = await Analytics.findOne({
+              contact: contactForImplicit._id,
+              status: "sent",
+              createdAt: { $gte: threeHoursAgo },
+            })
+              .sort({ createdAt: -1 })
+              .populate("campaign");
+
+            if (recentAnalytics?.campaign) {
+              campaignToCredit = recentAnalytics.campaign;
+              console.log(
+                `📌 Implicit Campaign detected (Recent Sent) → ${campaignToCredit.name}`
+              );
+            }
+          }
+        } catch (implicitErr) {
+          console.error("⚠️ Implicit campaign check failed:", implicitErr);
+        }
+      }
+
       /* -------------------------------------------
        * A3) NORMALIZE MESSAGE BODY
        * ------------------------------------------- */
