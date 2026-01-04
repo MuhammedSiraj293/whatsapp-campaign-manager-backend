@@ -609,8 +609,8 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
       return new Date(b.p.updatedAt) - new Date(a.p.updatedAt);
     });
 
-    // Take Top 20 Matches (User Request)
-    finalSelection = activeMatches.slice(0, 20).map((item) => item.p);
+    // Take Top 5 Matches
+    finalSelection = activeMatches.slice(0, 5).map((item) => item.p);
   } else {
     // 3. Fallback: Smart Rotation (Mix New + Random)
     // No specific matches found suitable. Show general inventory.
@@ -761,38 +761,20 @@ const generateResponse = async (
 
     console.log("🧠 Known Data Context:", knownData);
 
-    // --- LAYER 2: SESSION CONTEXT (DYNAMIC) ---
-    const sessionContext = `
-────────────────────────
-CONTEXT VARIABLES
-────────────────────────
-User Name: ${finalName}
-Entry Source: ${existingEnquiry?.entrySource || "Direct"}
-Project Interest: ${finalProjectName}
-Known Data: ${knownData}
-Session Type: "Enquiry" (Chat Mode)
-`;
-
-    // --- LAYER 3: DYNAMIC KNOWLEDGE BASE ---
-    const knowledgeLayer = `
-────────────────────────
-KNOWLEDGE BASE
-────────────────────────
-${propertyText}
-
-Valid Projects: ${projects || "None"}
-Valid Locations: ${locations || "None"}
-`;
-
-    // --- ASSEMBLE PROMPT ---
-    const fullSystemPrompt = PERMANENT_PROMPT + sessionContext + knowledgeLayer;
+    const filledSystemPrompt = SYSTEM_PROMPT.replace("{{userName}}", finalName)
+      .replace("{{entrySource}}", existingEnquiry?.entrySource || "Direct")
+      .replace("{{projectName}}", finalProjectName)
+      .replace("{{knownData}}", knownData)
+      .replace("{{propertyKnowledge}}", propertyText)
+      .replace("{{validProjects}}", projects || "None")
+      .replace("{{validLocations}}", locations || "None");
 
     // 2. Start Chat
     const chat = model.startChat({
       history: [
         {
           role: "user",
-          parts: [{ text: `SYSTEM_INSTRUCTION: ${fullSystemPrompt}` }],
+          parts: [{ text: `SYSTEM_INSTRUCTION: ${filledSystemPrompt}` }],
         },
         ...history,
       ],
