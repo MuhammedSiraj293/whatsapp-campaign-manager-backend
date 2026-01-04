@@ -584,12 +584,20 @@ const processWebhook = async (req, res) => {
               // RESET RULE: If user sends a specific property link, FORCE FRESH CONTEXT.
               // This prevents "4 bedrooms" from Project A carrying over to Project B.
               const hasPropertyLink = messageBodyLower.includes("/properties/");
+              let detectedUrl = null;
 
               if (hasPropertyLink) {
                 console.log(
                   "🔗 New Property Link detected. Forcing FRESH Context (Skipping reuse)."
                 );
                 existingEnquiry = null;
+
+                // Extract the full URL for the frontend
+                const urlMatch = messageBody.match(/(https?:\/\/[^\s]+)/);
+                if (urlMatch) {
+                  detectedUrl = urlMatch[0];
+                  console.log("🔗 Extracted URL:", detectedUrl);
+                }
               } else {
                 // Normal Logic: Reuse if < 24 hours
                 existingEnquiry = await Enquiry.findOne({
@@ -853,6 +861,7 @@ const processWebhook = async (req, res) => {
                           ? `Campaign: ${campaignToCredit.name}`
                           : "Direct"),
                       propertyType: ePropType,
+                      pageUrl: detectedUrl, // Save the URL if we found one
                     });
                   } else {
                     // Update fields
@@ -864,6 +873,7 @@ const processWebhook = async (req, res) => {
                     if (eIntent) existingEnquiry.intent = eIntent;
                     // entrySource is usually not updated unless explicitly different
                     if (ePropType) existingEnquiry.propertyType = ePropType;
+                    if (detectedUrl) existingEnquiry.pageUrl = detectedUrl; // Update URL if new one sent
 
                     await existingEnquiry.save();
                   }

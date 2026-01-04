@@ -82,12 +82,6 @@ const EnquirySchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
-    // Skip asking for name if we already have it from previous enquiry
-    skipName: {
-      type: Boolean,
-      default: false,
-    },
   },
   {
     timestamps: true,
