@@ -453,6 +453,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
       text: "No specific property details needed for this greeting.",
       projects: [],
       locations: [],
+      bestMatch: null, // NEW
     };
   }
 
@@ -477,7 +478,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
           .toLowerCase()
           .replace(/\s+by\s+.+/g, "") // remove " by Modon"
           .replace(
-            /residences|villas|apartments|towers|residence|villa|apartment|tower/g,
+            /residences|villas|apartments|towers|residence|villa|apartment|tower|community/g,
             ""
           )
           .replace(/s$/g, "") // remove trailing 's'
@@ -510,6 +511,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
   let activeMatches = scoredProps.filter((item) => item.score > 0);
 
   let finalSelection = [];
+  let bestMatch = null; // NEW: Track the best match
 
   if (activeMatches.length > 0) {
     // We found matches!
@@ -518,6 +520,9 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
       if (b.score !== a.score) return b.score - a.score;
       return new Date(b.p.updatedAt) - new Date(a.p.updatedAt);
     });
+
+    // Best Match is the top one
+    bestMatch = activeMatches[0].p;
 
     // Take Top 20 Matches (User Request)
     finalSelection = activeMatches.slice(0, 20).map((item) => item.p);
@@ -569,7 +574,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
     ", "
   );
 
-  return { text, projects, locations };
+  return { text, projects, locations, bestMatch };
 };
 
 const getRecentHistory = async (phoneNumber, limit = 30) => {
@@ -622,14 +627,6 @@ const generateResponse = async (
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
-    // 1. Gather Context
-    const {
-      text: propertyText,
-      projects,
-      locations,
-    } = await getPropertyKnowledge(messageBody, existingEnquiry?.projectName);
-    const history = await getRecentHistory(userPhone);
-
     // --- NEW: URL LOGIC TO DETECT PROJECT FROM LINK ---
     let detectedProjectFromLink = null;
     const linkMatch = messageBody.match(/properties\/([^/?\s]+)/);
@@ -642,8 +639,34 @@ const generateResponse = async (
       console.log("🔗 Detected Project from Link:", detectedProjectFromLink);
     }
 
+    // 1. Gather Context
+    // Pass the detected link project as context to help search find matches
+    const searchContext =
+      existingEnquiry?.projectName && existingEnquiry.projectName !== "General"
+        ? existingEnquiry.projectName
+        : detectedProjectFromLink || "";
+
+    const {
+      text: propertyText,
+      projects,
+      locations,
+      bestMatch,
+    } = await getPropertyKnowledge(messageBody, searchContext);
+
+    // 1b. Correct Project Name using Best Match
+    // If we have a high-confidence best match from the search, prefer its canonical name
+    // over the link's raw text.
+    if (detectedProjectFromLink && bestMatch) {
+      console.log(
+        `✨ Correcting Project Name: "${detectedProjectFromLink}" -> "${bestMatch.name}"`
+      );
+      detectedProjectFromLink = bestMatch.name;
+    }
+
+    const history = await getRecentHistory(userPhone);
+
     // Determine the Project Name for Context
-    // Priority: DB > Link > General
+    // Priority: DB > Link (Corrected) > General
     const finalProjectName =
       existingEnquiry?.projectName && existingEnquiry.projectName !== "General"
         ? existingEnquiry.projectName
