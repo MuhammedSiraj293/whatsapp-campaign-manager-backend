@@ -372,7 +372,7 @@ const processBufferedMessages = async (
               const diffMs = now - new Date(existingEnquiry.updatedAt);
               const diffHours = diffMs / (1000 * 60 * 60);
 
-              if (diffHours < 24) {
+              if (diffHours < 12 ) {
                 // Reset status to pending so AI treats it as active
                 if (existingEnquiry.status === "handover") {
                   existingEnquiry.status = "pending";
@@ -814,7 +814,12 @@ const processWebhook = async (req, res) => {
 
       // --- A2.5) IMPLICIT CAMPAIGN DETECTION (FALLBACK) ---
       // If user didn't use the "Reply" feature (swiping right), check if we sent them a campaign recently.
-      if (!campaignToCredit) {
+      // 🛑 FIX: Ignore implicit detection if the message looks like a new Website Enquiry (has URL).
+      const isWebsiteEnquiry = (message.text?.body || "")
+        .toLowerCase()
+        .includes("http");
+
+      if (!campaignToCredit && !isWebsiteEnquiry) {
         try {
           // 1. Find the contact ID
           const contactForImplicit = await Contact.findOne({
