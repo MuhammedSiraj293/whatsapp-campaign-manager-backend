@@ -188,8 +188,42 @@ const processBufferedMessages = async (
           console.log("⚠️ No master sheet configured for this WABA.");
         }
       }
+
+      /* ---------------------------------------------------------
+       * NOTIFY ADMIN (LIVE LEAD)
+       * --------------------------------------------------------- */
+      try {
+        const ADMIN_NUMBER = "971506796073"; // User specified number
+        const templateName =
+          campaignToCredit.templateName ||
+          campaignToCredit.name ||
+          "Unknown Campaign";
+
+        const notificationBody = `🔔 *NEW LEAD RECEIVED* 🔔
+
+👤 *Name*: ${contact ? contact.name : "Unknown"}
+📱 *Phone*: ${userPhone}
+📋 *Template*: ${templateName}
+⏰ *Time*: ${formattedDate}
+Lr *Source*: WhatsApp`;
+
+        console.log(
+          `🔔 Sending Live Lead Notification to Admin (${ADMIN_NUMBER})...`
+        );
+        const { sendTextMessage } = require("../integrations/whatsappAPI");
+
+        // We use the same credentials to send the notification FROM the bot TO the admin
+        await sendTextMessage(
+          ADMIN_NUMBER,
+          notificationBody,
+          credentials.accessToken,
+          recipientId // Sending from this phone ID
+        );
+      } catch (notifyErr) {
+        console.error("❌ Failed to notify admin:", notifyErr.message);
+      }
     }
- 
+
     // Update campaign reply count
     await Campaign.findByIdAndUpdate(campaignToCredit._id, {
       $inc: { replyCount: 1 },
@@ -596,6 +630,38 @@ const processBufferedMessages = async (
                 existingEnquiry.endedAt = new Date();
                 existingEnquiry.createdAt = new Date();
                 await existingEnquiry.save();
+
+                // NOTIFY ADMIN (AI ENQUIRY HANDOVER)
+                try {
+                  const ADMIN_NUMBER = "971506796073";
+                  const noteBody = `🔔 *NEW AI ENQUIRY* 🔔
+
+👤 *Name*: ${existingEnquiry.name || "Unknown"}
+📱 *Phone*: ${userPhone}
+🏡 *Project*: ${existingEnquiry.projectName || "General"}
+💰 *Budget*: ${existingEnquiry.budget || "N/A"}
+🛏 *Beds*: ${existingEnquiry.bedrooms || "N/A"}
+📍 *Location*: ${existingEnquiry.location || "N/A"}
+Lr *Source*: WhatsApp (AI Handover)`;
+
+                  const {
+                    sendTextMessage,
+                  } = require("../integrations/whatsappAPI");
+                  await sendTextMessage(
+                    ADMIN_NUMBER,
+                    noteBody,
+                    credentials.accessToken,
+                    recipientId
+                  );
+                  console.log(
+                    `🔔 Sent AI Enquiry Notification to ${ADMIN_NUMBER}`
+                  );
+                } catch (noteErr) {
+                  console.error(
+                    "❌ Failed to notify admin for AI Handover:",
+                    noteErr
+                  );
+                }
               }
             }
             return;
