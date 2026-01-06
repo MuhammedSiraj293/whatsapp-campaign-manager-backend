@@ -372,7 +372,7 @@ const processBufferedMessages = async (
               const diffMs = now - new Date(existingEnquiry.updatedAt);
               const diffHours = diffMs / (1000 * 60 * 60);
 
-              if (diffHours < 12 ) {
+              if (diffHours < 12) {
                 // Reset status to pending so AI treats it as active
                 if (existingEnquiry.status === "handover") {
                   existingEnquiry.status = "pending";
@@ -819,7 +819,21 @@ const processWebhook = async (req, res) => {
         .toLowerCase()
         .includes("http");
 
-      if (!campaignToCredit && !isWebsiteEnquiry) {
+      // 🛑 FIX: Ignore implicit detection if User has an ACTIVE Enquiry (conversing with AI).
+      // If they are answering "3" to "How many beds?", it should NOT attach to an old campaign.
+      let hasActiveEnquiry = false;
+      const recentEnquiry = await Enquiry.findOne({
+        phoneNumber: message.from,
+      }).sort({ updatedAt: -1 });
+      if (recentEnquiry) {
+        const diffMs = new Date() - new Date(recentEnquiry.updatedAt);
+        if (diffMs < 24 * 60 * 60 * 1000) {
+          // 24 hours
+          hasActiveEnquiry = true;
+        }
+      }
+
+      if (!campaignToCredit && !isWebsiteEnquiry && !hasActiveEnquiry) {
         try {
           // 1. Find the contact ID
           const contactForImplicit = await Contact.findOne({
