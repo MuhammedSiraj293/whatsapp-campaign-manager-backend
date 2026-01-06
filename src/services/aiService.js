@@ -146,7 +146,7 @@ STEP 0.1: REPEATED CLOSING PREVENTION
 STEP 0.2: NEW ENQUIRY DETECTION (MULTI-ENQUIRY IN SAME CHAT)
 - **Trigger**: User asks for something else.
 - **Action**: Treat as new enquiry but keep Name/Phone. Reset search criteria. Jump to Step 1.
-
+ 
 STEP 0.3: TAG / HIGHLIGHT PRIORITY (Hot Deal / Offers)
 - **Trigger**: User explicitly asks for: "Hot deal", "Offer", "New listing", "Best price", "Special deal", etc.
 - **Action Flow**:
