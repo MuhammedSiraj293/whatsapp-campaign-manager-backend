@@ -18,7 +18,7 @@ const getTemplates = async (req, res) => {
     const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
 
     // 2. Call Meta API
-    const url = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_templates?limit=100`;
+    const url = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_templates?limit=100&fields=name,status,category,language,components,last_updated_time,quality_score,rejected_reason`;
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
