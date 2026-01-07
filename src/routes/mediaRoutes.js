@@ -1,12 +1,26 @@
-// backend/src/routes/mediaRoutes.js
-
-const express = require('express');
-const { getMediaFile } = require('../controllers/mediaController');
-// We are removing 'protect' because the <img> tag cannot send an auth token.
+const express = require("express");
+const multer = require("multer");
+const {
+  getMediaFile,
+  uploadTemplateMedia,
+} = require("../controllers/mediaController");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// This route is now public so that the browser's <img> tag can access it.
-router.get('/:mediaId', getMediaFile);
+// Memory storage for file handling
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Public route for browser access to media
+router.get("/:mediaId", getMediaFile);
+
+// Protected route for uploading template media to Meta (getting handle)
+router.post(
+  "/upload-template-media",
+  protect,
+  authorize("admin", "manager"),
+  upload.single("file"),
+  uploadTemplateMedia
+);
 
 module.exports = router;
