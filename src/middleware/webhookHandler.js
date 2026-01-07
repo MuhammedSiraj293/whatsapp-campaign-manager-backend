@@ -80,6 +80,9 @@ const processBufferedMessages = async (
   const lastMessage = messages[messages.length - 1]; // Use latest for timestamp/meta
   const campaignToCredit = messages.find((m) => m.campaign)?.campaign; // Use ANY campaign found in batch
 
+  // Check if any message in the batch was a DIRECT reply (Context or Button)
+  const isDirectReply = messages.some((m) => m.isDirectReply);
+
   if (!combinedBody) {
     console.log(
       "⚠️ No text content in buffered messages. Skipping logic processing."
@@ -89,7 +92,9 @@ const processBufferedMessages = async (
 
   console.log(`📝 Combined Context: "${combinedBody}"`);
   if (campaignToCredit)
-    console.log(`📌 Associated Campaign: ${campaignToCredit.name}`);
+    console.log(
+      `📌 Associated Campaign: ${campaignToCredit.name} (Direct: ${isDirectReply})`
+    );
 
   // ---------------------------------------------------------
   // RE-INSERTED LOGIC: B & C
@@ -101,7 +106,8 @@ const processBufferedMessages = async (
   /* ---------------------------------------------------------
    * B) LEAD ROUTING (CAMPAIGN REPLY → GOOGLE SHEET)
    * --------------------------------------------------------- */
-  if (campaignToCredit && messageBody) {
+  // Only log if it is a DIRECT reply (Context/Button) to the campaign
+  if (campaignToCredit && messageBody && isDirectReply) {
     console.log("📨 Processing as CAMPAIGN reply...");
 
     // Count existing replies to see if this is the first interaction for this campaign
@@ -796,9 +802,12 @@ const processWebhook = async (req, res) => {
       }
 
       /* -------------------------------------------
+      /* -------------------------------------------
        * A2) CAMPAIGN DETECTION (PRIMARY)
        * context.id → Analytics.wamid → campaign
        * ------------------------------------------- */
+      let isDirectReply = false;
+
       if (message.context?.id) {
         const match = await Analytics.findOne({
           wamid: message.context.id,
@@ -806,6 +815,7 @@ const processWebhook = async (req, res) => {
 
         if (match?.campaign) {
           campaignToCredit = match.campaign;
+          isDirectReply = true;
           console.log(
             `📌 Campaign detected via context → ${campaignToCredit.name}`
           );
@@ -1055,6 +1065,8 @@ const processWebhook = async (req, res) => {
           body: messageBody,
           campaign: campaignToCredit,
           contactName: contactName, // Pass profile name
+          isDirectReply:
+            isDirectReply || ["button", "interactive"].includes(message.type), // Mark if direct
         });
 
         // Clear existing timer
