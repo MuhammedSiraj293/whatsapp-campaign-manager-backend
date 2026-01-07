@@ -187,7 +187,7 @@ const getTemplateAnalytics = async (req, res) => {
       : Math.floor(defaultStart.getTime() / 1000);
     const endVal = end ? parseInt(end) : Math.floor(now.getTime() / 1000);
 
-    const analyticsUrl = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_template_analytics?start=${startVal}&end=${endVal}&granularity=DAILY&metric_types=SENT,DELIVERED,READ&template_ids=[${templateId}]`;
+    const analyticsUrl = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_template_analytics?start=${startVal}&end=${endVal}&granularity=DAILY&metric_types=SENT,DELIVERED,READ&template_ids=["${templateId}"]`;
 
     const response = await axios.get(analyticsUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -221,11 +221,14 @@ const getTemplateAnalytics = async (req, res) => {
   } catch (error) {
     console.error(
       "Error fetching template analytics:",
-      error.response?.data || error.message
+      error.response?.data || error.message,
+      error.stack
     );
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch analytics" });
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch analytics",
+      details: error.message,
+    });
   }
 };
 
