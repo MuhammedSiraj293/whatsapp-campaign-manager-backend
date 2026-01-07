@@ -2,6 +2,7 @@ const express = require("express");
 const {
   getTemplates,
   createTemplate,
+  editTemplate,
 } = require("../controllers/templateController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
@@ -13,5 +14,7 @@ router.use(protect);
 router.route("/:wabaId").get(getTemplates);
 
 router.route("/").post(authorize("admin", "manager"), createTemplate);
+
+router.route("/:templateId").put(authorize("admin", "manager"), editTemplate);
 
 module.exports = router;

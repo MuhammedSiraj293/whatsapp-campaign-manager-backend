@@ -87,7 +87,57 @@ const createTemplate = async (req, res) => {
   }
 };
 
+// @desc    Edit an existing Message Template
+// @route   PUT /api/templates/:templateId
+// @access  Private (Admin/Manager)
+const editTemplate = async (req, res) => {
+  try {
+    const { templateId } = req.params;
+    // We need wabaId to look up the access token, even though we edit by Template ID
+    const { wabaId, components } = req.body;
+
+    if (!wabaId || !components) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing wabaId or components" });
+    }
+
+    // 1. Find WABA
+    const waba = await WabaAccount.findOne({ businessAccountId: wabaId });
+    if (!waba) {
+      return res.status(404).json({ success: false, error: "WABA not found" });
+    }
+
+    const accessToken = waba.accessToken;
+    const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
+
+    // 2. Call Meta API (POST to Template ID to update)
+    // Note: To edit, we send the new components
+    const url = `https://graph.facebook.com/${apiVersion}/${templateId}`;
+
+    const payload = {
+      components: components,
+    };
+
+    const response = await axios.post(url, payload, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    res.status(200).json({ success: true, data: response.data });
+  } catch (error) {
+    console.error(
+      "Error editing template:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({
+      success: false,
+      error: error.response?.data?.error?.message || "Failed to edit template",
+    });
+  }
+};
+
 module.exports = {
   getTemplates,
   createTemplate,
+  editTemplate,
 };
