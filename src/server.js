@@ -26,6 +26,7 @@ const userRoutes = require("./routes/userRoutes");
 const wabaRoutes = require("./routes/wabaRoutes");
 const enquiryRoutes = require("./routes/enquiryRoutes");
 const botFlowRoutes = require("./routes/botFlowRoutes");
+const templateRoutes = require("./routes/templateRoutes");
 
 connectDB();
 
@@ -89,6 +90,7 @@ app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/bot-flows", botFlowRoutes);
 app.use("/api/auto-reply", require("./routes/autoReplyRoutes"));
 app.use("/api/properties", require("./routes/propertyRoutes")); // <-- NEW ROUTE
+app.use("/api/templates", templateRoutes);
 
 app.get("*splat", (req, res) => {
   res.sendFile(path.join(__dirname, "../../frontend/build", "index.html"));
