@@ -1,13 +1,21 @@
 const axios = require("axios");
 const WabaAccount = require("../models/WabaAccount");
 
-// @desc    Get filtered templates for a WABA
+// @desc    Get filtered templates for a WABA with Analytics
 // @route   GET /api/templates/:wabaId
 // @access  Private
 const getTemplates = async (req, res) => {
   try {
     const { wabaId } = req.params;
-    const { name, category, language, status, limit = 200 } = req.query;
+    const {
+      name,
+      category,
+      language,
+      status,
+      limit = 200,
+      start,
+      end,
+    } = req.query;
 
     // 1. Find WABA to get Access Token
     const waba = await WabaAccount.findOne({ businessAccountId: wabaId });
@@ -18,19 +26,96 @@ const getTemplates = async (req, res) => {
     const accessToken = waba.accessToken;
     const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
 
-    // 2. Call Meta API (Fetch a larger batch to allow for effective backend filtering)
-    // Identify what fields we need
+    // 2. Prepare Meta API Calls
+    // Fetch Templates
     const fields =
       "name,status,category,language,components,last_updated_time,quality_score,rejected_reason";
-    const url = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_templates?limit=${limit}&fields=${fields}`;
-
-    const response = await axios.get(url, {
+    const templatesUrl = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_templates?limit=${limit}&fields=${fields}`;
+    const templatesPromise = axios.get(templatesUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    let templates = response.data.data;
+    // Fetch Analytics (Message Template Analytics)
+    // Default to last 7 days (mock logic for default if param missing, but usually passed by frontend)
+    const now = new Date();
+    const defaultStart = new Date();
+    defaultStart.setDate(now.getDate() - 7);
 
-    // 3. Backend Filtering
+    // API expects Unix timestamp in seconds
+    const startVal = start
+      ? parseInt(start)
+      : Math.floor(defaultStart.getTime() / 1000);
+    const endVal = end ? parseInt(end) : Math.floor(now.getTime() / 1000);
+
+    // Note: The /message_template_analytics endpoint on WABA ID fetches stats for all templates
+    // granularity=DAILY is standard.
+    const analyticsUrl = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_template_analytics?start=${startVal}&end=${endVal}&granularity=DAILY&metric_types=SENT,READ`;
+
+    // We execute both request and analytics concurrently
+    // Use Promise.allSettled to ensure template list loads even if analytics fails
+    const [templatesResult, analyticsResult] = await Promise.allSettled([
+      templatesPromise,
+      axios.get(analyticsUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }),
+    ]);
+
+    if (templatesResult.status === "rejected") {
+      throw new Error(
+        templatesResult.reason?.message || "Failed to fetch templates"
+      );
+    }
+
+    let templates = templatesResult.value.data.data;
+    const analyticsData =
+      analyticsResult.status === "fulfilled"
+        ? analyticsResult.value.data.data
+        : [];
+
+    // 3. Process Analytics Data
+    // Aggregating stats per template_id
+    const statsMap = {}; // { [templateId]: { sent: 0, read: 0 } }
+
+    if (analyticsData && Array.isArray(analyticsData)) {
+      analyticsData.forEach((entry) => {
+        // Structure: { data: [ { id: "TEMPLATE_ID", analytics: [ { stats: [...] } ] } ] }
+        // If the structure is simpler flattened list:
+        // The documentation for /message_template_analytics on WABA returns a list of objects
+        // each representing a template's analytics?
+        // Actually no, getting analytics for ALL templates at once often requires
+        // querying the `message_templates` edge with the `analytics` field for simpler cases,
+        // OR this specific endpoint.
+        // Let's assume the shape is { id, analytics: [...] }.
+
+        const tId = entry.id;
+        if (tId && entry.analytics) {
+          let sent = 0;
+          let read = 0;
+          entry.analytics.forEach((dayPoint) => {
+            if (dayPoint.stats) {
+              dayPoint.stats.forEach((s) => {
+                if (s.metric_type === "SENT") sent += s.value;
+                if (s.metric_type === "READ") read += s.value;
+              });
+            }
+          });
+          statsMap[tId] = { sent, read };
+        }
+      });
+    }
+
+    // 4. Backend Filtering & Merging
+    templates = templates.map((t) => {
+      const stat = statsMap[t.id] || { sent: 0, read: 0 };
+      return {
+        ...t,
+        messages_delivered: stat.sent,
+        read_rate:
+          stat.sent > 0 ? Math.round((stat.read / stat.sent) * 100) : 0, // percentage integer
+      };
+    });
+
+    // Apply Filter Params
     if (name) {
       const lowerName = name.toLowerCase();
       templates = templates.filter((t) =>
@@ -39,9 +124,8 @@ const getTemplates = async (req, res) => {
     }
 
     if (category) {
-      // category can be comma separated 'MARKETING,UTILITY'
-      const timeCats = category.split(",");
-      templates = templates.filter((t) => timeCats.includes(t.category));
+      const cats = category.split(",");
+      templates = templates.filter((t) => cats.includes(t.category));
     }
 
     if (language) {
@@ -50,14 +134,17 @@ const getTemplates = async (req, res) => {
     }
 
     if (status) {
-      // status logic might be complex if mapping 'ACTIVE_HIGH' -> status=APPROVED & quality=HIGH
-      // For simple matching first:
-      const statuses = status.split(",");
+      const statArr = status.split(",");
       templates = templates.filter((t) => {
-        // Basic status check
-        if (statuses.includes(t.status)) return true;
-        // Detailed check for quality/sub-statuses could go here
-        // e.g. if requested 'ACTIVE_HIGH' check t.status==APPROVED && t.quality_score==HIGH
+        // Basic mapping
+        if (statArr.includes(t.status)) return true;
+        if (
+          statArr.includes("ACTIVE_PENDING") &&
+          t.status === "APPROVED" &&
+          (!t.quality_score || t.quality_score === "UNKNOWN")
+        )
+          return true;
+        // Add more complex mappings as needed
         return false;
       });
     }
@@ -83,14 +170,12 @@ const createTemplate = async (req, res) => {
   try {
     const { wabaId, name, category, language, components } = req.body;
 
-    // Basic Validation
     if (!wabaId || !name || !category || !language || !components) {
       return res
         .status(400)
         .json({ success: false, error: "Missing required fields" });
     }
 
-    // 1. Find WABA
     const waba = await WabaAccount.findOne({ businessAccountId: wabaId });
     if (!waba) {
       return res.status(404).json({ success: false, error: "WABA not found" });
@@ -99,7 +184,6 @@ const createTemplate = async (req, res) => {
     const accessToken = waba.accessToken;
     const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
 
-    // 2. Prepare Payload
     const payload = {
       name,
       category,
@@ -108,7 +192,6 @@ const createTemplate = async (req, res) => {
       components,
     };
 
-    // 3. Call Meta API
     const url = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_templates`;
     const response = await axios.post(url, payload, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -134,7 +217,6 @@ const createTemplate = async (req, res) => {
 const editTemplate = async (req, res) => {
   try {
     const { templateId } = req.params;
-    // We need wabaId to look up the access token, even though we edit by Template ID
     const { wabaId, components } = req.body;
 
     if (!wabaId || !components) {
@@ -143,7 +225,6 @@ const editTemplate = async (req, res) => {
         .json({ success: false, error: "Missing wabaId or components" });
     }
 
-    // 1. Find WABA
     const waba = await WabaAccount.findOne({ businessAccountId: wabaId });
     if (!waba) {
       return res.status(404).json({ success: false, error: "WABA not found" });
@@ -152,8 +233,6 @@ const editTemplate = async (req, res) => {
     const accessToken = waba.accessToken;
     const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
 
-    // 2. Call Meta API (POST to Template ID to update)
-    // Note: To edit, we send the new components
     const url = `https://graph.facebook.com/${apiVersion}/${templateId}`;
 
     const payload = {
