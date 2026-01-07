@@ -78,15 +78,6 @@ const getTemplates = async (req, res) => {
 
     if (analyticsData && Array.isArray(analyticsData)) {
       analyticsData.forEach((entry) => {
-        // Structure: { data: [ { id: "TEMPLATE_ID", analytics: [ { stats: [...] } ] } ] }
-        // If the structure is simpler flattened list:
-        // The documentation for /message_template_analytics on WABA returns a list of objects
-        // each representing a template's analytics?
-        // Actually no, getting analytics for ALL templates at once often requires
-        // querying the `message_templates` edge with the `analytics` field for simpler cases,
-        // OR this specific endpoint.
-        // Let's assume the shape is { id, analytics: [...] }.
-
         const tId = entry.id;
         if (tId && entry.analytics) {
           let sent = 0;
@@ -160,6 +151,81 @@ const getTemplates = async (req, res) => {
     res
       .status(500)
       .json({ success: false, error: "Failed to fetch templates" });
+  }
+};
+
+// @desc    Get detailed analytics for a specific template
+// @route   GET /api/templates/:wabaId/analytics
+// @access  Private
+const getTemplateAnalytics = async (req, res) => {
+  try {
+    const { wabaId } = req.params;
+    const { templateId, start, end } = req.query;
+
+    if (!templateId) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing templateId" });
+    }
+
+    const waba = await WabaAccount.findOne({ businessAccountId: wabaId });
+    if (!waba) {
+      return res.status(404).json({ success: false, error: "WABA not found" });
+    }
+
+    const accessToken = waba.accessToken;
+    const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
+
+    // Default to last 7 days if not provided
+    const now = new Date();
+    const defaultStart = new Date();
+    defaultStart.setDate(now.getDate() - 7);
+
+    // API expects Unix timestamp in seconds
+    const startVal = start
+      ? parseInt(start)
+      : Math.floor(defaultStart.getTime() / 1000);
+    const endVal = end ? parseInt(end) : Math.floor(now.getTime() / 1000);
+
+    const analyticsUrl = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_template_analytics?start=${startVal}&end=${endVal}&granularity=DAILY&metric_types=SENT,DELIVERED,READ&template_ids=[${templateId}]`;
+
+    const response = await axios.get(analyticsUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    // Response form: { data: [ { id, analytics: [ { date_start, date_end, stats: [] } ] } ] }
+    const rawData = response.data.data[0]?.analytics || [];
+
+    const graphData = rawData.map((day) => {
+      const point = {
+        name: new Date(day.date_start * 1000).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
+        sent: 0,
+        delivered: 0,
+        read: 0,
+      };
+      if (day.stats) {
+        day.stats.forEach((s) => {
+          if (s.metric_type === "SENT") point.sent = s.value;
+          if (s.metric_type === "DELIVERED") point.delivered = s.value;
+          // Meta sometimes uses READ vs MESSAGE_READ, check metric_types support
+          if (s.metric_type === "READ") point.read = s.value;
+        });
+      }
+      return point;
+    });
+
+    res.status(200).json({ success: true, data: graphData });
+  } catch (error) {
+    console.error(
+      "Error fetching template analytics:",
+      error.response?.data || error.message
+    );
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch analytics" });
   }
 };
 
@@ -258,6 +324,7 @@ const editTemplate = async (req, res) => {
 
 module.exports = {
   getTemplates,
+  getTemplateAnalytics,
   createTemplate,
   editTemplate,
 };

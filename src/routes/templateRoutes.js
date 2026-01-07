@@ -3,6 +3,7 @@ const {
   getTemplates,
   createTemplate,
   editTemplate,
+  getTemplateAnalytics,
 } = require("../controllers/templateController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
@@ -12,6 +13,9 @@ const router = express.Router();
 router.use(protect);
 
 router.route("/:wabaId").get(getTemplates);
+router
+  .route("/:wabaId/analytics")
+  .get(authorize("admin", "manager"), getTemplateAnalytics);
 
 router.route("/").post(authorize("admin", "manager"), createTemplate);
 
