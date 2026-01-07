@@ -1,12 +1,13 @@
 const axios = require("axios");
 const WabaAccount = require("../models/WabaAccount");
 
-// @desc    Get all templates for a WABA
+// @desc    Get filtered templates for a WABA
 // @route   GET /api/templates/:wabaId
 // @access  Private
 const getTemplates = async (req, res) => {
   try {
     const { wabaId } = req.params;
+    const { name, category, language, status, limit = 200 } = req.query;
 
     // 1. Find WABA to get Access Token
     const waba = await WabaAccount.findOne({ businessAccountId: wabaId });
@@ -17,13 +18,53 @@ const getTemplates = async (req, res) => {
     const accessToken = waba.accessToken;
     const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
 
-    // 2. Call Meta API
-    const url = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_templates?limit=100&fields=name,status,category,language,components,last_updated_time,quality_score,rejected_reason`;
+    // 2. Call Meta API (Fetch a larger batch to allow for effective backend filtering)
+    // Identify what fields we need
+    const fields =
+      "name,status,category,language,components,last_updated_time,quality_score,rejected_reason";
+    const url = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_templates?limit=${limit}&fields=${fields}`;
+
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    res.status(200).json({ success: true, data: response.data.data });
+    let templates = response.data.data;
+
+    // 3. Backend Filtering
+    if (name) {
+      const lowerName = name.toLowerCase();
+      templates = templates.filter((t) =>
+        t.name.toLowerCase().includes(lowerName)
+      );
+    }
+
+    if (category) {
+      // category can be comma separated 'MARKETING,UTILITY'
+      const timeCats = category.split(",");
+      templates = templates.filter((t) => timeCats.includes(t.category));
+    }
+
+    if (language) {
+      const langs = language.split(",");
+      templates = templates.filter((t) => langs.includes(t.language));
+    }
+
+    if (status) {
+      // status logic might be complex if mapping 'ACTIVE_HIGH' -> status=APPROVED & quality=HIGH
+      // For simple matching first:
+      const statuses = status.split(",");
+      templates = templates.filter((t) => {
+        // Basic status check
+        if (statuses.includes(t.status)) return true;
+        // Detailed check for quality/sub-statuses could go here
+        // e.g. if requested 'ACTIVE_HIGH' check t.status==APPROVED && t.quality_score==HIGH
+        return false;
+      });
+    }
+
+    res
+      .status(200)
+      .json({ success: true, count: templates.length, data: templates });
   } catch (error) {
     console.error(
       "Error fetching templates:",
