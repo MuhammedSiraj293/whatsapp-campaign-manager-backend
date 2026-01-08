@@ -621,7 +621,14 @@ const processBufferedMessages = async (
                   contactList: enquiresList._id,
                 });
               } else {
-                if (eName && contact.name === "Unknown") {
+                // Correct: Allow update if Unknown OR Guest
+                if (
+                  eName &&
+                  (contact.name === "Unknown" || contact.name === "Guest")
+                ) {
+                  console.log(
+                    `👤 Updating Contact Name: ${contact.name} -> ${eName}`
+                  );
                   contact.name = eName;
                   await contact.save();
                 }
