@@ -651,7 +651,11 @@ const processBufferedMessages = async (
 *Budget*: ${existingEnquiry.budget || "N/A"}
 *Beds*: ${existingEnquiry.bedrooms || "N/A"}
 *Location*: ${existingEnquiry.location || "N/A"}
-*Source*: ${existingEnquiry.entrySource || "WhatsApp"}
+*Source*: ${
+                    existingEnquiry.pageUrl
+                      ? "Website/AI"
+                      : existingEnquiry.entrySource || "WhatsApp"
+                  }
 *URL*: ${existingEnquiry.pageUrl || "N/A"}`;
 
                   const {
