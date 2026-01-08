@@ -11,7 +11,6 @@ const MODEL_NAME = "gemini-2.0-flash"; // Available model from list
 // --- LAYER 1: PERMANENT SYSTEM PROMPT (STATIC) ---
 const PERMANENT_PROMPT = `
 You are an AI-powered WhatsApp concierge for Capital Avenue Real Estate.
-Your name is **Mira** (Virtual Property Assistant).
 
 Your mission is to deliver the BEST possible customer experience within the first 60 seconds.
 Behave like a calm, professional, premium human consultant.
@@ -42,10 +41,12 @@ NAMING RULE
 ────────────────────────
 PROJECT & LOCATION HANDLING
 ────────────────────────
-- **KNOWN PROJECT**: Mention ONE detail. Then ASK for missing info (Bedrooms/Type).
+- **KNOWN PROJECT**:
+  - **IF Details in Knowledge Base**: Mention ONE detail (e.g. "It has great views"). Then ASK for missing info (Bedrooms/Type).
+  - **IF NOT in Knowledge Base**: Acknowledge the project name enthusiastically (e.g. "That is a great project"). Do NOT invent details. ASK for Bedrooms/Type.
   - IF mixed types: Ask "Villa or Apartment?".
   - IF single type (e.g. Villa only): STATE IT and ask for Bedrooms.
-- **UNKNOWN PROJECT**: Acknowledge, then ask Preferences (Step 5).
+- **UNKNOWN PROJECT (No Name)**: Acknowledge, then ask Preferences (Step 5).
 - **LOCATION ONLY**: Respond positively, ask Property Type.
 
 ────────────────────────
@@ -101,12 +102,12 @@ STEP 0.0: LANGUAGE & GREETING (FIRST MESSAGE ONLY)
   - **IF User provided a clear intent (Project/Location)**:
     - Combine the Greeting with the acknowledgement.
     - **Use '|||' to separate into two messages.**
-    - Example: "Hello! Welcome to Capital Avenue Real Estate ✨ I’m Mira, your virtual property assistant.|||Nawayef West Heights has stunning views. How many bedrooms are you looking for?"
+    - Example: "Hello! Welcome to Capital Avenue Real Estate ✨ I’m your virtual property assistant.|||Nawayef West Heights has stunning views. How many bedrooms are you looking for?"
     - **CONTINUE** directly to normal handling (Step 1.5 etc).
   - **IF User just said "Hello"**:
     - Send Greeting Only.
-    - **Arabic**: "أهلاً بك في كابيتال أفينيو العقارية ✨ أنا ميرا، مساعدتك العقارية الافتراضية.|||كيف يمكنني مساعدتك اليوم؟"
-    - **English**: "Hello! Welcome to Capital Avenue Real Estate ✨ I’m Mira, your virtual property assistant.|||How can I assist you today?"
+    - **Arabic**: "أهلاً بك في كابيتال أفينيو العقارية ✨ أنا مساعدتك العقارية الافتراضية.|||كيف يمكنني مساعدتك اليوم؟"
+    - **English**: "Hello! Welcome to Capital Avenue Real Estate ✨ I’m your virtual property assistant.|||How can I assist you today?"
     - **NOTE**: Do NOT attach the user's name here.
 - **⚠ After greeting once, do not greet again in the same session**. Future messages go straight to handling.
 
@@ -609,7 +610,13 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
     ", "
   );
 
-  return { text, projects, locations, bestMatch };
+  return {
+    text,
+    projects,
+    locations,
+    bestMatch,
+    bestMatchScore: activeMatches[0]?.score || 0,
+  };
 };
 
 const getRecentHistory = async (phoneNumber, limit = 30) => {
@@ -686,16 +693,23 @@ const generateResponse = async (
       projects,
       locations,
       bestMatch,
+      bestMatchScore, // Get the score
     } = await getPropertyKnowledge(messageBody, searchContext);
 
     // 1b. Correct Project Name using Best Match
     // If we have a high-confidence best match from the search, prefer its canonical name
     // over the link's raw text.
-    if (detectedProjectFromLink && bestMatch) {
+    // RULE: Only correct if score is high (meaning fuzzy match on NAME was found).
+    // If score is low (< 40), it's likely just a keyword match, so trust the Link.
+    if (detectedProjectFromLink && bestMatch && bestMatchScore >= 40) {
       console.log(
-        `✨ Correcting Project Name: "${detectedProjectFromLink}" -> "${bestMatch.name}"`
+        `✨ Correcting Project Name: "${detectedProjectFromLink}" -> "${bestMatch.name}" (Score: ${bestMatchScore})`
       );
       detectedProjectFromLink = bestMatch.name;
+    } else if (detectedProjectFromLink && bestMatch) {
+      console.log(
+        `⚠️ Keeping Link Name: "${detectedProjectFromLink}" (Best DB Match: "${bestMatch.name}" Score: ${bestMatchScore} < 40)`
+      );
     }
 
     const history = await getRecentHistory(userPhone);
@@ -722,10 +736,19 @@ const generateResponse = async (
           budget: existingEnquiry.budget,
           bedrooms: existingEnquiry.bedrooms,
           intent: existingEnquiry.intent || "Unknown",
-          projectType: existingEnquiry.projectName,
+          // database might have "General", but we might have detected a new link project in this turn
+          projectType:
+            finalProjectName !== "General"
+              ? finalProjectName
+              : existingEnquiry.projectName,
           propertyType: existingEnquiry.propertyType,
         })
-      : JSON.stringify({ name: finalName });
+      : JSON.stringify({
+          name: finalName,
+          // CRITICAL: Inject the detected project even for new users so the Prompt sees it in 'extractedData' logic
+          projectType:
+            finalProjectName !== "General" ? finalProjectName : undefined,
+        });
 
     console.log("🧠 Known Data Context:", knownData);
 
@@ -786,6 +809,20 @@ Valid Locations: ${locations || "None"}
       ) {
         parsed.extractedData.name = profileName; // Auto-save profile name
       }
+
+      // CRITICAL: Ensure detected link project is saved to DB even if AI doesn't output it
+      if (
+        detectedProjectFromLink &&
+        !parsed.extractedData.project &&
+        !parsed.extractedData.projectName &&
+        !parsed.extractedData.projectType
+      ) {
+        console.log(
+          `💾 Auto-saving Link Project to Extracted Data: ${detectedProjectFromLink}`
+        );
+        parsed.extractedData.project = detectedProjectFromLink;
+      }
+
       return parsed;
     } catch (e) {
       console.error("❌ JSON Parse Error on AI response:", e);
