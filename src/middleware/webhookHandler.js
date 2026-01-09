@@ -328,10 +328,10 @@ const processBufferedMessages = async (
           if (!autoReplyText && isCampaignReply) {
             if (messageBodyLower.includes("yes, i am interested")) {
               autoReplyText =
-                "Your interest has been noted. We will contact you shortly. Thank you for your response.";
+                "Your interest has been noted. One of our Sales Consultant will contact you shortly to assist you, Thank you for your response.";
             } else if (messageBodyLower.includes("نعم، مهتم")) {
               autoReplyText =
-                ".تم تسجيل اهتمامك. سنتواصل معك قريبًا. شكرًا على ردك";
+                "لقد تم تسجيل اهتمامكم. سيتصل بكم أحد مستشاري المبيعات لدينا قريباً لمساعدتكم، شكراً لردكم.";
             } else if (messageBodyLower.includes("not interested")) {
               autoReplyText =
                 "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
