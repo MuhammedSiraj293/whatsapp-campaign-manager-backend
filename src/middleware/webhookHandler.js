@@ -658,11 +658,10 @@ const processBufferedMessages = async (
 *Budget*: ${existingEnquiry.budget || "N/A"}
 *Beds*: ${existingEnquiry.bedrooms || "N/A"}
 *Location*: ${existingEnquiry.location || "N/A"}
-*Source*: ${
-                    existingEnquiry.pageUrl
+*Source*: ${existingEnquiry.pageUrl
                       ? "Website/AI"
                       : existingEnquiry.entrySource || "WhatsApp"
-                  }
+                    }
 *URL*: ${existingEnquiry.pageUrl || "N/A"}`;
 
                   const {
@@ -833,6 +832,51 @@ const processWebhook = async (req, res) => {
         }
       }
 
+      /* -------------------------------------------
+       * A2.4) KEYWORD DETECTED CAMPAIGN ATTRIBUTION (FORCE LOOKBACK 7 DAYS)
+       * ------------------------------------------- */
+      // If user replies with specific keywords, we assume it's for the last campaign they got,
+      // even if it was days ago.
+      const lowerBody = (messageBody || "").toLowerCase();
+      // You can expand this list as needed
+      const keywords = [
+        "yes, i am interested",
+        "not interested",
+        "stop",
+        "subscribe",
+        "نعم، مهتم",
+      ];
+
+      if (!campaignToCredit && keywords.some((k) => lowerBody.includes(k))) {
+        console.log(
+          "🗝️ Keyword detected. Forcing extended campaign lookup (7 days)..."
+        );
+        try {
+          const contactForKeyword = await Contact.findOne({
+            phoneNumber: message.from,
+          });
+          if (contactForKeyword) {
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const recentAnalytics = await Analytics.findOne({
+              contact: contactForKeyword._id,
+              status: { $in: ["sent", "delivered", "read"] },
+              createdAt: { $gte: sevenDaysAgo },
+            })
+              .sort({ createdAt: -1 })
+              .populate("campaign");
+
+            if (recentAnalytics?.campaign) {
+              campaignToCredit = recentAnalytics.campaign;
+              console.log(
+                `📌 Campaign detected via KEYWORD ('${messageBody}') → ${campaignToCredit.name}`
+              );
+            }
+          }
+        } catch (err) {
+          console.error("⚠️ Keyword campaign lookup failed:", err);
+        }
+      }
+
       // --- A2.5) IMPLICIT CAMPAIGN DETECTION (FALLBACK) ---
       // If user didn't use the "Reply" feature (swiping right), check if we sent them a campaign recently.
       // 🛑 FIX: Ignore implicit detection if the message looks like a new Website Enquiry (has URL).
@@ -840,21 +884,8 @@ const processWebhook = async (req, res) => {
         .toLowerCase()
         .includes("http");
 
-      // 🛑 FIX: Ignore implicit detection if User has an ACTIVE Enquiry (conversing with AI).
-      // If they are answering "3" to "How many beds?", it should NOT attach to an old campaign.
-      let hasActiveEnquiry = false;
-      const recentEnquiry = await Enquiry.findOne({
-        phoneNumber: message.from,
-      }).sort({ updatedAt: -1 });
-      if (recentEnquiry) {
-        const diffMs = new Date() - new Date(recentEnquiry.updatedAt);
-        if (diffMs < 24 * 60 * 60 * 1000) {
-          // 24 hours
-          hasActiveEnquiry = true;
-        }
-      }
-
-      if (!campaignToCredit && !isWebsiteEnquiry && !hasActiveEnquiry) {
+      // FIX: Removed !hasActiveEnquiry to allow campaign replies to override old context
+      if (!campaignToCredit && !isWebsiteEnquiry) {
         try {
           // 1. Find the contact ID
           const contactForImplicit = await Contact.findOne({
@@ -1111,9 +1142,8 @@ const processWebhook = async (req, res) => {
 
       if (status.errors && status.errors.length > 0) {
         const err = status.errors[0];
-        failureReason = `${err.code} - ${err.title} (${
-          err.details || "No details"
-        })`;
+        failureReason = `${err.code} - ${err.title} (${err.details || "No details"
+          })`;
         console.log("❌ WhatsApp Delivery Error:", failureReason);
       }
 
