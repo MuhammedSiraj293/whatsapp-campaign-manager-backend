@@ -319,6 +319,22 @@ const processBufferedMessages = async (
           contactCheck.isSubscribed &&
           !messageBodyLower.includes("stop")
         ) {
+          // Helper function to handle Adding to Unsubscriber List
+          const addToUnsubscriberList = async () => {
+            const ContactList = require("../models/ContactList");
+            let unsubList = await ContactList.findOne({
+              name: "Unsubscriber List",
+            });
+            if (!unsubList) {
+              unsubList = await ContactList.create({
+                name: "Unsubscriber List",
+              });
+            }
+            return unsubList._id;
+          };
+
+          const unsubListId = await addToUnsubscriberList();
+
           // Treat this message as the custom reason
           await Contact.findOneAndUpdate(
             { phoneNumber: userPhone },
@@ -326,10 +342,12 @@ const processBufferedMessages = async (
               unsubscribeReason: messageBody, // Save the text as reason
               isSubscribed: false,
               unsubscribeDate: new Date(),
+              contactList: unsubListId, // Add to Unsubscriber List
             }
           );
           autoReplyText =
             "You’ve been unsubscribed. Thank you for your feedback.";
+          isHandledByWebhook = true;
           console.log(
             `✅ Contact ${userPhone} unsubscribed with custom reason: ${messageBody}`
           );
@@ -375,28 +393,50 @@ const processBufferedMessages = async (
         } else if (
           unsubscribeReasons.some((r) => r.toLowerCase() === messageBodyLower)
         ) {
+          // Helper function to handle Adding to Unsubscriber List
+          const addToUnsubscriberList = async (phone) => {
+            const ContactList = require("../models/ContactList");
+            let unsubList = await ContactList.findOne({
+              name: "Unsubscriber List",
+            });
+            if (!unsubList) {
+              unsubList = await ContactList.create({
+                name: "Unsubscriber List",
+              });
+            }
+            return unsubList._id;
+          };
+
           // B) REASON SELECTED
+          const unsubListId = await addToUnsubscriberList(userPhone);
+
           if (messageBody === "Other") {
             // Handle "Other" -> Ask for details
             await Contact.findOneAndUpdate(
               { phoneNumber: userPhone },
-              { unsubscribeReason: "Other" }
+              {
+                unsubscribeReason: "Other",
+                // We do NOT unsubscribe yet, we wait for the text explanation
+                // But user asked for "after complete flow", so effectively we wait.
+                // Actually, for "Other", we haven't completed flow.
+              }
             );
             autoReplyText = "Please type your reason below so we can improve.";
           } else {
-            // Standard Reason -> Unsubscribe Immediately
+            // Standard Reason -> Unsubscribe Immediately & Add to List
             await Contact.findOneAndUpdate(
               { phoneNumber: userPhone },
               {
                 unsubscribeReason: messageBody,
                 isSubscribed: false,
                 unsubscribeDate: new Date(),
+                contactList: unsubListId, // Add to the specific Unsubscriber List
               }
             );
             autoReplyText =
               "You’ve been unsubscribed. Thank you for your feedback.";
             console.log(
-              `✅ Contact ${userPhone} unsubscribed with reason: ${messageBody}`
+              `✅ Contact ${userPhone} unsubscribed & added to 'Unsubscriber List' with reason: ${messageBody}`
             );
           }
         } else {
