@@ -267,47 +267,14 @@ const getAnalyticsForTemplate = async (req, res) => {
   try {
     const { templateName } = req.params;
 
-    // 1. Find all campaigns that use this template
-    const campaigns = await Campaign.find({ templateName: templateName });
+    // 1. Find all campaigns that use this template and populate contactList
+    const campaigns = await Campaign.find({
+      templateName: templateName,
+    }).populate("contactList");
+
     if (!campaigns || campaigns.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "No campaigns found with this template name.",
-      });
-    }
-
-    const campaignIds = campaigns.map((c) => c._id);
-
-    // 2. Run all count queries in parallel for these campaigns
-    const [totalSent, delivered, read, failed, totalDelivered] =
-      await Promise.all([
-        Analytics.countDocuments({ campaign: { $in: campaignIds } }),
-        Analytics.countDocuments({
-          campaign: { $in: campaignIds },
-          status: "delivered",
-        }),
-        Analytics.countDocuments({
-          campaign: { $in: campaignIds },
-          status: "read",
-        }),
-        Analytics.countDocuments({
-          campaign: { $in: campaignIds },
-          status: "failed",
-        }),
-        Analytics.countDocuments({
-          campaign: campaignIds,
-          status: { $in: ["delivered", "read"] },
-        }),
-      ]);
-
-    // 3. Calculate total replies by summing up replyCount from all found campaigns
-    const totalReplies = campaigns.reduce(
-      (acc, campaign) => acc + (campaign.replyCount || 0),
-      0
-    );
-
-    if (totalSent === 0) {
       return res.status(200).json({
+        // Return empty data instead of 404 for better UI handling
         success: true,
         data: {
           templateName: templateName,
@@ -319,31 +286,129 @@ const getAnalyticsForTemplate = async (req, res) => {
           deliveryRate: "0%",
           readRate: "0%",
           replyRate: "0%",
+          totalDelivered: 0,
+          totalDeliveryRate: "0%",
+          segments: [],
         },
       });
     }
 
-    // 4. Calculate rates
+    const allCampaignIds = campaigns.map((c) => c._id);
+
+    // --- SEGMENT GROUPING LOGIC ---
+    const segmentMap = {}; // { "Segment Name": [campaignId, campaignId] }
+
+    campaigns.forEach((c) => {
+      const segName = c.contactList ? c.contactList.name : "Unknown Segment";
+      if (!segmentMap[segName]) {
+        segmentMap[segName] = [];
+      }
+      segmentMap[segName].push(c._id);
+    });
+
+    const segmentsData = [];
+
+    // Calculate stats for each segment
+    for (const [segName, segCampaignIds] of Object.entries(segmentMap)) {
+      const [segSent, segDelivered, segRead, segFailed, segTotalDelivered] =
+        await Promise.all([
+          Analytics.countDocuments({ campaign: { $in: segCampaignIds } }),
+          Analytics.countDocuments({
+            campaign: { $in: segCampaignIds },
+            status: "delivered",
+          }),
+          Analytics.countDocuments({
+            campaign: { $in: segCampaignIds },
+            status: "read",
+          }),
+          Analytics.countDocuments({
+            campaign: { $in: segCampaignIds },
+            status: "failed",
+          }),
+          Analytics.countDocuments({
+            campaign: { $in: segCampaignIds },
+            status: { $in: ["delivered", "read"] },
+          }),
+        ]);
+
+      // Calculate replies for this segment (sum replyCount of campaigns in this segment)
+      const segReplies = campaigns
+        .filter((c) => segCampaignIds.includes(c._id))
+        .reduce((acc, c) => acc + (c.replyCount || 0), 0);
+
+      // Calculate rates
+      const safeDiv = (num, den) =>
+        den > 0 ? ((num / den) * 100).toFixed(1) + "%" : "0%";
+
+      segmentsData.push({
+        name: segName,
+        totalSent: segSent, // Match frontend "Total Sent"
+        delivered: segDelivered,
+        read: segRead,
+        failed: segFailed,
+        replies: segReplies,
+        deliveredRate: safeDiv(segDelivered, segSent),
+        readRate: safeDiv(segRead, segSent),
+        failedRate: safeDiv(segFailed, segSent),
+        replyRate: safeDiv(segReplies, segSent),
+      });
+    }
+
+    // Sort segments by total sent desc
+    segmentsData.sort((a, b) => b.totalSent - a.totalSent);
+
+    // 2. Global Stats (Run parallel query for all IDs)
+    const [totalSent, delivered, read, failed, totalDelivered] =
+      await Promise.all([
+        Analytics.countDocuments({ campaign: { $in: allCampaignIds } }),
+        Analytics.countDocuments({
+          campaign: { $in: allCampaignIds },
+          status: "delivered",
+        }),
+        Analytics.countDocuments({
+          campaign: { $in: allCampaignIds },
+          status: "read",
+        }),
+        Analytics.countDocuments({
+          campaign: { $in: allCampaignIds },
+          status: "failed",
+        }),
+        Analytics.countDocuments({
+          campaign: { $in: allCampaignIds },
+          status: { $in: ["delivered", "read"] },
+        }),
+      ]);
+
+    // 3. Calculate total replies
+    const totalReplies = campaigns.reduce(
+      (acc, campaign) => acc + (campaign.replyCount || 0),
+      0
+    );
+
+    // 4. Calculate global rates
     const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + "%";
     const readRate = ((read / totalSent) * 100).toFixed(1) + "%";
     const replyRate = ((totalReplies / totalSent) * 100).toFixed(1) + "%";
     const totalDeliveryRate =
       ((totalDelivered / totalSent) * 100).toFixed(1) + "%";
+    const failedRate = ((failed / totalSent) * 100).toFixed(1) + "%"; // Add failed rate
 
     res.status(200).json({
       success: true,
       data: {
         templateName: templateName,
-        total: totalSent, // Renamed "totalSent" to "total" as requested
+        total: totalSent,
         delivered,
         read,
         failed,
-        totalDelivered, // 👈 added
+        totalDelivered,
         replies: totalReplies,
         deliveryRate,
         readRate,
         replyRate,
-        totalDeliveryRate, // 👈 added
+        totalDeliveryRate,
+        failedRate, // Add failed rate
+        segments: segmentsData, // <--- Return the segment data
       },
     });
   } catch (error) {
