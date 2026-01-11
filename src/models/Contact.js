@@ -33,6 +33,10 @@ const ContactSchema = new mongoose.Schema(
     unsubscribeDate: {
       type: Date,
     },
+    previousContactList: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ContactList",
+    },
   },
   { timestamps: true }
 );

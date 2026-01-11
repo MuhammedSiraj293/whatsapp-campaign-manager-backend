@@ -343,6 +343,7 @@ const processBufferedMessages = async (
               isSubscribed: false,
               unsubscribeDate: new Date(),
               contactList: unsubListId, // Add to Unsubscriber List
+              previousContactList: contactCheck.contactList, // Backup current list
             }
           );
           autoReplyText =
@@ -424,6 +425,10 @@ const processBufferedMessages = async (
             autoReplyText = "Please type your reason below so we can improve.";
           } else {
             // Standard Reason -> Unsubscribe Immediately & Add to List
+            // We need to fetch current contact to backup list
+            const currentContact = await Contact.findOne({
+              phoneNumber: userPhone,
+            });
             await Contact.findOneAndUpdate(
               { phoneNumber: userPhone },
               {
@@ -431,6 +436,9 @@ const processBufferedMessages = async (
                 isSubscribed: false,
                 unsubscribeDate: new Date(),
                 contactList: unsubListId, // Add to the specific Unsubscriber List
+                previousContactList: currentContact
+                  ? currentContact.contactList
+                  : null, // Backup
               }
             );
             autoReplyText =
@@ -441,10 +449,31 @@ const processBufferedMessages = async (
           }
         } else {
           // Re-subscribe logic if they say something else but were unsubscribed
-          const contact = contactCheck; // Re-use fetched contact
+          let contact = contactCheck; // Re-use fetched contact from line 315 if available
+          if (!contact) {
+            contact = await Contact.findOne({ phoneNumber: userPhone });
+          }
+
           if (contact && !contact.isSubscribed) {
             contact.isSubscribed = true;
-            // clear unsubscribe info specific fields if needed, or keep for history
+
+            // Restore segment if available
+            if (contact.previousContactList) {
+              contact.contactList = contact.previousContactList;
+              contact.previousContactList = null; // Clear backup
+              console.log(
+                `🔄 Contact ${userPhone} restored to previous segment.`
+              );
+            } else {
+              // Remove from Unsubscriber List if no backup?
+              // Or keep logic simple: just ensure they are NOT in Unsub list if they have another home.
+              // For now, if no backup, we might just leave them or set to null?
+              // The user asked "go back to his segment", implies restoration.
+            }
+            // Clear unsubscribe info
+            contact.unsubscribeReason = null;
+            contact.unsubscribeDate = null;
+
             await contact.save();
             autoReplyText =
               "Hello and welcome back to Capital Avenue! How can we help you";
