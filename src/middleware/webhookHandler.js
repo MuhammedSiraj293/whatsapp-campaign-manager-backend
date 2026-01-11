@@ -310,32 +310,45 @@ const processBufferedMessages = async (
           "Other",
         ];
 
+        // 2.1 CHECK IF USER IS PROVIDING CUSTOM "OTHER" REASON
+        const contactCheck = await Contact.findOne({ phoneNumber: userPhone });
         if (
-          messageBodyLower.includes("stop") ||
-          messageBodyLower.includes("إيقاف")
+          contactCheck &&
+          contactCheck.unsubscribeReason === "Other" &&
+          contactCheck.isSubscribed &&
+          !messageBodyLower.includes("stop")
         ) {
-          // A) Mark as Unsubscribed
+          // Treat this message as the custom reason
           await Contact.findOneAndUpdate(
             { phoneNumber: userPhone },
             {
+              unsubscribeReason: messageBody, // Save the text as reason
               isSubscribed: false,
               unsubscribeDate: new Date(),
             }
           );
-
-          // B) Send Confirmation Text
+          autoReplyText =
+            "You’ve been unsubscribed. Thank you for your feedback.";
+          console.log(
+            `✅ Contact ${userPhone} unsubscribed with custom reason: ${messageBody}`
+          );
+        } else if (
+          messageBodyLower.includes("stop") ||
+          messageBodyLower.includes("إيقاف")
+        ) {
+          // A) STOP RECEIVED: Request Feedback (Do NOT unsubscribe yet)
           const {
             sendTextMessage,
             sendListMessage,
           } = require("../integrations/whatsappAPI");
+
           await sendTextMessage(
             userPhone,
-            "You’ve been unsubscribed and won’t receive further messages.\nBefore you go, could you tell us why?",
+            "We've received your request to unsubscribe. Before you go, could you tell us why?",
             credentials.accessToken,
             recipientId
           );
 
-          // C) Send List Message for Reason
           const sections = [
             {
               title: "Select a reason",
@@ -355,29 +368,41 @@ const processBufferedMessages = async (
             recipientId
           );
 
-          autoReplyText = null; // Prevent default auto-reply
-          console.log(
-            `✅ Contact ${userPhone} unsubscribed. Sent reason survey.`
-          );
+          autoReplyText = null;
+          console.log(`🛑 Contact ${userPhone} requested STOP. Survey sent.`);
         } else if (
           unsubscribeReasons.some((r) => r.toLowerCase() === messageBodyLower)
         ) {
-          // 2.1 Handle Reason Selection (Feedback)
-          await Contact.findOneAndUpdate(
-            { phoneNumber: userPhone },
-            { unsubscribeReason: messageBody }
-          );
-          autoReplyText = "Thank you for your feedback. We appreciate it.";
-          console.log(
-            `📝 Unsubscribe reason saved for ${userPhone}: ${messageBody}`
-          );
+          // B) REASON SELECTED
+          if (messageBody === "Other") {
+            // Handle "Other" -> Ask for details
+            await Contact.findOneAndUpdate(
+              { phoneNumber: userPhone },
+              { unsubscribeReason: "Other" }
+            );
+            autoReplyText = "Please type your reason below so we can improve.";
+          } else {
+            // Standard Reason -> Unsubscribe Immediately
+            await Contact.findOneAndUpdate(
+              { phoneNumber: userPhone },
+              {
+                unsubscribeReason: messageBody,
+                isSubscribed: false,
+                unsubscribeDate: new Date(),
+              }
+            );
+            autoReplyText =
+              "You’ve been unsubscribed. Thank you for your feedback.";
+            console.log(
+              `✅ Contact ${userPhone} unsubscribed with reason: ${messageBody}`
+            );
+          }
         } else {
           // Re-subscribe logic if they say something else but were unsubscribed
-          const contact = await Contact.findOne({
-            phoneNumber: userPhone,
-          });
+          const contact = contactCheck; // Re-use fetched contact
           if (contact && !contact.isSubscribed) {
             contact.isSubscribed = true;
+            // clear unsubscribe info specific fields if needed, or keep for history
             await contact.save();
             autoReplyText =
               "Hello and welcome back to Capital Avenue! How can we help you";
