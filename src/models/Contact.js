@@ -26,6 +26,13 @@ const ContactSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    unsubscribeReason: {
+      type: String,
+      trim: true,
+    },
+    unsubscribeDate: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );

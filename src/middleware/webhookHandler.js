@@ -302,17 +302,77 @@ const processBufferedMessages = async (
         );
       } else {
         // 2. Handle "stop" and "re-subscribe" logic
+        const unsubscribeReasons = [
+          "Too many messages",
+          "Not relevant",
+          "Already purchased",
+          "Prefer another channel",
+          "Other",
+        ];
+
         if (
           messageBodyLower.includes("stop") ||
           messageBodyLower.includes("إيقاف")
         ) {
-          autoReplyText =
-            "You’ve been unsubscribed. won’t receive further messages, but you can reach out anytime if you need assistance.";
+          // A) Mark as Unsubscribed
           await Contact.findOneAndUpdate(
             { phoneNumber: userPhone },
-            { isSubscribed: false }
+            {
+              isSubscribed: false,
+              unsubscribeDate: new Date(),
+            }
+          );
+
+          // B) Send Confirmation Text
+          const {
+            sendTextMessage,
+            sendListMessage,
+          } = require("../integrations/whatsappAPI");
+          await sendTextMessage(
+            userPhone,
+            "You’ve been unsubscribed and won’t receive further messages.\nBefore you go, could you tell us why?",
+            credentials.accessToken,
+            recipientId
+          );
+
+          // C) Send List Message for Reason
+          const sections = [
+            {
+              title: "Select a reason",
+              rows: unsubscribeReasons.map((r) => ({
+                id: `reason_${r.replace(/\s/g, "_").toLowerCase()}`,
+                title: r,
+              })),
+            },
+          ];
+
+          await sendListMessage(
+            userPhone,
+            "Please select a reason:",
+            "Reason",
+            sections,
+            credentials.accessToken,
+            recipientId
+          );
+
+          autoReplyText = null; // Prevent default auto-reply
+          console.log(
+            `✅ Contact ${userPhone} unsubscribed. Sent reason survey.`
+          );
+        } else if (
+          unsubscribeReasons.some((r) => r.toLowerCase() === messageBodyLower)
+        ) {
+          // 2.1 Handle Reason Selection (Feedback)
+          await Contact.findOneAndUpdate(
+            { phoneNumber: userPhone },
+            { unsubscribeReason: messageBody }
+          );
+          autoReplyText = "Thank you for your feedback. We appreciate it.";
+          console.log(
+            `📝 Unsubscribe reason saved for ${userPhone}: ${messageBody}`
           );
         } else {
+          // Re-subscribe logic if they say something else but were unsubscribed
           const contact = await Contact.findOne({
             phoneNumber: userPhone,
           });
@@ -658,10 +718,11 @@ const processBufferedMessages = async (
 *Budget*: ${existingEnquiry.budget || "N/A"}
 *Beds*: ${existingEnquiry.bedrooms || "N/A"}
 *Location*: ${existingEnquiry.location || "N/A"}
-*Source*: ${existingEnquiry.pageUrl
+*Source*: ${
+                    existingEnquiry.pageUrl
                       ? "Website/AI"
                       : existingEnquiry.entrySource || "WhatsApp"
-                    }
+                  }
 *URL*: ${existingEnquiry.pageUrl || "N/A"}`;
 
                   const {
@@ -1142,8 +1203,9 @@ const processWebhook = async (req, res) => {
 
       if (status.errors && status.errors.length > 0) {
         const err = status.errors[0];
-        failureReason = `${err.code} - ${err.title} (${err.details || "No details"
-          })`;
+        failureReason = `${err.code} - ${err.title} (${
+          err.details || "No details"
+        })`;
         console.log("❌ WhatsApp Delivery Error:", failureReason);
       }
 
