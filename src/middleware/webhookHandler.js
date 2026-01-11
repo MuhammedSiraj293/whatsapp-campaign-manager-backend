@@ -102,6 +102,7 @@ const processBufferedMessages = async (
   const io = getIO();
   const messageBody = combinedBody;
   const messageBodyLower = messageBody.toLowerCase();
+  let isHandledByWebhook = false; // Flag to prevent AI from running if webhook handled it
 
   /* ---------------------------------------------------------
    * B) LEAD ROUTING (CAMPAIGN REPLY → GOOGLE SHEET)
@@ -369,6 +370,7 @@ const processBufferedMessages = async (
           );
 
           autoReplyText = null;
+          isHandledByWebhook = true; // Prevent AI
           console.log(`🛑 Contact ${userPhone} requested STOP. Survey sent.`);
         } else if (
           unsubscribeReasons.some((r) => r.toLowerCase() === messageBodyLower)
@@ -426,7 +428,7 @@ const processBufferedMessages = async (
       }
     }
 
-    if (!autoReplyText && !isCampaignReply) {
+    if (!autoReplyText && !isCampaignReply && !isHandledByWebhook) {
       if (credentials?.accessToken) {
         try {
           // --- AI AGENT CHECK ---
