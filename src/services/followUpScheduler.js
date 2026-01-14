@@ -8,7 +8,7 @@ const Reply = require("../models/Reply");
 const { getIO } = require("../socketManager");
 const {
   sendTextMessage,
-  sendInteractiveMessage,
+  sendListMessage,
 } = require("../integrations/whatsappAPI");
 
 /**
@@ -119,16 +119,11 @@ const checkAndSendFollowUps = async () => {
             },
           ];
 
-          await sendInteractiveMessage(
+          await sendListMessage(
             enquiry.phoneNumber,
-            {
-              type: "list",
-              body: { text: listBody },
-              action: {
-                button: "Rate Now / قيم",
-                sections: sections,
-              },
-            },
+            listBody,
+            "Rate Now / قيم",
+            sections,
             accessToken,
             enquiry.recipientId
           );
