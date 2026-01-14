@@ -686,6 +686,56 @@ const generateResponse = async (
       console.log("🔗 Detected Project from Link:", detectedProjectFromLink);
     }
 
+    // --- 0. REVIEW INTERCEPTOR ---
+    // Check if user is in 'PENDING' review state (Just received Star Request)
+    if (existingEnquiry && existingEnquiry.reviewStatus === "PENDING") {
+      let rating = null;
+
+      // Check for List Selection
+      const listMatch = messageBody.match(
+        /\[User selected list option: (.+)\]/
+      );
+      if (listMatch) {
+        // Title is like "⭐⭐⭐⭐⭐ Excellent"
+        if (listMatch[1].includes("⭐⭐⭐⭐⭐")) rating = 5;
+        else if (listMatch[1].includes("⭐⭐⭐⭐")) rating = 4;
+        else if (listMatch[1].includes("⭐⭐⭐")) rating = 3;
+        else if (listMatch[1].includes("⭐⭐")) rating = 2;
+        else if (listMatch[1].includes("⭐")) rating = 1;
+      }
+      // Check for Manual Number Input (1-5)
+      else if (/^[1-5]$/.test(messageBody.trim())) {
+        rating = parseInt(messageBody.trim());
+      }
+
+      if (rating) {
+        existingEnquiry.reviewRating = rating;
+        existingEnquiry.reviewStatus = "RATED";
+        await existingEnquiry.save();
+
+        return {
+          text: "Thank you! To help us improve, do you have any specific comments?\n\nشكرًا لك! لمساعدتنا على التحسين، هل لديك أي ملاحظات محددة؟",
+          replyType: "text",
+          handover: false, // Keep bot active for text input
+          extractedData: {},
+        };
+      }
+    }
+
+    // Check if user is in 'RATED' state (Just gave stars, now sending text)
+    if (existingEnquiry && existingEnquiry.reviewStatus === "RATED") {
+      existingEnquiry.reviewText = messageBody;
+      existingEnquiry.reviewStatus = "DETAILS_PROVIDED";
+      await existingEnquiry.save();
+
+      return {
+        text: "Thank you for your feedback! Have a great day. 👋\n\nشكرًا لملاحظاتك! نتمنى لك يوماً سعيداً. 👋",
+        replyType: "text",
+        handover: false,
+        extractedData: {},
+      };
+    }
+
     // 1. Gather Context
     // Pass the detected link project as context to help search find matches
     const searchContext =

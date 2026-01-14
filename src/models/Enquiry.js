@@ -77,6 +77,30 @@ const EnquirySchema = new mongoose.Schema(
       default: null,
     },
 
+    // Track 24h limit for stuck follow-ups
+    lastStuckFollowUpSentAt: {
+      type: Date,
+      default: null,
+    },
+
+    // -----------------------------
+    // REVIEW SYSTEM FIELDS
+    // -----------------------------
+    reviewStatus: {
+      type: String,
+      enum: ["PENDING", "RATED", "DETAILS_PROVIDED", "SKIPPED"],
+      default: null,
+    },
+    reviewRating: {
+      type: Number,
+      default: null,
+    },
+    reviewText: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
     // Skip asking for name if we already have it from previous enquiry
     skipName: {
       type: Boolean,
