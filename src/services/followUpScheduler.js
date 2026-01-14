@@ -29,7 +29,7 @@ const checkAndSendFollowUps = async () => {
 
     const stuckEnquiries = await Enquiry.find({
       conversationState: { $ne: "END" },
-      status: { $ne: "closed" },
+      status: { $ne: "closed", $ne: "handover" }, // FIX: Explicitly exclude handover
       updatedAt: { $lt: threeMinutesAgo }, // Stuck for > 3 mins
       // Check 24h Rate Limit: Either never sent OR sent > 24h ago
       $or: [
@@ -51,14 +51,18 @@ const checkAndSendFollowUps = async () => {
 
           if (!phoneDoc || !phoneDoc.wabaAccount) continue;
 
-          // Message: "Please complete enquiry" (Friendly, no "steps")
-          const messageText =
-            "We are almost done! Please complete your enquiry so we can arrange the best assistance for you. ✨\n\nلقد أوشكنا على الانتهاء! يرجى استكمال استفسارك لنتمكن من ترتيب أفضل مساعدة لك. ✨";
-          const accessToken = phoneDoc.wabaAccount.accessToken;
-
+          // Message 1: English (Friendly)
           await sendTextMessage(
             enquiry.phoneNumber,
-            messageText,
+            "We are almost done! Please complete your enquiry so we can arrange the best assistance for you. ✨",
+            accessToken,
+            enquiry.recipientId
+          );
+
+          // Message 2: Arabic (Friendly)
+          await sendTextMessage(
+            enquiry.phoneNumber,
+            "لقد أوشكنا على الانتهاء! يرجى استكمال استفسارك لنتمكن من ترتيب أفضل مساعدة لك. ✨",
             accessToken,
             enquiry.recipientId
           );

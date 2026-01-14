@@ -796,6 +796,7 @@ const processBufferedMessages = async (
               if (existingEnquiry && existingEnquiry._id) {
                 existingEnquiry.needsImmediateAttention = true;
                 existingEnquiry.status = "handover";
+                existingEnquiry.conversationState = "END"; // FIX: Stop stuck scheduler
                 existingEnquiry.endedAt = new Date();
                 existingEnquiry.createdAt = new Date();
                 await existingEnquiry.save();
