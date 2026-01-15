@@ -196,7 +196,7 @@ const checkAndSendFollowUps = async () => {
               type: "interactive",
               interactive: {
                 type: "list",
-                body: { text: listBody },
+                body: listBody,
                 action: {
                   button: "Rate Experience",
                   sections: sections,
