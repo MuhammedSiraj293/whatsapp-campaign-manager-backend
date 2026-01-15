@@ -262,14 +262,16 @@ STEP 4: PREFERENCES (BEDROOMS / CONFIG)
 - **If propertyType is “Plot”, “Land”, “Commercial”**:
   - Do NOT ask for bedrooms. Set Bedrooms = "N/A". Proceed to **Step 5**.
 - **If propertyType requires bedrooms**:
-  - If Bedrooms known → SKIP.
-  - If Bedrooms unknown → **Check Knowledge Base & Ask**:
-    - **CHECK KNOWLEDGE BASE**: Look at \`Unit Types\` or \`Description\` for the Project.
-    - **English**: "We have [Available Unit Types]. How many bedrooms are you looking for?"
-    - **Arabic**: "يتوفر لدينا [Available Unit Types]. كم عدد غرف النوم التي تبحث عنها؟"
-  - **If User ANSWERS (e.g. "3", "3BR")**:
-    - **DO NOT** repeat the available unit types.
-    - **Proceed** directly to Step 5.
+  - **IF USER INPUT contains a Number (e.g. "1", "2", "3", "4", "5") OR "Studio"**:
+    - **EXTRACT** the number/studio to \`bedrooms\`.
+    - **PROCEED IMMEDIATELY** to Step 5.
+    - **DO NOT** Ask for bedrooms again.
+  - **IF \`bedrooms\` is ALREADY KNOWN**:
+    - **SKIP** Step 4. Proceed to Step 5.
+  - **IF UNKNOWN (and no number in input)**:
+    - **Check Knowledge Base & Ask**:
+      - **English**: "We have [Available Unit Types]. How many bedrooms are you looking for?"
+      - **Arabic**: "يتوفر لدينا [Available Unit Types]. كم عدد غرف النوم التي تبحث عنها؟"
   - **AFTER EXTRACTION**: **IMMEDIATELY ASK FOR NAME (STEP 5)**.
 
 STEP 5: CONTACT INFO – NAME (CRITICAL GATE)
@@ -328,7 +330,8 @@ STEP 7: LISTING INTAKE (SELLER/LANDLORD)
   3. **Call to Action**: "To arrange a call with our [Sales/Leasing] listing specialist, may I have your name?"
 - **After Name**:
   - Ask for Phone (if unknown).
-  - **Closing**: "Thank you [Name]. Our designated listing agent will contact you shortly to finalize the listing." (Stop here).
+  - **Closing**: "Thank you [Name]. Our designated listing agent will contact you shortly to finalize the listing."
+  - **MANDATORY JSON ACTION**: You **MUST** set "handover": true in your JSON output (to stop the bot).
 
 GLOBAL RULE:
 - One question per message.
@@ -717,7 +720,7 @@ const generateResponse = async (
         await existingEnquiry.save();
 
         return {
-          text: "Thank you! To help us improve, do you have any specific comments?\n\nشكرًا لك! لمساعدتنا على التحسين، هل لديك أي ملاحظات محددة؟",
+          text: "Thank you! To help us improve, do you have any specific comments?",
           replyType: "text",
           handover: false, // Keep bot active for text input
           extractedData: {},
@@ -732,7 +735,7 @@ const generateResponse = async (
       await existingEnquiry.save();
 
       return {
-        text: "Thank you for your feedback! Have a great day. 👋\n\nشكرًا لملاحظاتك! نتمنى لك يوماً سعيداً. 👋",
+        text: "Thank you for your feedback! Have a wonderful day. 👋",
         replyType: "text",
         handover: false,
         extractedData: {},

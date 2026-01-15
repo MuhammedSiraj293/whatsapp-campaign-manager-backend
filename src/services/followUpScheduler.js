@@ -107,12 +107,12 @@ const checkAndSendFollowUps = async () => {
 
           const accessToken = phoneDoc.wabaAccount.accessToken;
 
-          // Send List Message for 1-5 Stars
+          // Send List Message for 1-5 Stars (English Only - Premium Experience)
           const listBody =
-            "How would you rate your experience with us today? 🌟\n\nكيف تقيم تجربتك معنا اليوم؟";
+            "How would you rate your experience with your Capital Avenue assistant today? 🌟";
           const sections = [
             {
-              title: "Rate Us / قيمنا",
+              title: "Your Experience",
               rows: [
                 { id: "rate_5", title: "⭐⭐⭐⭐⭐ Excellent" },
                 { id: "rate_4", title: "⭐⭐⭐⭐ Good" },
@@ -126,7 +126,7 @@ const checkAndSendFollowUps = async () => {
           await sendListMessage(
             enquiry.phoneNumber,
             listBody,
-            "Rate Now / قيم",
+            "Rate Experience",
             sections,
             accessToken,
             enquiry.recipientId
