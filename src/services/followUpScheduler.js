@@ -53,6 +53,7 @@ const checkAndSendFollowUps = async () => {
           if (!phoneDoc || !phoneDoc.wabaAccount) continue;
 
           // Determine Language (Default to English)
+          const accessToken = phoneDoc.wabaAccount.accessToken;
           const isArabic = enquiry.language === "ar";
 
           // Content
