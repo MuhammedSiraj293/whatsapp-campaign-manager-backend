@@ -501,6 +501,7 @@ const processBufferedMessages = async (
       if (credentials?.accessToken) {
         try {
           // --- 0. INTERCEPT STUCK BUTTONS (System Actions) ---
+          const messageType = lastMessage?.type;
           if (messageType === "interactive" && !isHandledByWebhook) {
             const btnId =
               lastMessage?.interactive?.button_reply?.id ||
