@@ -215,14 +215,31 @@ const handleBotConversation = async (
 
     // --- STUCK FOLLOW-UP HANDLERS ---
     if (btnId === "stuck_continue") {
-      // Just acknowledge and reset timer (implicitly done by saving enquiry later)
-      const ackText =
+      console.log("🔄 Stuck Continue clicked. Fetching last context...");
+
+      // Find the last actual AI message (excluding the stuck prompt itself)
+      // We exclude messages containing the "almost done" phrase to find the real question before it.
+      const lastAiMsg = await Reply.findOne({
+        recipientId: customerPhone,
+        from: recipientId,
+        body: { $not: /We are almost done|لقد أوشكنا على الانتهاء/ },
+        messageId: { $exists: true },
+      }).sort({ timestamp: -1 });
+
+      let resumeText =
         enquiry?.language === "ar"
-          ? "رائع! يرجى كتابة إجابتك أعلاه. 📝"
-          : "Great! Please type your answer above. 📝";
+          ? "تفضل، كيف يمكننا مساعدتك؟"
+          : "Please go ahead, how can we assist you?";
+
+      if (lastAiMsg && lastAiMsg.body) {
+        resumeText = lastAiMsg.body;
+      }
+
+      console.log(`Checking last text: ${resumeText}`);
+
       const ackResult = await sendTextMessage(
         customerPhone,
-        ackText,
+        resumeText,
         accessToken,
         recipientId
       );
@@ -233,7 +250,7 @@ const handleBotConversation = async (
           messageId: ackResult.messages[0].id,
           from: recipientId, // Business Phone ID
           recipientId: customerPhone,
-          body: ackText,
+          body: resumeText,
           timestamp: new Date(),
           direction: "outgoing",
           isAiGenerated: true,
