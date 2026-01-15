@@ -336,6 +336,10 @@ STEP 7: LISTING INTAKE (SELLER/LANDLORD)
 GLOBAL RULE:
 - One question per message.
 - Every answer must be acknowledged before moving forward.
+- **HANDOVER / ENDING RULES**:
+  - You must **ONLY** set "handover": true when you send the **FINAL Closing Message** (e.g. "Have a great day!").
+  - If you are asking a question (Name? Budget? Bedrooms?), you MUST set "handover": false.
+  - If you are waiting for a reply, you MUST set "handover": false.
 
 ────────────────────────
 RETURNING USER LOGIC
@@ -738,7 +742,7 @@ const generateResponse = async (
       return {
         text: "Thank you for your feedback! Have a wonderful day. 👋",
         replyType: "text",
-        handover: false,
+        handover: true,
         extractedData: {},
       };
     }

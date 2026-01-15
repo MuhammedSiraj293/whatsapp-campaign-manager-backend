@@ -156,6 +156,10 @@ const checkAndSendFollowUps = async () => {
 
           if (!phoneDoc || !phoneDoc.wabaAccount) continue;
 
+          // Double check to prevent race conditions
+          const freshEnquiry = await Enquiry.findById(enquiry._id);
+          if (freshEnquiry.completionFollowUpSent) continue;
+
           const accessToken = phoneDoc.wabaAccount.accessToken;
 
           // Send List Message for 1-5 Stars (English Only - Premium Experience)

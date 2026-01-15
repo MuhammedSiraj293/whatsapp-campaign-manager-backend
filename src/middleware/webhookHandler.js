@@ -804,12 +804,17 @@ const processBufferedMessages = async (
                 await existingEnquiry.save();
 
                 // NOTIFY ADMIN (AI ENQUIRY HANDOVER)
-                try {
-                  console.log(
-                    "🔔 AI Handover Triggered - Sending Notification..."
-                  );
-                  const ADMIN_NUMBER = "971506796073";
-                  const noteBody = `*NEW AI ENQUIRY*
+                // Skip notification if this is just a Review Completion
+                if (
+                  !existingEnquiry.reviewStatus ||
+                  existingEnquiry.reviewStatus === "PENDING"
+                ) {
+                  try {
+                    console.log(
+                      "🔔 AI Handover Triggered - Sending Notification..."
+                    );
+                    const ADMIN_NUMBER = "971506796073";
+                    const noteBody = `*NEW AI ENQUIRY*
 
 *Name*: ${existingEnquiry.name || "Unknown"}
 *Phone*: ${userPhone}
@@ -818,29 +823,30 @@ const processBufferedMessages = async (
 *Beds*: ${existingEnquiry.bedrooms || "N/A"}
 *Location*: ${existingEnquiry.location || "N/A"}
 *Source*: ${
-                    existingEnquiry.pageUrl
-                      ? "Website/AI"
-                      : existingEnquiry.entrySource || "WhatsApp"
-                  }
+                      existingEnquiry.pageUrl
+                        ? "Website/AI"
+                        : existingEnquiry.entrySource || "WhatsApp"
+                    }
 *URL*: ${existingEnquiry.pageUrl || "N/A"}`;
 
-                  const {
-                    sendTextMessage,
-                  } = require("../integrations/whatsappAPI");
-                  await sendTextMessage(
-                    ADMIN_NUMBER,
-                    noteBody,
-                    credentials.accessToken,
-                    recipientId
-                  );
-                  console.log(
-                    `🔔 Sent AI Enquiry Notification to ${ADMIN_NUMBER}`
-                  );
-                } catch (noteErr) {
-                  console.error(
-                    "❌ Failed to notify admin for AI Handover:",
-                    noteErr
-                  );
+                    const {
+                      sendTextMessage,
+                    } = require("../integrations/whatsappAPI");
+                    await sendTextMessage(
+                      ADMIN_NUMBER,
+                      noteBody,
+                      credentials.accessToken,
+                      recipientId
+                    );
+                    console.log(
+                      `🔔 Sent AI Enquiry Notification to ${ADMIN_NUMBER}`
+                    );
+                  } catch (noteErr) {
+                    console.error(
+                      "❌ Failed to notify admin for AI Handover:",
+                      noteErr
+                    );
+                  }
                 }
               }
             }
