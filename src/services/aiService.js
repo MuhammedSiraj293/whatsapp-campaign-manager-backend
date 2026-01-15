@@ -697,18 +697,18 @@ const generateResponse = async (
     if (existingEnquiry && existingEnquiry.reviewStatus === "PENDING") {
       let rating = null;
 
-      // Check for List Selection
+      // Check for List Selection (Bracketed or Raw)
       const listMatch = messageBody.match(
         /\[User selected list option: (.+)\]/
       );
-      if (listMatch) {
-        // Title is like "⭐⭐⭐⭐⭐ Excellent"
-        if (listMatch[1].includes("⭐⭐⭐⭐⭐")) rating = 5;
-        else if (listMatch[1].includes("⭐⭐⭐⭐")) rating = 4;
-        else if (listMatch[1].includes("⭐⭐⭐")) rating = 3;
-        else if (listMatch[1].includes("⭐⭐")) rating = 2;
-        else if (listMatch[1].includes("⭐")) rating = 1;
-      }
+
+      const textToCheck = listMatch ? listMatch[1] : messageBody;
+
+      if (textToCheck.includes("⭐⭐⭐⭐⭐")) rating = 5;
+      else if (textToCheck.includes("⭐⭐⭐⭐")) rating = 4;
+      else if (textToCheck.includes("⭐⭐⭐")) rating = 3;
+      else if (textToCheck.includes("⭐⭐")) rating = 2;
+      else if (textToCheck.includes("⭐")) rating = 1;
       // Check for Manual Number Input (1-5)
       else if (/^[1-5]$/.test(messageBody.trim())) {
         rating = parseInt(messageBody.trim());

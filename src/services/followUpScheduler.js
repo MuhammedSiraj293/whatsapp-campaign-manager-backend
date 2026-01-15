@@ -52,6 +52,7 @@ const checkAndSendFollowUps = async () => {
           if (!phoneDoc || !phoneDoc.wabaAccount) continue;
 
           // Message 1: English (Friendly)
+          const accessToken = phoneDoc.wabaAccount.accessToken; // FIX: Define variable
           await sendTextMessage(
             enquiry.phoneNumber,
             "We are almost done! Please complete your enquiry so we can arrange the best assistance for you. ✨",
