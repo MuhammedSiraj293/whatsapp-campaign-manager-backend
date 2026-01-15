@@ -215,58 +215,139 @@ const handleBotConversation = async (
 
     // --- STUCK FOLLOW-UP HANDLERS ---
     if (btnId === "stuck_continue") {
-      console.log("🔄 Stuck Continue clicked. Fetching last context...");
+      console.log("🔄 Stuck Continue clicked. Fetching history to resume...");
 
-      // Find the last actual AI message (excluding the stuck prompt itself)
-      // We exclude messages containing the "almost done" phrase to find the real question before it.
-      const lastAiMsg = await Reply.findOne({
+      // Fetch last 10 outgoing messages to find the one before the stuck prompt
+      const history = await Reply.find({
         recipientId: customerPhone,
         from: recipientId,
-        body: { $not: /We are almost done|لقد أوشكنا على الانتهاء/ },
         messageId: { $exists: true },
-      }).sort({ timestamp: -1 });
+      })
+        .sort({ timestamp: -1 })
+        .limit(10);
 
-      let resumeText =
-        enquiry?.language === "ar"
-          ? "تفضل، كيف يمكننا مساعدتك؟"
-          : "Please go ahead, how can we assist you?";
-
-      if (lastAiMsg && lastAiMsg.body) {
-        resumeText = lastAiMsg.body;
+      let targetMsg = null;
+      // Find first message that is NOT the stuck prompt
+      for (const msg of history) {
+        const body = msg.body || "";
+        // Check for stuck prompts (English or Arabic)
+        if (
+          !body.includes("We are almost done") &&
+          !body.includes("لقد أوشكنا على الانتهاء")
+        ) {
+          targetMsg = msg;
+          break;
+        }
       }
 
-      console.log(`Checking last text: ${resumeText}`);
+      if (!targetMsg) {
+        console.log("⚠️ No previous context found. Sending fallback.");
+        const fallbackText =
+          enquiry?.language === "ar"
+            ? "كيف يمكننا مساعدتك؟"
+            : "How can we assist you?";
+        await sendTextMessage(
+          customerPhone,
+          fallbackText,
+          accessToken,
+          recipientId
+        );
+      } else {
+        console.log(
+          `✅ Resuming with message type: ${targetMsg.type || "text"}`
+        );
 
-      const ackResult = await sendTextMessage(
-        customerPhone,
-        resumeText,
-        accessToken,
-        recipientId
-      );
+        let sentRes = null;
 
-      // Save & Emit
-      if (ackResult?.messages?.[0]?.id) {
-        const ackReply = await Reply.create({
-          messageId: ackResult.messages[0].id,
-          from: recipientId, // Business Phone ID
-          recipientId: customerPhone,
-          body: resumeText,
-          timestamp: new Date(),
-          direction: "outgoing",
-          isAiGenerated: true,
-          type: "text",
-        });
-        const io = getIO();
-        if (io)
-          io.emit("newMessage", {
-            from: customerPhone,
-            recipientId,
-            message: ackReply,
+        // CASE A: BUTTONS
+        if (
+          targetMsg.interactive &&
+          targetMsg.interactive.type === "button" &&
+          targetMsg.interactive.action &&
+          targetMsg.interactive.action.buttons
+        ) {
+          const bodyText = targetMsg.interactive.body || targetMsg.body;
+          const buttons = targetMsg.interactive.action.buttons.map((b) => ({
+            id: b.reply.id,
+            title: b.reply.title,
+          }));
+
+          sentRes = await sendButtonMessage(
+            customerPhone,
+            bodyText,
+            buttons,
+            accessToken,
+            recipientId
+          );
+        }
+        // CASE B: LIST
+        else if (
+          targetMsg.interactive &&
+          targetMsg.interactive.type === "list" &&
+          targetMsg.interactive.action &&
+          targetMsg.interactive.action.sections
+        ) {
+          const bodyText = targetMsg.interactive.body || targetMsg.body;
+          const btnText = targetMsg.interactive.action.button || "Options";
+          const sections = targetMsg.interactive.action.sections.map((s) => ({
+            title: s.title,
+            rows: s.rows.map((r) => ({
+              id: r.id,
+              title: r.title,
+              description: r.description,
+            })),
+          }));
+
+          sentRes = await sendListMessage(
+            customerPhone,
+            bodyText,
+            btnText,
+            sections,
+            accessToken,
+            recipientId
+          );
+        }
+        // CASE C: TEXT (Default)
+        else {
+          // Ensure we don't send empty text
+          const textToSend = targetMsg.body || "How can we help?";
+          sentRes = await sendTextMessage(
+            customerPhone,
+            textToSend,
+            accessToken,
+            recipientId
+          );
+        }
+
+        // Save the re-sent message (optional, but good for history)
+        if (sentRes?.messages?.[0]?.id) {
+          // Clone the targetMsg properties but new ID/Timestamp
+          const newRep = new Reply({
+            messageId: sentRes.messages[0].id,
+            from: recipientId,
+            recipientId: customerPhone,
+            body: targetMsg.body,
+            timestamp: new Date(),
+            direction: "outgoing",
+            isAiGenerated: true, // It is a system replay
+            type: targetMsg.type || "text",
+            interactive: targetMsg.interactive,
           });
+          await newRep.save();
+
+          const io = getIO();
+          if (io)
+            io.emit("newMessage", {
+              from: customerPhone,
+              recipientId,
+              message: newRep,
+            });
+        }
       }
-      // Resume conversation state (keep same state)
+
+      // Resume conversation state
       if (enquiry) {
-        enquiry.lastStuckFollowUpSentAt = new Date(); // Reset stuck timer check
+        enquiry.lastStuckFollowUpSentAt = new Date();
         await enquiry.save();
       }
       return []; // Stop here
