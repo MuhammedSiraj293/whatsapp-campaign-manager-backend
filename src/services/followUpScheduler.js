@@ -9,6 +9,7 @@ const { getIO } = require("../socketManager");
 const {
   sendTextMessage,
   sendListMessage,
+  sendButtonMessage,
 } = require("../integrations/whatsappAPI");
 
 /**
@@ -51,22 +52,71 @@ const checkAndSendFollowUps = async () => {
 
           if (!phoneDoc || !phoneDoc.wabaAccount) continue;
 
-          // Message 1: English (Friendly)
-          const accessToken = phoneDoc.wabaAccount.accessToken; // FIX: Define variable
-          await sendTextMessage(
+          // Determine Language (Default to English)
+          const isArabic = enquiry.language === "ar";
+
+          // Content
+          const textEng =
+            "We are almost done! Please complete your enquiry so we can arrange the best assistance for you. ";
+          const textAr =
+            "لقد أوشكنا على الانتهاء! يرجى استكمال استفسارك لنتمكن من ترتيب أفضل مساعدة لك. ";
+
+          const buttonsEng = [
+            { id: "stuck_continue", title: "Continue" },
+            { id: "stuck_end", title: "End Chat" },
+          ];
+          const buttonsAr = [
+            { id: "stuck_continue", title: "متابعة" },
+            { id: "stuck_end", title: "إنهاء المحادثة" },
+          ];
+
+          const stuckResult = await sendButtonMessage(
             enquiry.phoneNumber,
-            "We are almost done! Please complete your enquiry so we can arrange the best assistance for you. ✨",
+            isArabic ? textAr : textEng,
+            isArabic ? buttonsAr : buttonsEng,
             accessToken,
             enquiry.recipientId
           );
 
-          // Message 2: Arabic (Friendly)
-          await sendTextMessage(
-            enquiry.phoneNumber,
-            "لقد أوشكنا على الانتهاء! يرجى استكمال استفسارك لنتمكن من ترتيب أفضل مساعدة لك. ✨",
-            accessToken,
-            enquiry.recipientId
-          );
+          // --- SAVE & EMIT STUCK MESSAGE ---
+          if (stuckResult?.messages?.[0]?.id) {
+            const stuckReply = await Reply.create({
+              messageId: stuckResult.messages[0].id,
+              from: phoneDoc.phoneNumberId, // Business Phone
+              recipientId: enquiry.recipientId, // Business Phone (Context)
+              // For outgoing: 'from' could be business number, or we just track direction 'outgoing'
+              // Actually for outgoing: from = business_number, recipientId = user_phone usually?
+              // Wait, existing logic: outgoing -> from=business, recipientId=user
+              // But here enquiry.recipientId is the business phone ID in DB context usually?
+              // Let's stick to standard:
+              from: phoneDoc.phoneNumberId,
+              recipientId: enquiry.phoneNumber, // The User
+              body: isArabic ? textAr : textEng,
+              timestamp: new Date(),
+              direction: "outgoing",
+              isAiGenerated: true,
+              type: "interactive",
+              interactive: {
+                type: "button",
+                body: { text: isArabic ? textAr : textEng },
+                action: {
+                  buttons: (isArabic ? buttonsAr : buttonsEng).map((b) => ({
+                    type: "reply",
+                    reply: { id: b.id, title: b.title },
+                  })),
+                },
+              },
+            });
+
+            const io = getIO();
+            if (io) {
+              io.emit("newMessage", {
+                from: enquiry.phoneNumber, // Chat ID in frontend usually matches User Phone
+                recipientId: enquiry.recipientId,
+                message: stuckReply,
+              });
+            }
+          }
 
           // Mark as sent
           enquiry.lastStuckFollowUpSentAt = new Date();
@@ -124,7 +174,7 @@ const checkAndSendFollowUps = async () => {
             },
           ];
 
-          await sendListMessage(
+          const listResult = await sendListMessage(
             enquiry.phoneNumber,
             listBody,
             "Rate Experience",
@@ -132,6 +182,37 @@ const checkAndSendFollowUps = async () => {
             accessToken,
             enquiry.recipientId
           );
+
+          // --- SAVE & EMIT REVIEW REQUEST ---
+          if (listResult?.messages?.[0]?.id) {
+            const reviewReply = await Reply.create({
+              messageId: listResult.messages[0].id,
+              from: phoneDoc.phoneNumberId,
+              recipientId: enquiry.phoneNumber,
+              body: listBody,
+              timestamp: new Date(),
+              direction: "outgoing",
+              isAiGenerated: true,
+              type: "interactive",
+              interactive: {
+                type: "list",
+                body: { text: listBody },
+                action: {
+                  button: "Rate Experience",
+                  sections: sections,
+                },
+              },
+            });
+
+            const io = getIO();
+            if (io) {
+              io.emit("newMessage", {
+                from: enquiry.phoneNumber,
+                recipientId: enquiry.recipientId,
+                message: reviewReply,
+              });
+            }
+          }
 
           // Mark review requested
           enquiry.completionFollowUpSent = true;

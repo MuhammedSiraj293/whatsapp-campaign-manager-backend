@@ -442,6 +442,7 @@ Return ONLY a valid JSON object:
   "listButtonText": "Select",
   "handover": boolean,
   "handoverReason": "reason",
+  "detectedLanguage": "en" | "ar",
   "extractedData": {
     "name": "",
     "budget": "",

@@ -5,6 +5,7 @@ const Reply = require("../models/Reply");
 const BotFlow = require("../models/BotFlow");
 const BotNode = require("../models/BotNode");
 const PhoneNumber = require("../models/PhoneNumber");
+const { getIO } = require("../socketManager");
 const {
   sendTextMessage,
   sendButtonMessage,
@@ -251,6 +252,86 @@ const handleBotConversation = async (
           await enquiry.save();
         }
         targetNodeId = flow.completionFollowUpNoNodeId;
+      }
+
+      // --- NEW: STUCK FOLLOW-UP HANDLERS ---
+      if (btnId === "stuck_continue") {
+        // Just acknowledge and reset timer (implicitly done by saving enquiry later)
+        const ackText =
+          enquiry.language === "ar"
+            ? "رائع! يرجى كتابة إجابتك أعلاه. 📝"
+            : "Great! Please type your answer above. 📝";
+        const ackResult = await sendTextMessage(
+          customerPhone,
+          ackText,
+          accessToken,
+          recipientId
+        );
+
+        // Save & Emit
+        if (ackResult?.messages?.[0]?.id) {
+          const ackReply = await Reply.create({
+            messageId: ackResult.messages[0].id,
+            from: recipientId, // Business Phone ID
+            recipientId: customerPhone,
+            body: ackText,
+            timestamp: new Date(),
+            direction: "outgoing",
+            isAiGenerated: true,
+            type: "text",
+          });
+          const io = getIO();
+          if (io)
+            io.emit("newMessage", {
+              from: customerPhone,
+              recipientId,
+              message: ackReply,
+            });
+        }
+        // Resume conversation state (keep same state)
+        enquiry.lastStuckFollowUpSentAt = new Date(); // Reset stuck timer check
+        await enquiry.save();
+        return []; // Stop here
+      }
+
+      if (btnId === "stuck_end") {
+        // Close the chat
+        const byeText =
+          enquiry.language === "ar"
+            ? "شكراً لك. نتمنى لك يوماً سعيداً! 👋"
+            : "Understood. Have a great day! 👋";
+        const byeResult = await sendTextMessage(
+          customerPhone,
+          byeText,
+          accessToken,
+          recipientId
+        );
+
+        // Save & Emit
+        if (byeResult?.messages?.[0]?.id) {
+          const byeReply = await Reply.create({
+            messageId: byeResult.messages[0].id,
+            from: recipientId,
+            recipientId: customerPhone,
+            body: byeText,
+            timestamp: new Date(),
+            direction: "outgoing",
+            isAiGenerated: true,
+            type: "text",
+          });
+          const io = getIO();
+          if (io)
+            io.emit("newMessage", {
+              from: customerPhone,
+              recipientId,
+              message: byeReply,
+            });
+        }
+        enquiry.conversationState = "END";
+        enquiry.endedAt = new Date();
+        enquiry.status = "closed"; // Mark as closed
+        await enquiry.save();
+        return []; // Stop here
       }
 
       if (!targetNodeId) {

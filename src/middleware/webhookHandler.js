@@ -754,6 +754,8 @@ const processBufferedMessages = async (
                 if (eIntent) existingEnquiry.intent = eIntent;
                 if (ePropType) existingEnquiry.propertyType = ePropType;
                 if (detectedUrl) existingEnquiry.pageUrl = detectedUrl;
+                if (aiResult.detectedLanguage)
+                  existingEnquiry.language = aiResult.detectedLanguage;
                 await existingEnquiry.save();
               }
 

@@ -39,6 +39,12 @@ const EnquirySchema = new mongoose.Schema(
       default: "pending",
     },
 
+    // Preferred Language (en / ar)
+    language: {
+      type: String,
+      default: "en",
+    },
+
     // -----------------------------
     // END LOGIC FIELDS
     // -----------------------------
