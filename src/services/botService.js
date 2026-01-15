@@ -295,17 +295,31 @@ const handleBotConversation = async (
       }
 
       if (btnId === "stuck_end") {
+        console.log("🛑 Processing stuck_end for:", customerPhone);
+
+        if (!enquiry) {
+          console.error(
+            "❌ Enquiry not found for stuck_end. Cannot determine language."
+          );
+          return [];
+        }
+
         // Close the chat
         const byeText =
           enquiry.language === "ar"
             ? "شكراً لوقتك. سيتصل بك أحد مستشارينا قريباً لمساعدتك. نتمنى لك يوماً سعيداً! 👋"
             : "Thank you for your time. One of our Consultants will contact you shortly to assist you. Have a great day! 👋";
+
+        console.log("📤 Sending Bye Text:", byeText);
+
         const byeResult = await sendTextMessage(
           customerPhone,
           byeText,
           accessToken,
           recipientId
         );
+
+        console.log("✅ Bye Result:", byeResult ? "Sent" : "Failed");
 
         // Save & Emit
         if (byeResult?.messages?.[0]?.id) {

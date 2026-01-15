@@ -165,7 +165,7 @@ const checkAndSendFollowUps = async () => {
 
           // Send List Message for 1-5 Stars (English Only - Premium Experience)
           const listBody =
-            "How would you rate your experience with your Capital Avenue assistant today? 🌟";
+            "How would you rate your experience with your Capital Avenue assistant today?";
           const sections = [
             {
               title: "Your Experience",
