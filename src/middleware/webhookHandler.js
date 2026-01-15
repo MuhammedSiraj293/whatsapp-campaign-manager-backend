@@ -111,6 +111,15 @@ const processBufferedMessages = async (
   if (campaignToCredit && messageBody && isDirectReply) {
     console.log("📨 Processing as CAMPAIGN reply...");
 
+    // FILTER: Ignore STOP/UNSUBSCRIBE messages from being treated as "Leads"
+    const stopKeywords = ["stop", "unsubscribe", "cancel", "opt out", "remove"];
+    const isStopMessage = stopKeywords.some((k) => messageBodyLower.includes(k));
+
+    if (isStopMessage) {
+      console.log("🛑 Campaign reply is 'Stop/Unsubscribe' - Skipping Lead Sheet & Notification.");
+    } else {
+       // PROCEED WITH LEAD PROCESSING
+
     // Count existing replies to see if this is the first interaction for this campaign
     const incomingMessageCount = await Reply.countDocuments({
       from: userPhone,
