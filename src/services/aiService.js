@@ -740,7 +740,7 @@ const generateResponse = async (
       await existingEnquiry.save();
 
       return {
-        text: "Thank you for your feedback! Have a wonderful day. 👋",
+        text: "Thank you for your time. We appreciate your feedback and We are committed to continuously improving our services. We look forward to serving you again in the future! Have a wonderful day. 👋",
         replyType: "text",
         handover: true,
         extractedData: {},
