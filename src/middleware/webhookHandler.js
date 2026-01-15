@@ -113,109 +113,114 @@ const processBufferedMessages = async (
 
     // FILTER: Ignore STOP/UNSUBSCRIBE messages from being treated as "Leads"
     const stopKeywords = ["stop", "unsubscribe", "cancel", "opt out", "remove"];
-    const isStopMessage = stopKeywords.some((k) => messageBodyLower.includes(k));
+    const isStopMessage = stopKeywords.some((k) =>
+      messageBodyLower.includes(k)
+    );
 
     if (isStopMessage) {
-      console.log("🛑 Campaign reply is 'Stop/Unsubscribe' - Skipping Lead Sheet & Notification.");
-    } else {
-       // PROCEED WITH LEAD PROCESSING
-
-    // Count existing replies to see if this is the first interaction for this campaign
-    const incomingMessageCount = await Reply.countDocuments({
-      from: userPhone,
-      direction: "incoming",
-      campaign: campaignToCredit._id,
-    });
-
-    // If the count matches the batch size (meaning we just saved them), it's new.
-    // We add a small buffer (+2) just in case.
-    if (incomingMessageCount <= messages.length + 2) {
-      console.log(`✨ NEW LEAD for campaign "${campaignToCredit.name}"`);
-
-      const contact = await Contact.findOne({ phoneNumber: userPhone });
-
-      const timestampOptions = {
-        timeZone: "Asia/Dubai",
-        year: "numeric",
-        month: "numeric",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      };
-
-      const formattedDate = new Date().toLocaleString(
-        "en-US",
-        timestampOptions
+      console.log(
+        "🛑 Campaign reply is 'Stop/Unsubscribe' - Skipping Lead Sheet & Notification."
       );
+    } else {
+      // PROCEED WITH LEAD PROCESSING
 
-      const dataRow = [
-        [
-          `'${formattedDate}`,
-          userPhone,
-          contact ? contact.name : "Unknown",
-          messageBody,
-        ],
-      ];
+      // Count existing replies to see if this is the first interaction for this campaign
+      const incomingMessageCount = await Reply.countDocuments({
+        from: userPhone,
+        direction: "incoming",
+        campaign: campaignToCredit._id,
+      });
 
-      const headerRow = ["Timestamp", "From", "Name", "Message"];
+      // If the count matches the batch size (meaning we just saved them), it's new.
+      // We add a small buffer (+2) just in case.
+      if (incomingMessageCount <= messages.length + 2) {
+        console.log(`✨ NEW LEAD for campaign "${campaignToCredit.name}"`);
 
-      /* -------------------------------
-       * SYSTEM 1 — Campaign Sheet
-       * ------------------------------- */
-      if (campaignToCredit.spreadsheetId) {
-        try {
-          console.log(
-            `📁 Writing lead → Campaign Sheet: ${campaignToCredit.spreadsheetId}`
-          );
+        const contact = await Contact.findOne({ phoneNumber: userPhone });
 
-          await clearSheet(campaignToCredit.spreadsheetId, "Sheet1!A:D");
-          await appendToSheet(campaignToCredit.spreadsheetId, "Sheet1!A1", [
-            headerRow,
-            ...dataRow,
-          ]);
-        } catch (err) {
-          console.error("❌ Campaign Sheet Error:", err);
-        }
-      } else {
+        const timestampOptions = {
+          timeZone: "Asia/Dubai",
+          year: "numeric",
+          month: "numeric",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        };
+
+        const formattedDate = new Date().toLocaleString(
+          "en-US",
+          timestampOptions
+        );
+
+        const dataRow = [
+          [
+            `'${formattedDate}`,
+            userPhone,
+            contact ? contact.name : "Unknown",
+            messageBody,
+          ],
+        ];
+
+        const headerRow = ["Timestamp", "From", "Name", "Message"];
+
         /* -------------------------------
-         * SYSTEM 2 — Master Sheet
+         * SYSTEM 1 — Campaign Sheet
          * ------------------------------- */
-        if (phoneNumberDoc?.wabaAccount?.masterSpreadsheetId) {
-          const masterSheetId = phoneNumberDoc.wabaAccount.masterSpreadsheetId;
-          const tab = campaignToCredit.templateName || "Leads";
-
+        if (campaignToCredit.spreadsheetId) {
           try {
-            let sheetId = await findSheetIdByName(masterSheetId, tab);
+            console.log(
+              `📁 Writing lead → Campaign Sheet: ${campaignToCredit.spreadsheetId}`
+            );
 
-            if (!sheetId) {
-              console.log(`📄 Creating new tab: "${tab}"`);
-              await createSheet(masterSheetId, tab);
-              await addHeaderRow(masterSheetId, tab, headerRow);
-            }
-
-            console.log(`📁 Appending lead → Master Sheet tab "${tab}"`);
-            await appendToSheet(masterSheetId, `${tab}!A1`, dataRow);
+            await clearSheet(campaignToCredit.spreadsheetId, "Sheet1!A:D");
+            await appendToSheet(campaignToCredit.spreadsheetId, "Sheet1!A1", [
+              headerRow,
+              ...dataRow,
+            ]);
           } catch (err) {
-            console.error("❌ Master Sheet Error:", err);
+            console.error("❌ Campaign Sheet Error:", err);
           }
         } else {
-          console.log("⚠️ No master sheet configured for this WABA.");
+          /* -------------------------------
+           * SYSTEM 2 — Master Sheet
+           * ------------------------------- */
+          if (phoneNumberDoc?.wabaAccount?.masterSpreadsheetId) {
+            const masterSheetId =
+              phoneNumberDoc.wabaAccount.masterSpreadsheetId;
+            const tab = campaignToCredit.templateName || "Leads";
+
+            try {
+              let sheetId = await findSheetIdByName(masterSheetId, tab);
+
+              if (!sheetId) {
+                console.log(`📄 Creating new tab: "${tab}"`);
+                await createSheet(masterSheetId, tab);
+                await addHeaderRow(masterSheetId, tab, headerRow);
+              }
+
+              console.log(`📁 Appending lead → Master Sheet tab "${tab}"`);
+              await appendToSheet(masterSheetId, `${tab}!A1`, dataRow);
+            } catch (err) {
+              console.error("❌ Master Sheet Error:", err);
+            }
+          } else {
+            console.log("⚠️ No master sheet configured for this WABA.");
+          }
         }
-      }
 
-      /* ---------------------------------------------------------
-       * NOTIFY ADMIN (LIVE LEAD)
-       * --------------------------------------------------------- */
-      try {
-        const ADMIN_NUMBER = "971506796073"; // User specified number
-        const templateName =
-          campaignToCredit.templateName ||
-          campaignToCredit.name ||
-          "Unknown Campaign";
+        /* ---------------------------------------------------------
+         * NOTIFY ADMIN (LIVE LEAD)
+         * --------------------------------------------------------- */
+        try {
+          const ADMIN_NUMBER = "971506796073"; // User specified number
+          const templateName =
+            campaignToCredit.templateName ||
+            campaignToCredit.name ||
+            "Unknown Campaign";
 
-        const notificationBody = `*NEW LEAD RECEIVED*
+          const notificationBody = `*NEW LEAD RECEIVED*
 
 *Name*: ${contact ? contact.name : "Unknown"}
 *Phone*: ${userPhone}
@@ -223,27 +228,28 @@ const processBufferedMessages = async (
 *Time*: ${formattedDate}
 *Source*: WhatsApp`;
 
-        console.log(
-          `🔔 Sending Live Lead Notification to Admin (${ADMIN_NUMBER})...`
-        );
-        const { sendTextMessage } = require("../integrations/whatsappAPI");
+          console.log(
+            `🔔 Sending Live Lead Notification to Admin (${ADMIN_NUMBER})...`
+          );
+          const { sendTextMessage } = require("../integrations/whatsappAPI");
 
-        // We use the same credentials to send the notification FROM the bot TO the admin
-        await sendTextMessage(
-          ADMIN_NUMBER,
-          notificationBody,
-          credentials.accessToken,
-          recipientId // Sending from this phone ID
-        );
-      } catch (notifyErr) {
-        console.error("❌ Failed to notify admin:", notifyErr.message);
+          // We use the same credentials to send the notification FROM the bot TO the admin
+          await sendTextMessage(
+            ADMIN_NUMBER,
+            notificationBody,
+            credentials.accessToken,
+            recipientId // Sending from this phone ID
+          );
+        } catch (notifyErr) {
+          console.error("❌ Failed to notify admin:", notifyErr.message);
+        }
       }
-    }
 
-    // Update campaign reply count
-    await Campaign.findByIdAndUpdate(campaignToCredit._id, {
-      $inc: { replyCount: 1 },
-    });
+      // Update campaign reply count
+      await Campaign.findByIdAndUpdate(campaignToCredit._id, {
+        $inc: { replyCount: 1 },
+      });
+    } // Close else (Proceed with Lead Processing)
   }
 
   /* ---------------------------------------------------------
