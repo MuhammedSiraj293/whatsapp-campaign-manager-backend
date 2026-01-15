@@ -217,10 +217,12 @@ const handleBotConversation = async (
     if (btnId === "stuck_continue") {
       console.log(`🔄 Stuck Continue: Search for recipientId=${customerPhone}`);
 
-      // Fetch last 20 outgoing messages to find the one before the stuck prompt
+      // Fetch outgoing messages (handle potential 'from'/'recipientId' inversion in legacy data)
       const history = await Reply.find({
-        recipientId: customerPhone,
-        direction: "outgoing",
+        $or: [
+          { recipientId: customerPhone, direction: "outgoing" },
+          { from: customerPhone, direction: "outgoing" },
+        ],
       })
         .sort({ timestamp: -1 })
         .limit(20);

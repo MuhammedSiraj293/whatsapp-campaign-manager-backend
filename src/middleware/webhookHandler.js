@@ -705,8 +705,8 @@ const processBufferedMessages = async (
                 if (sentMsg && sentMsg.messages && sentMsg.messages[0]) {
                   const dbMsg = new Reply({
                     messageId: sentMsg.messages[0].id,
-                    from: userPhone,
-                    recipientId,
+                    from: recipientId, // Business
+                    recipientId: userPhone, // Customer
                     body: msgData.text,
                     timestamp: new Date(),
                     direction: "outgoing",
