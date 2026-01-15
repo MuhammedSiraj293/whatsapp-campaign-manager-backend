@@ -500,6 +500,27 @@ const processBufferedMessages = async (
     if (!autoReplyText && !isCampaignReply && !isHandledByWebhook) {
       if (credentials?.accessToken) {
         try {
+          // --- 0. INTERCEPT STUCK BUTTONS (System Actions) ---
+          if (messageType === "interactive" && !isHandledByWebhook) {
+            const btnId =
+              lastMessage?.interactive?.button_reply?.id ||
+              lastMessage?.interactive?.list_reply?.id;
+
+            if (btnId && btnId.startsWith("stuck_")) {
+              console.log(`🛑 Intercepting System Button: ${btnId}`);
+              const {
+                handleBotConversation,
+              } = require("../services/botService");
+              await handleBotConversation(
+                lastMessage,
+                messageBody,
+                recipientId,
+                credentials
+              );
+              return; // EXIT - Do not pass to AI
+            }
+          }
+
           // --- AI AGENT CHECK ---
           if (!phoneNumberDoc || !phoneNumberDoc.isAiEnabled) {
             throw new Error("AI_DISABLED");

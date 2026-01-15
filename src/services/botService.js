@@ -298,8 +298,8 @@ const handleBotConversation = async (
         // Close the chat
         const byeText =
           enquiry.language === "ar"
-            ? "شكراً لك. نتمنى لك يوماً سعيداً! 👋"
-            : "Understood. Have a great day! 👋";
+            ? "شكراً لوقتك. سيتصل بك أحد مستشارينا قريباً لمساعدتك. نتمنى لك يوماً سعيداً! 👋"
+            : "Thank you for your time. One of our Consultants will contact you shortly to assist you. Have a great day! 👋";
         const byeResult = await sendTextMessage(
           customerPhone,
           byeText,
