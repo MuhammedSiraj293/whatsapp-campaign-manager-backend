@@ -98,7 +98,7 @@ const checkAndSendFollowUps = async () => {
               type: "interactive",
               interactive: {
                 type: "button",
-                body: { text: isArabic ? textAr : textEng },
+                body: isArabic ? textAr : textEng,
                 action: {
                   buttons: (isArabic ? buttonsAr : buttonsEng).map((b) => ({
                     type: "reply",
