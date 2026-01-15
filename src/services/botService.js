@@ -203,6 +203,113 @@ const handleBotConversation = async (
   const customerPhone = message.from;
   const generatedReplies = []; // Store all replies generated in this turn
 
+  // 1. Fetch Enquiry Early (Needed for system buttons)
+  let enquiry = await Enquiry.findOne({
+    phoneNumber: customerPhone,
+    recipientId: recipientId,
+  });
+
+  // 2. Handle System Buttons (Stuck) - No Flow Needed
+  if (message.type === "interactive" && message.interactive?.button_reply) {
+    const btnId = message.interactive.button_reply.id;
+
+    // --- STUCK FOLLOW-UP HANDLERS ---
+    if (btnId === "stuck_continue") {
+      // Just acknowledge and reset timer (implicitly done by saving enquiry later)
+      const ackText =
+        enquiry?.language === "ar"
+          ? "رائع! يرجى كتابة إجابتك أعلاه. 📝"
+          : "Great! Please type your answer above. 📝";
+      const ackResult = await sendTextMessage(
+        customerPhone,
+        ackText,
+        accessToken,
+        recipientId
+      );
+
+      // Save & Emit
+      if (ackResult?.messages?.[0]?.id) {
+        const ackReply = await Reply.create({
+          messageId: ackResult.messages[0].id,
+          from: recipientId, // Business Phone ID
+          recipientId: customerPhone,
+          body: ackText,
+          timestamp: new Date(),
+          direction: "outgoing",
+          isAiGenerated: true,
+          type: "text",
+        });
+        const io = getIO();
+        if (io)
+          io.emit("newMessage", {
+            from: customerPhone,
+            recipientId,
+            message: ackReply,
+          });
+      }
+      // Resume conversation state (keep same state)
+      if (enquiry) {
+        enquiry.lastStuckFollowUpSentAt = new Date(); // Reset stuck timer check
+        await enquiry.save();
+      }
+      return []; // Stop here
+    }
+
+    if (btnId === "stuck_end") {
+      console.log("🛑 Processing stuck_end for:", customerPhone);
+
+      if (!enquiry) {
+        console.error(
+          "❌ Enquiry not found for stuck_end. Cannot determine language."
+        );
+        return [];
+      }
+
+      // Close the chat
+      const byeText =
+        enquiry.language === "ar"
+          ? "شكراً لوقتك. سيتصل بك أحد مستشارينا قريباً لمساعدتك. نتمنى لك يوماً سعيداً! 👋"
+          : "Thank you for your time. One of our Consultants will contact you shortly to assist you. Have a great day! 👋";
+
+      console.log("📤 Sending Bye Text:", byeText);
+
+      const byeResult = await sendTextMessage(
+        customerPhone,
+        byeText,
+        accessToken,
+        recipientId
+      );
+
+      console.log("✅ Bye Result:", byeResult ? "Sent" : "Failed");
+
+      // Save & Emit
+      if (byeResult?.messages?.[0]?.id) {
+        const byeReply = await Reply.create({
+          messageId: byeResult.messages[0].id,
+          from: recipientId,
+          recipientId: customerPhone,
+          body: byeText,
+          timestamp: new Date(),
+          direction: "outgoing",
+          isAiGenerated: true,
+          type: "text",
+        });
+        const io = getIO();
+        if (io)
+          io.emit("newMessage", {
+            from: customerPhone,
+            recipientId,
+            message: byeReply,
+          });
+      }
+      enquiry.conversationState = "END";
+      enquiry.endedAt = new Date();
+      enquiry.status = "closed"; // Mark as closed
+      await enquiry.save();
+      return []; // Stop here
+    }
+  }
+
   const phoneNumberDoc = await PhoneNumber.findOne({
     phoneNumberId: recipientId,
   });
@@ -211,11 +318,6 @@ const handleBotConversation = async (
     return [];
   }
   const botFlowId = phoneNumberDoc.activeBotFlow;
-
-  let enquiry = await Enquiry.findOne({
-    phoneNumber: customerPhone,
-    recipientId: recipientId,
-  });
 
   let currentNodeKey;
 
@@ -254,99 +356,7 @@ const handleBotConversation = async (
         targetNodeId = flow.completionFollowUpNoNodeId;
       }
 
-      // --- NEW: STUCK FOLLOW-UP HANDLERS ---
-      if (btnId === "stuck_continue") {
-        // Just acknowledge and reset timer (implicitly done by saving enquiry later)
-        const ackText =
-          enquiry.language === "ar"
-            ? "رائع! يرجى كتابة إجابتك أعلاه. 📝"
-            : "Great! Please type your answer above. 📝";
-        const ackResult = await sendTextMessage(
-          customerPhone,
-          ackText,
-          accessToken,
-          recipientId
-        );
-
-        // Save & Emit
-        if (ackResult?.messages?.[0]?.id) {
-          const ackReply = await Reply.create({
-            messageId: ackResult.messages[0].id,
-            from: recipientId, // Business Phone ID
-            recipientId: customerPhone,
-            body: ackText,
-            timestamp: new Date(),
-            direction: "outgoing",
-            isAiGenerated: true,
-            type: "text",
-          });
-          const io = getIO();
-          if (io)
-            io.emit("newMessage", {
-              from: customerPhone,
-              recipientId,
-              message: ackReply,
-            });
-        }
-        // Resume conversation state (keep same state)
-        enquiry.lastStuckFollowUpSentAt = new Date(); // Reset stuck timer check
-        await enquiry.save();
-        return []; // Stop here
-      }
-
-      if (btnId === "stuck_end") {
-        console.log("🛑 Processing stuck_end for:", customerPhone);
-
-        if (!enquiry) {
-          console.error(
-            "❌ Enquiry not found for stuck_end. Cannot determine language."
-          );
-          return [];
-        }
-
-        // Close the chat
-        const byeText =
-          enquiry.language === "ar"
-            ? "شكراً لوقتك. سيتصل بك أحد مستشارينا قريباً لمساعدتك. نتمنى لك يوماً سعيداً! 👋"
-            : "Thank you for your time. One of our Consultants will contact you shortly to assist you. Have a great day! 👋";
-
-        console.log("📤 Sending Bye Text:", byeText);
-
-        const byeResult = await sendTextMessage(
-          customerPhone,
-          byeText,
-          accessToken,
-          recipientId
-        );
-
-        console.log("✅ Bye Result:", byeResult ? "Sent" : "Failed");
-
-        // Save & Emit
-        if (byeResult?.messages?.[0]?.id) {
-          const byeReply = await Reply.create({
-            messageId: byeResult.messages[0].id,
-            from: recipientId,
-            recipientId: customerPhone,
-            body: byeText,
-            timestamp: new Date(),
-            direction: "outgoing",
-            isAiGenerated: true,
-            type: "text",
-          });
-          const io = getIO();
-          if (io)
-            io.emit("newMessage", {
-              from: customerPhone,
-              recipientId,
-              message: byeReply,
-            });
-        }
-        enquiry.conversationState = "END";
-        enquiry.endedAt = new Date();
-        enquiry.status = "closed"; // Mark as closed
-        await enquiry.save();
-        return []; // Stop here
-      }
+      // --- FOLLOW-UP YES/NO HANDLERS (Require Flow) ---
 
       if (!targetNodeId) {
         console.log(`⚠️ No target node configured for ${btnId}. Ending flow.`);
