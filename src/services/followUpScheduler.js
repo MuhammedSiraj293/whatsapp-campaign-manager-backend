@@ -58,10 +58,9 @@ const checkAndSendFollowUps = async () => {
 
           // Content
           const textEng =
-            "We are almost done! Please complete your enquiry so we can arrange the best assistance for you. ";
+            "Apologies, I didn't get a response from you! Please complete your enquiry so we can arrange the best assistance for you. ";
           const textAr =
-            "لقد أوشكنا على الانتهاء! يرجى استكمال استفسارك لنتمكن من ترتيب أفضل مساعدة لك. ";
-
+            "أعتذر، لم أتلقَّ ردًا منك! يُرجى إكمال استفسارك حتى نتمكن من تقديم أفضل مساعدة لك. ";
           const buttonsEng = [
             { id: "stuck_continue", title: "Continue" },
             { id: "stuck_end", title: "End Chat" },
