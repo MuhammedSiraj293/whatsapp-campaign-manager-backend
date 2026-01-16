@@ -854,7 +854,6 @@ WhatsApp`;
 
 ${existingEnquiry.name || "Unknown"}
 ${userPhone}
-${existingEnquiry.email || "N/A"}
 ${existingEnquiry.projectName || "General"}
 ${existingEnquiry.bedrooms || "N/A"}
 ${existingEnquiry.pageUrl || "N/A"}`;
