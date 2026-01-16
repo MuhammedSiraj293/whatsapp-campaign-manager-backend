@@ -220,13 +220,12 @@ const processBufferedMessages = async (
             campaignToCredit.name ||
             "Unknown Campaign";
 
-          const notificationBody = `*NEW LEAD RECEIVED*
+          const notificationBody = `NEW LEAD RECEIVED
 
-*Name*: ${contact ? contact.name : "Unknown"}
-*Phone*: ${userPhone}
-*Template*: ${templateName}
-*Time*: ${formattedDate}
-*Source*: WhatsApp`;
+${contact ? contact.name : "Unknown"}
+${userPhone}
+${templateName}
+WhatsApp`;
 
           console.log(
             `🔔 Sending Live Lead Notification to Admin (${ADMIN_NUMBER})...`
@@ -851,20 +850,14 @@ const processBufferedMessages = async (
                       "🔔 AI Handover Triggered - Sending Notification..."
                     );
                     const ADMIN_NUMBER = "971506796073";
-                    const noteBody = `*NEW AI ENQUIRY*
+                    const noteBody = `NEW AI ENQUIRY
 
-*Name*: ${existingEnquiry.name || "Unknown"}
-*Phone*: ${userPhone}
-*Project*: ${existingEnquiry.projectName || "General"}
-*Budget*: ${existingEnquiry.budget || "N/A"}
-*Beds*: ${existingEnquiry.bedrooms || "N/A"}
-*Location*: ${existingEnquiry.location || "N/A"}
-*Source*: ${
-                      existingEnquiry.pageUrl
-                        ? "Website/AI"
-                        : existingEnquiry.entrySource || "WhatsApp"
-                    }
-*URL*: ${existingEnquiry.pageUrl || "N/A"}`;
+${existingEnquiry.name || "Unknown"}
+${userPhone}
+${existingEnquiry.email || "N/A"}
+${existingEnquiry.projectName || "General"}
+${existingEnquiry.bedrooms || "N/A"}
+${existingEnquiry.pageUrl || "N/A"}`;
 
                     const {
                       sendTextMessage,
