@@ -215,8 +215,6 @@ const handleBotConversation = async (
 
     // --- STUCK FOLLOW-UP HANDLERS ---
     if (btnId === "stuck_continue") {
-      console.log(`🔄 Stuck Continue: Search for recipientId=${customerPhone}`);
-
       // Fetch outgoing messages (handle potential 'from'/'recipientId' inversion in legacy data)
       const history = await Reply.find({
         $or: [
@@ -227,15 +225,10 @@ const handleBotConversation = async (
         .sort({ timestamp: -1 })
         .limit(20);
 
-      console.log(`📜 Found ${history.length} history items.`);
-
       let targetMsg = null;
       // Find first message that is NOT the stuck prompt
       for (const msg of history) {
         const body = msg.body || "";
-        console.log(
-          `   - Inspection: "${body.substring(0, 50)}..." [Type: ${msg.type}]`
-        );
 
         // Check for stuck prompts (English or Arabic)
         const isStuckMsg =
@@ -245,8 +238,6 @@ const handleBotConversation = async (
         if (!isStuckMsg) {
           targetMsg = msg;
           break;
-        } else {
-          console.log("   -> Skipping (Stuck Message)");
         }
       }
 
