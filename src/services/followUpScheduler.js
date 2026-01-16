@@ -134,6 +134,84 @@ const checkAndSendFollowUps = async () => {
     }
 
     // ------------------------------------------------------------------
+    // PART 1.5: TIMEOUT CLOSURE (10 MIN AFTER STUCK MSG)
+    // ------------------------------------------------------------------
+    const tenMinutesAgo = new Date(now - 10 * 60 * 1000);
+
+    // Find enquiries where stuck message was sent > 10 mins ago AND no update since
+    const timeoutEnquiries = await Enquiry.find({
+      conversationState: { $ne: "END" },
+      status: { $ne: "closed", $ne: "handover" },
+      lastStuckFollowUpSentAt: { $lt: tenMinutesAgo, $ne: null }, // Stuck msg sent > 10m ago
+      updatedAt: { $lt: tenMinutesAgo }, // No user activity since stuck msg
+    });
+
+    if (timeoutEnquiries.length > 0) {
+      console.log(
+        `⏱️ Found ${timeoutEnquiries.length} timed-out enquiries (10m post-stuck)`
+      );
+
+      for (const enquiry of timeoutEnquiries) {
+        try {
+          const phoneDoc = await PhoneNumber.findOne({
+            phoneNumberId: enquiry.recipientId,
+          }).populate("wabaAccount");
+
+          if (!phoneDoc || !phoneDoc.wabaAccount) continue;
+
+          const accessToken = phoneDoc.wabaAccount.accessToken;
+          const isArabic = enquiry.language === "ar";
+          const timeoutText = isArabic
+            ? "لم نسمع منك منذ فترة، لذا سنقوم بإنهاء هذه الجلسة. لا تتردد في التواصل معنا مرة أخرى عندما تحتاج إلى مساعدة. شكراً لك!"
+            : "I have not heard from you in a while, so I'll be ending this chat session. Feel free to reach out again whenever you require further assistance.\nThank you!";
+
+          // Send Text
+          const sentRes = await sendTextMessage(
+            enquiry.phoneNumber,
+            timeoutText,
+            accessToken,
+            enquiry.recipientId
+          );
+
+          // Save & Emit
+          if (sentRes?.messages?.[0]?.id) {
+            const reply = await Reply.create({
+              messageId: sentRes.messages[0].id,
+              from: phoneDoc.phoneNumberId,
+              recipientId: enquiry.phoneNumber,
+              body: timeoutText,
+              timestamp: new Date(),
+              direction: "outgoing",
+              isAiGenerated: true,
+              type: "text",
+            });
+            const io = getIO();
+            if (io)
+              io.emit("newMessage", {
+                from: enquiry.phoneNumber,
+                recipientId: enquiry.recipientId,
+                message: reply,
+              });
+          }
+
+          // Close and Prevent Review
+          enquiry.conversationState = "END";
+          enquiry.status = "closed";
+          enquiry.endedAt = new Date();
+          enquiry.completionFollowUpSent = true; // DO NOT SEND REVIEW REQUEST
+          await enquiry.save();
+
+          console.log(`💤 Closed timed-out enquiry: ${enquiry.phoneNumber}`);
+        } catch (err) {
+          console.error(
+            `❌ Error closing timed-out enquiry ${enquiry.phoneNumber}:`,
+            err.message
+          );
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------
     // PART 2: COMPLETION FOLLOW-UP (REVIEW REQUEST - 1 MIN POST END)
     // ------------------------------------------------------------------
     const oneMinuteAgo = new Date(now - 1 * 60 * 1000);

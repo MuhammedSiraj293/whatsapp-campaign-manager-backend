@@ -239,8 +239,8 @@ const handleBotConversation = async (
 
         // Check for stuck prompts (English or Arabic)
         const isStuckMsg =
-          body.includes("We are almost done") ||
-          body.includes("لقد أوشكنا على الانتهاء");
+          body.includes("Apologies, I didn't get a response from you.") ||
+          body.includes("أعتذر، لم أتلق رداً منك.");
 
         if (!isStuckMsg) {
           targetMsg = msg;
