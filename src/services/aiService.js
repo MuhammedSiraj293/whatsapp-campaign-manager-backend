@@ -778,7 +778,18 @@ const generateResponse = async (
       );
     }
 
-    const history = await getRecentHistory(userPhone);
+    // --- FIX: FORCE FRESH START ON LINK DETECTION ---
+    // If a link was detected, we must IGNORE previous history to prevent the AI
+    // from seeing the old "Goodbye" message and thinking the convo is over.
+    let history = [];
+    if (detectedProjectFromLink) {
+      console.log(
+        "🔄 New Project Link Detected: Clearing Conversation History for Fresh Start."
+      );
+      history = []; // Explicitly empty
+    } else {
+      history = await getRecentHistory(userPhone);
+    }
 
     // Determine the Project Name for Context
     // Priority: DB > Link (Corrected) > General
