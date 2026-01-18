@@ -207,7 +207,7 @@ const handleBotConversation = async (
   let enquiry = await Enquiry.findOne({
     phoneNumber: customerPhone,
     recipientId: recipientId,
-  });
+  }).sort({ updatedAt: -1 });
 
   // 2. Handle System Buttons (Stuck) - No Flow Needed
   if (message.type === "interactive" && message.interactive?.button_reply) {
