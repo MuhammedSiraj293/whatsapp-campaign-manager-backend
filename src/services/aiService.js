@@ -42,8 +42,9 @@ NAMING RULE
 PROJECT & LOCATION HANDLING
 ────────────────────────
 - **KNOWN PROJECT**:
-  - **IF Details in Knowledge Base**: Mention ONE detail (e.g. "It has great views"). Then ASK for missing info (Bedrooms/Type).
-  - **IF NOT in Knowledge Base**: Acknowledge the project name enthusiastically (e.g. "That is a great project"). Do NOT invent details. ASK for Bedrooms/Type.
+  - **IF Details in Knowledge Base**: Mention ONE detail (e.g. "It has great views"). Then **YOU MUST ASK** for missing info (Bedrooms/Type).
+  - **IF NOT in Knowledge Base**: Acknowledge the project name enthusiastically. Do NOT invent details. **YOU MUST ASK** for Bedrooms/Type.
+  - **CRITICAL**: Never just describe the project. **Always end with a question** (e.g. "How many bedrooms are you looking for?" or "Are you interested in a specific layout?").
   - IF mixed types: Ask "Villa or Apartment?".
   - IF single type (e.g. Villa only): STATE IT and ask for Bedrooms.
 - **UNKNOWN PROJECT (No Name)**: Acknowledge, then ask Preferences (Step 5).
@@ -531,7 +532,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
           .replace(/\s+by\s+.+/g, "") // remove " by Modon"
           .replace(
             /residences|villas|apartments|towers|residence|villa|apartment|tower|community/g,
-            ""
+            "",
           )
           .replace(/s$/g, "") // remove trailing 's'
           .trim();
@@ -584,7 +585,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
 
     // A) Get 3 Newest
     const sortedByDate = [...allProperties].sort(
-      (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+      (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
     );
     const newest = sortedByDate.slice(0, 3);
 
@@ -617,13 +618,13 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
     Handover: ${p.handoverDate || "N/A"}
     Desc: ${p.description || "N/A"}
     Tags: ${p.tags && p.tags.length > 0 ? p.tags.join(", ") : "None"}
-  `
+  `,
     )
     .join("\n---\n");
 
   const projects = allProperties.map((p) => p.name).join(", ");
   const locations = [...new Set(allProperties.map((p) => p.location))].join(
-    ", "
+    ", ",
   );
 
   return {
@@ -680,7 +681,7 @@ const generateResponse = async (
   userPhone,
   messageBody,
   existingEnquiry,
-  profileName
+  profileName,
 ) => {
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
@@ -704,7 +705,7 @@ const generateResponse = async (
 
       // Check for List Selection (Bracketed or Raw)
       const listMatch = messageBody.match(
-        /\[User selected list option: (.+)\]/
+        /\[User selected list option: (.+)\]/,
       );
 
       const textToCheck = listMatch ? listMatch[1] : messageBody;
@@ -769,12 +770,12 @@ const generateResponse = async (
     // If score is low (< 40), it's likely just a keyword match, so trust the Link.
     if (detectedProjectFromLink && bestMatch && bestMatchScore >= 40) {
       console.log(
-        `✨ Correcting Project Name: "${detectedProjectFromLink}" -> "${bestMatch.name}" (Score: ${bestMatchScore})`
+        `✨ Correcting Project Name: "${detectedProjectFromLink}" -> "${bestMatch.name}" (Score: ${bestMatchScore})`,
       );
       detectedProjectFromLink = bestMatch.name;
     } else if (detectedProjectFromLink && bestMatch) {
       console.log(
-        `⚠️ Keeping Link Name: "${detectedProjectFromLink}" (Best DB Match: "${bestMatch.name}" Score: ${bestMatchScore} < 40)`
+        `⚠️ Keeping Link Name: "${detectedProjectFromLink}" (Best DB Match: "${bestMatch.name}" Score: ${bestMatchScore} < 40)`,
       );
     }
 
@@ -784,7 +785,7 @@ const generateResponse = async (
     let history = [];
     if (detectedProjectFromLink) {
       console.log(
-        "🔄 New Project Link Detected: Clearing Conversation History for Fresh Start."
+        "🔄 New Project Link Detected: Clearing Conversation History for Fresh Start.",
       );
       history = []; // Explicitly empty
     } else {
@@ -895,7 +896,7 @@ Valid Locations: ${locations || "None"}
         !parsed.extractedData.projectType
       ) {
         console.log(
-          `💾 Auto-saving Link Project to Extracted Data: ${detectedProjectFromLink}`
+          `💾 Auto-saving Link Project to Extracted Data: ${detectedProjectFromLink}`,
         );
         parsed.extractedData.project = detectedProjectFromLink;
       }
