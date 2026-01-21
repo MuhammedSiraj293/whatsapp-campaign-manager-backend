@@ -501,7 +501,8 @@ WhatsApp`;
                 "Your interest has been noted. One of our Sales Consultant will contact you shortly to assist you, Thank you for your response.";
 
               // --- FIX: Close Enquiry Immediately ---
-              const finalName = contactCheck?.name || contactName || "Guest";
+              const finalName =
+                contactCheck?.name || lastMessage.contactName || "NA";
               await Enquiry.create({
                 phoneNumber: userPhone,
                 recipientId,
@@ -523,7 +524,8 @@ WhatsApp`;
                 "لقد تم تسجيل اهتمامكم. سيتصل بكم أحد مستشاري المبيعات لدينا قريباً لمساعدتكم، شكراً لردكم.";
 
               // --- FIX: Close Enquiry Immediately (Arabic) ---
-              const finalName = contactCheck?.name || contactName || "Guest";
+              const finalName =
+                contactCheck?.name || lastMessage.contactName || "NA";
               await Enquiry.create({
                 phoneNumber: userPhone,
                 recipientId,
@@ -651,7 +653,7 @@ WhatsApp`;
 
           // --- SMART NAME RESOLUTION ---
           // Step 1: Default to last message contact name
-          let effectiveName = lastMessage.contactName || "Guest";
+          let effectiveName = lastMessage.contactName || "NA";
 
           try {
             const dbContact = await Contact.findOne({
@@ -1018,7 +1020,7 @@ const processWebhook = async (req, res) => {
 
   const value = body.entry?.[0]?.changes?.[0]?.value;
   const recipientId = value?.metadata?.phone_number_id;
-  const contactName = value?.contacts?.[0]?.profile?.name || "Guest";
+  const contactName = value?.contacts?.[0]?.profile?.name || "NA";
 
   if (!recipientId) {
     console.log("⚠️ Missing metadata.phone_number_id — ignoring webhook.");
