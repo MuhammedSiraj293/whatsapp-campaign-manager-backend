@@ -58,7 +58,7 @@ const processBufferedMessages = async (
   recipientId,
   userPhone,
   credentials,
-  phoneNumberDoc
+  phoneNumberDoc,
 ) => {
   if (!userMessageBuffer[userPhone]) return;
 
@@ -67,12 +67,12 @@ const processBufferedMessages = async (
   delete userMessageBuffer[userPhone];
 
   console.log(
-    `🔥 Processing ${messages.length} buffered messages for ${userPhone}...`
+    `🔥 Processing ${messages.length} buffered messages for ${userPhone}...`,
   );
 
   // 1. Aggregation Strategy
   const textMessages = messages.filter(
-    (m) => m.body && typeof m.body === "string"
+    (m) => m.body && typeof m.body === "string",
   );
 
   // Join with period if multiple
@@ -85,7 +85,7 @@ const processBufferedMessages = async (
 
   if (!combinedBody) {
     console.log(
-      "⚠️ No text content in buffered messages. Skipping logic processing."
+      "⚠️ No text content in buffered messages. Skipping logic processing.",
     );
     return;
   }
@@ -93,7 +93,7 @@ const processBufferedMessages = async (
   console.log(`📝 Combined Context: "${combinedBody}"`);
   if (campaignToCredit)
     console.log(
-      `📌 Associated Campaign: ${campaignToCredit.name} (Direct: ${isDirectReply})`
+      `📌 Associated Campaign: ${campaignToCredit.name} (Direct: ${isDirectReply})`,
     );
 
   // ---------------------------------------------------------
@@ -114,12 +114,12 @@ const processBufferedMessages = async (
     // FILTER: Ignore STOP/UNSUBSCRIBE messages from being treated as "Leads"
     const stopKeywords = ["stop", "unsubscribe", "cancel", "opt out", "remove"];
     const isStopMessage = stopKeywords.some((k) =>
-      messageBodyLower.includes(k)
+      messageBodyLower.includes(k),
     );
 
     if (isStopMessage) {
       console.log(
-        "🛑 Campaign reply is 'Stop/Unsubscribe' - Skipping Lead Sheet & Notification."
+        "🛑 Campaign reply is 'Stop/Unsubscribe' - Skipping Lead Sheet & Notification.",
       );
     } else {
       // PROCEED WITH LEAD PROCESSING
@@ -151,7 +151,7 @@ const processBufferedMessages = async (
 
         const formattedDate = new Date().toLocaleString(
           "en-US",
-          timestampOptions
+          timestampOptions,
         );
 
         const dataRow = [
@@ -171,7 +171,7 @@ const processBufferedMessages = async (
         if (campaignToCredit.spreadsheetId) {
           try {
             console.log(
-              `📁 Writing lead → Campaign Sheet: ${campaignToCredit.spreadsheetId}`
+              `📁 Writing lead → Campaign Sheet: ${campaignToCredit.spreadsheetId}`,
             );
 
             await clearSheet(campaignToCredit.spreadsheetId, "Sheet1!A:D");
@@ -228,7 +228,7 @@ ${templateName}
 WhatsApp`;
 
           console.log(
-            `🔔 Sending Live Lead Notification to Admin (${ADMIN_NUMBER})...`
+            `🔔 Sending Live Lead Notification to Admin (${ADMIN_NUMBER})...`,
           );
           const { sendTextMessage } = require("../integrations/whatsappAPI");
 
@@ -237,7 +237,7 @@ WhatsApp`;
             ADMIN_NUMBER,
             notificationBody,
             credentials.accessToken,
-            recipientId // Sending from this phone ID
+            recipientId, // Sending from this phone ID
           );
         } catch (notifyErr) {
           console.error("❌ Failed to notify admin:", notifyErr.message);
@@ -313,7 +313,7 @@ WhatsApp`;
       // --- WE ARE OPEN (OR NO CONFIG) ---
       if (!credentials || !credentials.accessToken) {
         console.error(
-          `❌ Could not find credentials for recipientId ${recipientId}. Aborting auto-reply.`
+          `❌ Could not find credentials for recipientId ${recipientId}. Aborting auto-reply.`,
         );
       } else {
         // 2. Handle "stop" and "re-subscribe" logic
@@ -358,13 +358,13 @@ WhatsApp`;
               unsubscribeDate: new Date(),
               contactList: unsubListId, // Add to Unsubscriber List
               previousContactList: contactCheck.contactList, // Backup current list
-            }
+            },
           );
           autoReplyText =
             "You’ve been unsubscribed. Thank you for your feedback.";
           isHandledByWebhook = true;
           console.log(
-            `✅ Contact ${userPhone} unsubscribed with custom reason: ${messageBody}`
+            `✅ Contact ${userPhone} unsubscribed with custom reason: ${messageBody}`,
           );
         } else if (
           messageBodyLower.includes("stop") ||
@@ -380,7 +380,7 @@ WhatsApp`;
             userPhone,
             "We've received your request to unsubscribe. Before you go, could you tell us why?",
             credentials.accessToken,
-            recipientId
+            recipientId,
           );
 
           const sections = [
@@ -399,7 +399,7 @@ WhatsApp`;
             "Reason",
             sections,
             credentials.accessToken,
-            recipientId
+            recipientId,
           );
 
           autoReplyText = null;
@@ -434,7 +434,7 @@ WhatsApp`;
                 // We do NOT unsubscribe yet, we wait for the text explanation
                 // But user asked for "after complete flow", so effectively we wait.
                 // Actually, for "Other", we haven't completed flow.
-              }
+              },
             );
             autoReplyText = "Please type your reason below so we can improve.";
           } else {
@@ -453,12 +453,12 @@ WhatsApp`;
                 previousContactList: currentContact
                   ? currentContact.contactList
                   : null, // Backup
-              }
+              },
             );
             autoReplyText =
               "You’ve been unsubscribed. Thank you for your feedback.";
             console.log(
-              `✅ Contact ${userPhone} unsubscribed & added to 'Unsubscriber List' with reason: ${messageBody}`
+              `✅ Contact ${userPhone} unsubscribed & added to 'Unsubscriber List' with reason: ${messageBody}`,
             );
           }
         } else {
@@ -476,7 +476,7 @@ WhatsApp`;
               contact.contactList = contact.previousContactList;
               contact.previousContactList = null; // Clear backup
               console.log(
-                `🔄 Contact ${userPhone} restored to previous segment.`
+                `🔄 Contact ${userPhone} restored to previous segment.`,
               );
             } else {
               // Remove from Unsubscriber List if no backup?
@@ -499,12 +499,62 @@ WhatsApp`;
             if (messageBodyLower.includes("yes, i am interested")) {
               autoReplyText =
                 "Your interest has been noted. One of our Sales Consultant will contact you shortly to assist you, Thank you for your response.";
+
+              // --- FIX: Close Enquiry Immediately ---
+              const finalName = contactCheck?.name || contactName || "Guest";
+              await Enquiry.create({
+                phoneNumber: userPhone,
+                recipientId,
+                name: finalName,
+                status: "handover", // Stop Bot
+                conversationState: "END", // Stop Stuck Scheduler
+                handoverReason: "Campaign Interested",
+                entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                endedAt: new Date(), // Mark as ended
+              });
+              console.log(
+                `✅ Campaign Interest Logged & Handover Triggered for ${userPhone}`,
+              );
             } else if (messageBodyLower.includes("نعم، مهتم")) {
               autoReplyText =
                 "لقد تم تسجيل اهتمامكم. سيتصل بكم أحد مستشاري المبيعات لدينا قريباً لمساعدتكم، شكراً لردكم.";
+
+              // --- FIX: Close Enquiry Immediately (Arabic) ---
+              const finalName = contactCheck?.name || contactName || "Guest";
+              await Enquiry.create({
+                phoneNumber: userPhone,
+                recipientId,
+                name: finalName,
+                status: "handover",
+                conversationState: "END",
+                handoverReason: "Campaign Interested (Arabic)",
+                entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                endedAt: new Date(),
+                language: "ar",
+              });
+              console.log(
+                `✅ Campaign Interest Logged (AR) & Handover Triggered for ${userPhone}`,
+              );
             } else if (messageBodyLower.includes("not interested")) {
               autoReplyText =
                 "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
+
+              // --- FIX: Close Enquiry Immediately (Not Interested) ---
+              // valid to just close it so bot doesn't wake up
+              await Enquiry.create({
+                phoneNumber: userPhone,
+                recipientId,
+                status: "closed",
+                conversationState: "END",
+                handoverReason: "Campaign Not Interested",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                endedAt: new Date(),
+              });
             }
           }
         }
@@ -530,7 +580,7 @@ WhatsApp`;
                 lastMessage,
                 messageBody,
                 recipientId,
-                credentials
+                credentials,
               );
               return; // EXIT - Do not pass to AI
             }
@@ -551,7 +601,7 @@ WhatsApp`;
 
           if (hasPropertyLink) {
             console.log(
-              "🔗 New Property Link detected. Forcing FRESH Context (Skipping reuse)."
+              "🔗 New Property Link detected. Forcing FRESH Context (Skipping reuse).",
             );
             existingEnquiry = null;
 
@@ -631,7 +681,7 @@ WhatsApp`;
             userPhone,
             messageBody,
             existingEnquiry,
-            effectiveName
+            effectiveName,
           );
 
           if (aiResult && aiResult.text) {
@@ -689,7 +739,7 @@ WhatsApp`;
                     msgData.text,
                     msgData.buttons,
                     credentials.accessToken,
-                    recipientId
+                    recipientId,
                   );
                 } else if (msgData.type === "list") {
                   const ld = msgData.listData;
@@ -705,14 +755,14 @@ WhatsApp`;
                     ld.listButtonText || "Select",
                     sections,
                     credentials.accessToken,
-                    recipientId
+                    recipientId,
                   );
                 } else {
                   sentMsg = await sendTextMessage(
                     userPhone,
                     msgData.text,
                     credentials.accessToken,
-                    recipientId
+                    recipientId,
                   );
                 }
 
@@ -745,7 +795,7 @@ WhatsApp`;
               const data = aiResult.extractedData;
               const getVal = (key) => {
                 const k = Object.keys(data).find(
-                  (k) => k.toLowerCase() === key.toLowerCase()
+                  (k) => k.toLowerCase() === key.toLowerCase(),
                 );
                 return k ? data[k] : null;
               };
@@ -821,7 +871,7 @@ WhatsApp`;
                   (contact.name === "Unknown" || contact.name === "Guest")
                 ) {
                   console.log(
-                    `👤 Updating Contact Name: ${contact.name} -> ${eName}`
+                    `👤 Updating Contact Name: ${contact.name} -> ${eName}`,
                   );
                   contact.name = eName;
                   await contact.save();
@@ -847,7 +897,7 @@ WhatsApp`;
                 ) {
                   try {
                     console.log(
-                      "🔔 AI Handover Triggered - Sending Notification..."
+                      "🔔 AI Handover Triggered - Sending Notification...",
                     );
                     const ADMIN_NUMBER = "971506796073";
                     const noteBody = `NEW AI ENQUIRY
@@ -865,15 +915,15 @@ ${existingEnquiry.pageUrl || "N/A"}`;
                       ADMIN_NUMBER,
                       noteBody,
                       credentials.accessToken,
-                      recipientId
+                      recipientId,
                     );
                     console.log(
-                      `🔔 Sent AI Enquiry Notification to ${ADMIN_NUMBER}`
+                      `🔔 Sent AI Enquiry Notification to ${ADMIN_NUMBER}`,
                     );
                   } catch (noteErr) {
                     console.error(
                       "❌ Failed to notify admin for AI Handover:",
-                      noteErr
+                      noteErr,
                     );
                   }
                 }
@@ -883,7 +933,7 @@ ${existingEnquiry.pageUrl || "N/A"}`;
           }
 
           console.log(
-            "🤖 AI yielded no result, passing to legacy botService..."
+            "🤖 AI yielded no result, passing to legacy botService...",
           );
         } catch (err) {
           if (err.message !== "AI_DISABLED") {
@@ -899,7 +949,7 @@ ${existingEnquiry.pageUrl || "N/A"}`;
         lastMessage, // Passing the full message object
         messageBody, // The combined body
         recipientId,
-        credentials
+        credentials,
       );
       if (Array.isArray(botReplies)) {
         botReplies.forEach((reply) => {
@@ -926,7 +976,7 @@ ${existingEnquiry.pageUrl || "N/A"}`;
           userPhone,
           autoReplyText,
           credentials.accessToken,
-          recipientId
+          recipientId,
         );
         if (result?.messages?.[0]?.id) {
           const auto = new Reply({
@@ -999,7 +1049,7 @@ const processWebhook = async (req, res) => {
           };
         } else {
           console.log(
-            `⚠️ No WABA Account for phone_number_id=${recipientId}. (Bot + AutoReply disabled but sheet logging OK)`
+            `⚠️ No WABA Account for phone_number_id=${recipientId}. (Bot + AutoReply disabled but sheet logging OK)`,
           );
         }
       } catch (err) {
@@ -1022,7 +1072,7 @@ const processWebhook = async (req, res) => {
           campaignToCredit = match.campaign;
           isDirectReply = true;
           console.log(
-            `📌 Campaign detected via context → ${campaignToCredit.name}`
+            `📌 Campaign detected via context → ${campaignToCredit.name}`,
           );
         }
       }
@@ -1044,7 +1094,7 @@ const processWebhook = async (req, res) => {
 
       if (!campaignToCredit && keywords.some((k) => lowerBody.includes(k))) {
         console.log(
-          "🗝️ Keyword detected. Forcing extended campaign lookup (7 days)..."
+          "🗝️ Keyword detected. Forcing extended campaign lookup (7 days)...",
         );
         try {
           const contactForKeyword = await Contact.findOne({
@@ -1063,7 +1113,7 @@ const processWebhook = async (req, res) => {
             if (recentAnalytics?.campaign) {
               campaignToCredit = recentAnalytics.campaign;
               console.log(
-                `📌 Campaign detected via KEYWORD ('${messageBody}') → ${campaignToCredit.name}`
+                `📌 Campaign detected via KEYWORD ('${messageBody}') → ${campaignToCredit.name}`,
               );
             }
           }
@@ -1101,7 +1151,7 @@ const processWebhook = async (req, res) => {
             if (recentAnalytics?.campaign) {
               campaignToCredit = recentAnalytics.campaign;
               console.log(
-                `📌 Implicit Campaign detected (Recent Sent) → ${campaignToCredit.name}`
+                `📌 Implicit Campaign detected (Recent Sent) → ${campaignToCredit.name}`,
               );
             }
           }
@@ -1172,7 +1222,7 @@ const processWebhook = async (req, res) => {
             try {
               const mediaUrl = await getMediaUrl(
                 newReplyData.mediaId,
-                credentials.accessToken
+                credentials.accessToken,
               );
               if (mediaUrl) {
                 const response = await axios({
@@ -1228,24 +1278,24 @@ const processWebhook = async (req, res) => {
 
                 const cloudResult = await uploadToCloudinary(
                   response.data,
-                  filename
+                  filename,
                 );
 
                 if (cloudResult && cloudResult.secure_url) {
                   newReplyData.mediaUrl = cloudResult.secure_url;
                   console.log(
-                    `✅ Media saved to Cloudinary: ${newReplyData.mediaUrl}`
+                    `✅ Media saved to Cloudinary: ${newReplyData.mediaUrl}`,
                   );
                 } else {
                   console.warn(
-                    "⚠️ Cloudinary upload succeeded but no URL returned."
+                    "⚠️ Cloudinary upload succeeded but no URL returned.",
                   );
                 }
               }
             } catch (mediaErr) {
               console.error(
                 "❌ Failed to download/upload media:",
-                mediaErr.message
+                mediaErr.message,
               );
             }
           }
@@ -1313,14 +1363,14 @@ const processWebhook = async (req, res) => {
 
         // Set new timer
         console.log(
-          `⏳ Buffering message from ${message.from}... (Wait ${BUFFER_DELAY_MS}ms)`
+          `⏳ Buffering message from ${message.from}... (Wait ${BUFFER_DELAY_MS}ms)`,
         );
         userBuffer.timer = setTimeout(() => {
           processBufferedMessages(
             recipientId,
             message.from,
             credentials,
-            phoneNumberDoc
+            phoneNumberDoc,
           );
         }, BUFFER_DELAY_MS);
       }
@@ -1349,7 +1399,7 @@ const processWebhook = async (req, res) => {
           status: status.status,
           failureReason: failureReason, // <-- save errors
         },
-        { new: true }
+        { new: true },
       );
 
       if (updated) {
