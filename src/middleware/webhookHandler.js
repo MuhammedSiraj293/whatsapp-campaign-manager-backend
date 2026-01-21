@@ -513,6 +513,7 @@ WhatsApp`;
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 endedAt: new Date(), // Mark as ended
+                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
               });
               console.log(
                 `✅ Campaign Interest Logged & Handover Triggered for ${userPhone}`,
@@ -535,6 +536,7 @@ WhatsApp`;
                 updatedAt: new Date(),
                 endedAt: new Date(),
                 language: "ar",
+                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
               });
               console.log(
                 `✅ Campaign Interest Logged (AR) & Handover Triggered for ${userPhone}`,
@@ -554,6 +556,7 @@ WhatsApp`;
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 endedAt: new Date(),
+                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
               });
             }
           }
