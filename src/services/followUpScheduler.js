@@ -41,7 +41,7 @@ const checkAndSendFollowUps = async () => {
 
     if (stuckEnquiries.length > 0) {
       console.log(
-        `📋 Found ${stuckEnquiries.length} stuck enquiries (inactive > 3m)`
+        `📋 Found ${stuckEnquiries.length} stuck enquiries (inactive > 3m)`,
       );
 
       for (const enquiry of stuckEnquiries) {
@@ -70,12 +70,26 @@ const checkAndSendFollowUps = async () => {
             { id: "stuck_end", title: "إنهاء المحادثة" },
           ];
 
+          // --- HARDENING: Re-check if valid before sending ---
+          const freshEnquiry = await Enquiry.findById(enquiry._id);
+          if (
+            freshEnquiry.lastStuckFollowUpSentAt &&
+            Date.now() -
+              new Date(freshEnquiry.lastStuckFollowUpSentAt).getTime() <
+              24 * 60 * 60 * 1000
+          ) {
+            console.log(
+              `⚠️ Skipping ${enquiry.phoneNumber} - already sent recently.`,
+            );
+            continue;
+          }
+
           const stuckResult = await sendButtonMessage(
             enquiry.phoneNumber,
             isArabic ? textAr : textEng,
             isArabic ? buttonsAr : buttonsEng,
             accessToken,
-            enquiry.recipientId
+            enquiry.recipientId,
           );
 
           // --- SAVE & EMIT STUCK MESSAGE ---
@@ -84,11 +98,6 @@ const checkAndSendFollowUps = async () => {
               messageId: stuckResult.messages[0].id,
               from: phoneDoc.phoneNumberId, // Business Phone
               recipientId: enquiry.recipientId, // Business Phone (Context)
-              // For outgoing: 'from' could be business number, or we just track direction 'outgoing'
-              // Actually for outgoing: from = business_number, recipientId = user_phone usually?
-              // Wait, existing logic: outgoing -> from=business, recipientId=user
-              // But here enquiry.recipientId is the business phone ID in DB context usually?
-              // Let's stick to standard:
               from: phoneDoc.phoneNumberId,
               recipientId: enquiry.phoneNumber, // The User
               body: isArabic ? textAr : textEng,
@@ -118,15 +127,15 @@ const checkAndSendFollowUps = async () => {
             }
           }
 
-          // Mark as sent
+          // Mark as sent & Force Update Timestamp
           enquiry.lastStuckFollowUpSentAt = new Date();
-          // We also update 'updatedAt' implicitly by saving, which resets the 3m timer
+          enquiry.updatedAt = new Date(); // Explicitly force update
           await enquiry.save();
           console.log(`🚀 Sent stuck follow-up to ${enquiry.phoneNumber}`);
         } catch (err) {
           console.error(
             `❌ Error sending stuck follow-up to ${enquiry.phoneNumber}:`,
-            err.message
+            err.message,
           );
         }
       }
@@ -147,7 +156,7 @@ const checkAndSendFollowUps = async () => {
 
     if (timeoutEnquiries.length > 0) {
       console.log(
-        `⏱️ Found ${timeoutEnquiries.length} timed-out enquiries (10m post-stuck)`
+        `⏱️ Found ${timeoutEnquiries.length} timed-out enquiries (10m post-stuck)`,
       );
 
       for (const enquiry of timeoutEnquiries) {
@@ -169,7 +178,7 @@ const checkAndSendFollowUps = async () => {
             enquiry.phoneNumber,
             timeoutText,
             accessToken,
-            enquiry.recipientId
+            enquiry.recipientId,
           );
 
           // Save & Emit
@@ -204,7 +213,7 @@ const checkAndSendFollowUps = async () => {
         } catch (err) {
           console.error(
             `❌ Error closing timed-out enquiry ${enquiry.phoneNumber}:`,
-            err.message
+            err.message,
           );
         }
       }
@@ -223,7 +232,7 @@ const checkAndSendFollowUps = async () => {
 
     if (reviewCandidates.length > 0) {
       console.log(
-        `📋 Found ${reviewCandidates.length} completed enquiries ready for review request`
+        `📋 Found ${reviewCandidates.length} completed enquiries ready for review request`,
       );
 
       for (const enquiry of reviewCandidates) {
@@ -262,7 +271,7 @@ const checkAndSendFollowUps = async () => {
             "Rate Experience",
             sections,
             accessToken,
-            enquiry.recipientId
+            enquiry.recipientId,
           );
 
           // --- SAVE & EMIT REVIEW REQUEST ---
@@ -305,7 +314,7 @@ const checkAndSendFollowUps = async () => {
         } catch (err) {
           console.error(
             `❌ Error sending review request to ${enquiry.phoneNumber}:`,
-            err.message
+            err.message,
           );
         }
       }
