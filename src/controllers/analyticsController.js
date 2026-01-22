@@ -227,6 +227,11 @@ const getTemplateAnalytics = async (req, res) => {
           failed: {
             $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] },
           },
+          lastSent: {
+            $max: {
+              $ifNull: ["$campaignData.sentAt", "$campaignData.createdAt"],
+            },
+          },
         },
       },
       // 4. Join with the 'campaigns' collection again to get reply counts
@@ -248,9 +253,10 @@ const getTemplateAnalytics = async (req, res) => {
           read: 1,
           failed: 1,
           replies: { $sum: "$campaigns.replyCount" }, // Sum replies from all campaigns using this template
+          lastSent: 1,
         },
       },
-      { $sort: { totalSent: -1 } }, // Sort by most sent
+      { $sort: { lastSent: -1 } }, // Sort by Last Sent by default
     ]);
 
     res.status(200).json({ success: true, data: stats });
@@ -382,7 +388,7 @@ const getAnalyticsForTemplate = async (req, res) => {
     // 3. Calculate total replies
     const totalReplies = campaigns.reduce(
       (acc, campaign) => acc + (campaign.replyCount || 0),
-      0
+      0,
     );
 
     // 4. Calculate global rates
