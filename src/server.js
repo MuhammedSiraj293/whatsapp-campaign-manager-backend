@@ -40,8 +40,15 @@ const allowedOrigins = [
   "https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app",
 ];
 const corsOptions = {
-  origin: "*", // ALLOW ALL FOR DEBUGGING
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
 };
