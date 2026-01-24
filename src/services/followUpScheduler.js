@@ -41,7 +41,7 @@ const checkAndSendFollowUps = async () => {
 
     if (stuckEnquiries.length > 0) {
       console.log(
-        `📋 Found ${stuckEnquiries.length} stuck enquiries (inactive > 3m)`
+        `📋 Found ${stuckEnquiries.length} stuck enquiries (inactive > 3m)`,
       );
 
       for (const enquiry of stuckEnquiries) {
@@ -58,10 +58,9 @@ const checkAndSendFollowUps = async () => {
 
           // Content
           const textEng =
-            "We are almost done! Please complete your enquiry so we can arrange the best assistance for you. ";
+            "Apologies, I didn't get a response from you! Please complete your enquiry so we can arrange the best assistance for you. ";
           const textAr =
-            "لقد أوشكنا على الانتهاء! يرجى استكمال استفسارك لنتمكن من ترتيب أفضل مساعدة لك. ";
-
+            "أعتذر، لم أتلقَّ ردًا منك! يُرجى إكمال استفسارك حتى نتمكن من تقديم أفضل مساعدة لك. ";
           const buttonsEng = [
             { id: "stuck_continue", title: "Continue" },
             { id: "stuck_end", title: "End Chat" },
@@ -71,12 +70,26 @@ const checkAndSendFollowUps = async () => {
             { id: "stuck_end", title: "إنهاء المحادثة" },
           ];
 
+          // --- HARDENING: Re-check if valid before sending ---
+          const freshEnquiry = await Enquiry.findById(enquiry._id);
+          if (
+            freshEnquiry.lastStuckFollowUpSentAt &&
+            Date.now() -
+              new Date(freshEnquiry.lastStuckFollowUpSentAt).getTime() <
+              24 * 60 * 60 * 1000
+          ) {
+            console.log(
+              `⚠️ Skipping ${enquiry.phoneNumber} - already sent recently.`,
+            );
+            continue;
+          }
+
           const stuckResult = await sendButtonMessage(
             enquiry.phoneNumber,
             isArabic ? textAr : textEng,
             isArabic ? buttonsAr : buttonsEng,
             accessToken,
-            enquiry.recipientId
+            enquiry.recipientId,
           );
 
           // --- SAVE & EMIT STUCK MESSAGE ---
@@ -85,11 +98,6 @@ const checkAndSendFollowUps = async () => {
               messageId: stuckResult.messages[0].id,
               from: phoneDoc.phoneNumberId, // Business Phone
               recipientId: enquiry.recipientId, // Business Phone (Context)
-              // For outgoing: 'from' could be business number, or we just track direction 'outgoing'
-              // Actually for outgoing: from = business_number, recipientId = user_phone usually?
-              // Wait, existing logic: outgoing -> from=business, recipientId=user
-              // But here enquiry.recipientId is the business phone ID in DB context usually?
-              // Let's stick to standard:
               from: phoneDoc.phoneNumberId,
               recipientId: enquiry.phoneNumber, // The User
               body: isArabic ? textAr : textEng,
@@ -119,15 +127,93 @@ const checkAndSendFollowUps = async () => {
             }
           }
 
-          // Mark as sent
+          // Mark as sent & Force Update Timestamp
           enquiry.lastStuckFollowUpSentAt = new Date();
-          // We also update 'updatedAt' implicitly by saving, which resets the 3m timer
+          enquiry.updatedAt = new Date(); // Explicitly force update
           await enquiry.save();
           console.log(`🚀 Sent stuck follow-up to ${enquiry.phoneNumber}`);
         } catch (err) {
           console.error(
             `❌ Error sending stuck follow-up to ${enquiry.phoneNumber}:`,
-            err.message
+            err.message,
+          );
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // PART 1.5: TIMEOUT CLOSURE (10 MIN AFTER STUCK MSG)
+    // ------------------------------------------------------------------
+    const tenMinutesAgo = new Date(now - 10 * 60 * 1000);
+
+    // Find enquiries where stuck message was sent > 10 mins ago AND no update since
+    const timeoutEnquiries = await Enquiry.find({
+      conversationState: { $ne: "END" },
+      status: { $ne: "closed", $ne: "handover" },
+      lastStuckFollowUpSentAt: { $lt: tenMinutesAgo, $ne: null }, // Stuck msg sent > 10m ago
+      updatedAt: { $lt: tenMinutesAgo }, // No user activity since stuck msg
+    });
+
+    if (timeoutEnquiries.length > 0) {
+      console.log(
+        `⏱️ Found ${timeoutEnquiries.length} timed-out enquiries (10m post-stuck)`,
+      );
+
+      for (const enquiry of timeoutEnquiries) {
+        try {
+          const phoneDoc = await PhoneNumber.findOne({
+            phoneNumberId: enquiry.recipientId,
+          }).populate("wabaAccount");
+
+          if (!phoneDoc || !phoneDoc.wabaAccount) continue;
+
+          const accessToken = phoneDoc.wabaAccount.accessToken;
+          const isArabic = enquiry.language === "ar";
+          const timeoutText = isArabic
+            ? "لم نسمع منك منذ فترة، لذا سنقوم بإنهاء هذه الجلسة. لا تتردد في التواصل معنا مرة أخرى عندما تحتاج إلى مساعدة. شكراً لك!"
+            : "I have not heard from you in a while, so I'll be ending this chat session. Feel free to reach out again whenever you require further assistance.\nThank you!";
+
+          // Send Text
+          const sentRes = await sendTextMessage(
+            enquiry.phoneNumber,
+            timeoutText,
+            accessToken,
+            enquiry.recipientId,
+          );
+
+          // Save & Emit
+          if (sentRes?.messages?.[0]?.id) {
+            const reply = await Reply.create({
+              messageId: sentRes.messages[0].id,
+              from: phoneDoc.phoneNumberId,
+              recipientId: enquiry.phoneNumber,
+              body: timeoutText,
+              timestamp: new Date(),
+              direction: "outgoing",
+              isAiGenerated: true,
+              type: "text",
+            });
+            const io = getIO();
+            if (io)
+              io.emit("newMessage", {
+                from: enquiry.phoneNumber,
+                recipientId: enquiry.recipientId,
+                message: reply,
+              });
+          }
+
+          // Close and Prevent Review
+          enquiry.conversationState = "END";
+          enquiry.status = "closed";
+          enquiry.endedAt = new Date();
+          enquiry.completionFollowUpSent = true; // DO NOT SEND REVIEW REQUEST
+          await enquiry.save();
+
+          console.log(`💤 Closed timed-out enquiry: ${enquiry.phoneNumber}`);
+        } catch (err) {
+          console.error(
+            `❌ Error closing timed-out enquiry ${enquiry.phoneNumber}:`,
+            err.message,
           );
         }
       }
@@ -146,7 +232,7 @@ const checkAndSendFollowUps = async () => {
 
     if (reviewCandidates.length > 0) {
       console.log(
-        `📋 Found ${reviewCandidates.length} completed enquiries ready for review request`
+        `📋 Found ${reviewCandidates.length} completed enquiries ready for review request`,
       );
 
       for (const enquiry of reviewCandidates) {
@@ -185,7 +271,7 @@ const checkAndSendFollowUps = async () => {
             "Rate Experience",
             sections,
             accessToken,
-            enquiry.recipientId
+            enquiry.recipientId,
           );
 
           // --- SAVE & EMIT REVIEW REQUEST ---
@@ -228,7 +314,7 @@ const checkAndSendFollowUps = async () => {
         } catch (err) {
           console.error(
             `❌ Error sending review request to ${enquiry.phoneNumber}:`,
-            err.message
+            err.message,
           );
         }
       }

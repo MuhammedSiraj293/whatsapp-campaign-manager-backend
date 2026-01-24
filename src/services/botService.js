@@ -58,7 +58,7 @@ const sendMessageNode = async (
   node,
   enquiry,
   accessToken,
-  phoneNumberId
+  phoneNumberId,
 ) => {
   if (!node) return null;
 
@@ -80,7 +80,7 @@ const sendMessageNode = async (
           text,
           buttons,
           accessToken,
-          phoneNumberId
+          phoneNumberId,
         );
       }
 
@@ -103,7 +103,7 @@ const sendMessageNode = async (
           buttonText,
           sections,
           accessToken,
-          phoneNumberId
+          phoneNumberId,
         );
       }
 
@@ -114,7 +114,7 @@ const sendMessageNode = async (
   } catch (error) {
     console.error(
       `❌ Error in sendMessageNode for node ${node.nodeId}:`,
-      error.message
+      error.message,
     );
     return null;
   }
@@ -142,7 +142,7 @@ const saveBotReply = async (
   customerPhone,
   recipientId,
   node,
-  enquiry
+  enquiry,
 ) => {
   if (!botReply || !botReply.messages || !botReply.messages[0]?.id) return null;
 
@@ -197,7 +197,7 @@ const handleBotConversation = async (
   message,
   messageBody,
   recipientId,
-  credentials
+  credentials,
 ) => {
   const { accessToken } = credentials;
   const customerPhone = message.from;
@@ -207,7 +207,7 @@ const handleBotConversation = async (
   let enquiry = await Enquiry.findOne({
     phoneNumber: customerPhone,
     recipientId: recipientId,
-  });
+  }).sort({ updatedAt: -1 });
 
   // 2. Handle System Buttons (Stuck) - No Flow Needed
   if (message.type === "interactive" && message.interactive?.button_reply) {
@@ -215,8 +215,6 @@ const handleBotConversation = async (
 
     // --- STUCK FOLLOW-UP HANDLERS ---
     if (btnId === "stuck_continue") {
-      console.log(`🔄 Stuck Continue: Search for recipientId=${customerPhone}`);
-
       // Fetch outgoing messages (handle potential 'from'/'recipientId' inversion in legacy data)
       const history = await Reply.find({
         $or: [
@@ -227,26 +225,23 @@ const handleBotConversation = async (
         .sort({ timestamp: -1 })
         .limit(20);
 
-      console.log(`📜 Found ${history.length} history items.`);
-
       let targetMsg = null;
       // Find first message that is NOT the stuck prompt
       for (const msg of history) {
         const body = msg.body || "";
-        console.log(
-          `   - Inspection: "${body.substring(0, 50)}..." [Type: ${msg.type}]`
-        );
 
-        // Check for stuck prompts (English or Arabic)
+        // Check for stuck prompts (English, Arabic, or by Button ID)
         const isStuckMsg =
-          body.includes("We are almost done") ||
-          body.includes("لقد أوشكنا على الانتهاء");
+          body.includes("Apologies, I didn't get a response from you") ||
+          body.includes("أعتذر، لم أتلق رداً منك") ||
+          msg.interactive?.action?.buttons?.some(
+            (b) =>
+              b.reply?.id === "stuck_continue" || b.reply?.id === "stuck_end",
+          );
 
         if (!isStuckMsg) {
           targetMsg = msg;
           break;
-        } else {
-          console.log("   -> Skipping (Stuck Message)");
         }
       }
 
@@ -260,11 +255,11 @@ const handleBotConversation = async (
           customerPhone,
           fallbackText,
           accessToken,
-          recipientId
+          recipientId,
         );
       } else {
         console.log(
-          `✅ Resuming with message type: ${targetMsg.type || "text"}`
+          `✅ Resuming with message type: ${targetMsg.type || "text"}`,
         );
 
         let sentRes = null;
@@ -287,7 +282,7 @@ const handleBotConversation = async (
             bodyText,
             buttons,
             accessToken,
-            recipientId
+            recipientId,
           );
         }
         // CASE B: LIST
@@ -314,7 +309,7 @@ const handleBotConversation = async (
             btnText,
             sections,
             accessToken,
-            recipientId
+            recipientId,
           );
         }
         // CASE C: TEXT (Default)
@@ -325,7 +320,7 @@ const handleBotConversation = async (
             customerPhone,
             textToSend,
             accessToken,
-            recipientId
+            recipientId,
           );
         }
 
@@ -368,7 +363,7 @@ const handleBotConversation = async (
 
       if (!enquiry) {
         console.error(
-          "❌ Enquiry not found for stuck_end. Cannot determine language."
+          "❌ Enquiry not found for stuck_end. Cannot determine language.",
         );
         return [];
       }
@@ -385,7 +380,7 @@ const handleBotConversation = async (
         customerPhone,
         byeText,
         accessToken,
-        recipientId
+        recipientId,
       );
 
       console.log("✅ Bye Result:", byeResult ? "Sent" : "Failed");
@@ -499,7 +494,7 @@ const handleBotConversation = async (
         replyNode,
         enquiry,
         accessToken,
-        recipientId
+        recipientId,
       );
       console.log("✅ sendMessageNode returned.");
 
@@ -508,7 +503,7 @@ const handleBotConversation = async (
         customerPhone,
         recipientId,
         replyNode,
-        enquiry
+        enquiry,
       );
       if (savedReply) generatedReplies.push(savedReply);
 
@@ -526,13 +521,13 @@ const handleBotConversation = async (
 
     if (diff < oneHourMs) {
       console.log(
-        `⏳ Cool-off active for ${customerPhone}, ignoring message...`
+        `⏳ Cool-off active for ${customerPhone}, ignoring message...`,
       );
       return [];
     } else {
       // Cool-off period has expired, restart the conversation
       console.log(
-        `🔄 Cool-off period expired for ${customerPhone}, restarting conversation...`
+        `🔄 Cool-off period expired for ${customerPhone}, restarting conversation...`,
       );
 
       const flow = await BotFlow.findById(botFlowId);
@@ -560,14 +555,14 @@ const handleBotConversation = async (
         startNode,
         enquiry,
         accessToken,
-        recipientId
+        recipientId,
       );
       const savedStart = await saveBotReply(
         startReply,
         customerPhone,
         recipientId,
         startNode,
-        enquiry
+        enquiry,
       );
       if (savedStart) generatedReplies.push(savedStart);
 
@@ -584,7 +579,7 @@ const handleBotConversation = async (
             firstNode,
             enquiry,
             accessToken,
-            recipientId
+            recipientId,
           );
           enquiry.conversationState = firstNode.nodeId;
           enquiry.lastNodeSentAt = new Date();
@@ -596,7 +591,7 @@ const handleBotConversation = async (
             customerPhone,
             recipientId,
             firstNode,
-            enquiry
+            enquiry,
           );
           if (savedFirst) generatedReplies.push(savedFirst);
 
@@ -645,14 +640,14 @@ const handleBotConversation = async (
       startNode,
       enquiry,
       accessToken,
-      recipientId
+      recipientId,
     );
     const savedStart = await saveBotReply(
       startReply,
       customerPhone,
       recipientId,
       startNode,
-      enquiry
+      enquiry,
     );
     if (savedStart) generatedReplies.push(savedStart);
 
@@ -669,7 +664,7 @@ const handleBotConversation = async (
           firstNode,
           enquiry,
           accessToken,
-          recipientId
+          recipientId,
         );
         enquiry.conversationState = firstNode.nodeId;
         enquiry.lastNodeSentAt = new Date();
@@ -681,7 +676,7 @@ const handleBotConversation = async (
           customerPhone,
           recipientId,
           firstNode,
-          enquiry
+          enquiry,
         );
         if (savedFirst) generatedReplies.push(savedFirst);
 
@@ -695,7 +690,7 @@ const handleBotConversation = async (
   if (enquiry && !currentNodeKey) {
     currentNodeKey = enquiry.conversationState;
     console.log(
-      `📌 Using enquiry.conversationState as currentNodeKey: ${currentNodeKey}`
+      `📌 Using enquiry.conversationState as currentNodeKey: ${currentNodeKey}`,
     );
   } else if (currentNodeKey) {
     console.log(`📌 currentNodeKey already set: ${currentNodeKey}`);
@@ -735,7 +730,7 @@ const handleBotConversation = async (
   }
 
   console.log(
-    `📍 Current node: ${currentNode.nodeId} (type: ${currentNode.messageType})`
+    `📍 Current node: ${currentNode.nodeId} (type: ${currentNode.messageType})`,
   );
 
   // ------------------------------------------------
@@ -757,14 +752,14 @@ const handleBotConversation = async (
         nn,
         enquiry,
         accessToken,
-        recipientId
+        recipientId,
       );
       const savedSkip = await saveBotReply(
         skipReply,
         customerPhone,
         recipientId,
         nn,
-        enquiry
+        enquiry,
       );
       if (savedSkip) generatedReplies.push(savedSkip);
     }
@@ -787,14 +782,14 @@ const handleBotConversation = async (
         nn,
         enquiry,
         accessToken,
-        recipientId
+        recipientId,
       );
       const savedSkip = await saveBotReply(
         skipReply,
         customerPhone,
         recipientId,
         nn,
-        enquiry
+        enquiry,
       );
       if (savedSkip) generatedReplies.push(savedSkip);
     }
@@ -830,14 +825,14 @@ const handleBotConversation = async (
           nextNode,
           enquiry,
           accessToken,
-          recipientId
+          recipientId,
         );
         const savedSkip = await saveBotReply(
           skipReply,
           customerPhone,
           recipientId,
           nextNode,
-          enquiry
+          enquiry,
         );
         if (savedSkip) generatedReplies.push(savedSkip);
       }
@@ -852,7 +847,7 @@ const handleBotConversation = async (
           customerPhone,
           "Invalid email. Please enter a valid email address (example: name@example.com)\n\nOr type *skip* to continue without email.",
           accessToken,
-          recipientId
+          recipientId,
         );
         return generatedReplies;
       }
@@ -876,7 +871,7 @@ const handleBotConversation = async (
     if (message.interactive?.list_reply) {
       console.log(`   List reply ID: ${message.interactive.list_reply.id}`);
       console.log(
-        `   List reply title: ${message.interactive.list_reply.title}`
+        `   List reply title: ${message.interactive.list_reply.title}`,
       );
 
       const selectedValue = message.interactive.list_reply.title;
@@ -890,7 +885,7 @@ const handleBotConversation = async (
     if (message.interactive?.button_reply) {
       console.log(`   Button reply ID: ${message.interactive.button_reply.id}`);
       console.log(
-        `   Button reply title: ${message.interactive.button_reply.title}`
+        `   Button reply title: ${message.interactive.button_reply.title}`,
       );
 
       const selectedValue = message.interactive.button_reply.title;
@@ -933,7 +928,7 @@ const handleBotConversation = async (
           endNode,
           enquiry,
           accessToken,
-          recipientId
+          recipientId,
         );
 
         const savedEnd = await saveBotReply(
@@ -941,7 +936,7 @@ const handleBotConversation = async (
           customerPhone,
           recipientId,
           endNode,
-          enquiry
+          enquiry,
         );
         if (savedEnd) generatedReplies.push(savedEnd);
       }
@@ -965,7 +960,7 @@ const handleBotConversation = async (
 
   if (!nextNode) {
     console.error(
-      `❌ Bot error: Could not find next node "${nextNodeKey}" in flow "${botFlowId}"`
+      `❌ Bot error: Could not find next node "${nextNodeKey}" in flow "${botFlowId}"`,
     );
     console.error(`Current node was: ${currentNode.nodeId}`);
     console.error(`Enquiry state: ${enquiry.conversationState}`);
@@ -994,7 +989,7 @@ const handleBotConversation = async (
         skipToNode,
         enquiry,
         accessToken,
-        recipientId
+        recipientId,
       );
       enquiry.conversationState = skipToNodeKey;
       enquiry.lastNodeSentAt = new Date();
@@ -1006,7 +1001,7 @@ const handleBotConversation = async (
         customerPhone,
         recipientId,
         skipToNode,
-        enquiry
+        enquiry,
       );
       if (savedSkip) generatedReplies.push(savedSkip);
     }
@@ -1028,7 +1023,7 @@ const handleBotConversation = async (
         skipToNode,
         enquiry,
         accessToken,
-        recipientId
+        recipientId,
       );
       enquiry.conversationState = skipToNodeKey;
       await enquiry.save();
@@ -1038,7 +1033,7 @@ const handleBotConversation = async (
         customerPhone,
         recipientId,
         skipToNode,
-        enquiry
+        enquiry,
       );
       if (savedSkip) generatedReplies.push(savedSkip);
     }
@@ -1055,7 +1050,7 @@ const handleBotConversation = async (
     nextNode,
     enquiry,
     accessToken,
-    recipientId
+    recipientId,
   );
 
   // 🔴 CRITICAL: Update conversation state IMMEDIATELY after sending
@@ -1073,7 +1068,7 @@ const handleBotConversation = async (
     customerPhone,
     recipientId,
     nextNode,
-    enquiry
+    enquiry,
   );
   if (savedReply) generatedReplies.push(savedReply);
 

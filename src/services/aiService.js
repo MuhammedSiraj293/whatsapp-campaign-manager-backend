@@ -42,8 +42,9 @@ NAMING RULE
 PROJECT & LOCATION HANDLING
 ────────────────────────
 - **KNOWN PROJECT**:
-  - **IF Details in Knowledge Base**: Mention ONE detail (e.g. "It has great views"). Then ASK for missing info (Bedrooms/Type).
-  - **IF NOT in Knowledge Base**: Acknowledge the project name enthusiastically (e.g. "That is a great project"). Do NOT invent details. ASK for Bedrooms/Type.
+  - **IF Details in Knowledge Base**: Mention ONE detail (e.g. "It has great views"). Then **YOU MUST ASK** for missing info (Bedrooms/Type).
+  - **IF NOT in Knowledge Base**: Acknowledge the project name enthusiastically. Do NOT invent details. **YOU MUST ASK** for Bedrooms/Type.
+  - **CRITICAL**: Never just describe the project. **Always end with a question** (e.g. "How many bedrooms are you looking for?" or "Are you interested in a specific layout?").
   - IF mixed types: Ask "Villa or Apartment?".
   - IF single type (e.g. Villa only): STATE IT and ask for Bedrooms.
 - **UNKNOWN PROJECT (No Name)**: Acknowledge, then ask Preferences (Step 5).
@@ -136,14 +137,19 @@ STEP 0.7: COMING SOON / LAUNCH HANDLING (VIP PRIORITY)
   - **IMMEDIATELY ASK FOR NAME (STEP 5)** to register them for the priority list.
   - **Example**: "That project is generating huge interest! May I have your name to add you to the priority list?"
 
-STEP 0.1: REPEATED CLOSING PREVENTION
+STEP 0.1: REPEATED CLOSING PREVENTION & PREFERRED CHANNEL
 - **Case A – After Service Confirmation (Step 6)**:
   - If your last message was the final confirmation (Step 6), and user says: "Great", "Okay", "Thanks", "Perfect", "Thank you", etc.
   - **Reply once**: "You're welcome! Have a great day. 👋"
+  - **MANDATORY JSON ACTION**: Set "handover": true.
 - **Case B – After “You’re welcome! Have a great day. 👋”**:
   - If user then says: "Bye", "Thanks", "You too", "Okay", "Have a good day":
   - **Do NOT reply**.
   - **Output internally**: \`{ "text": "NO_REPLY" }\`
+- **Case C – User says "I prefer WhatsApp" or "Contact me here"**:
+  - **Action**: Acknowledge and Close.
+  - **Reply**: "Noted. We will continue the communication here on WhatsApp. One of our consultants will be with you shortly."
+  - **MANDATORY JSON ACTION**: Set "handover": true.
   - If instead the user asks a new question / new enquiry (e.g., new area, new project, "Do you have something in Saadiyat?"):
     - **Treat it as a new enquiry**.
     - **Do NOT greet again**, but re-enter the funnel from STEP 1 (Location) with fresh logic (keep name & phone but assume new property search).
@@ -531,7 +537,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
           .replace(/\s+by\s+.+/g, "") // remove " by Modon"
           .replace(
             /residences|villas|apartments|towers|residence|villa|apartment|tower|community/g,
-            ""
+            "",
           )
           .replace(/s$/g, "") // remove trailing 's'
           .trim();
@@ -584,7 +590,7 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
 
     // A) Get 3 Newest
     const sortedByDate = [...allProperties].sort(
-      (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+      (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
     );
     const newest = sortedByDate.slice(0, 3);
 
@@ -617,13 +623,13 @@ const getPropertyKnowledge = async (userQuery = "", contextProject = "") => {
     Handover: ${p.handoverDate || "N/A"}
     Desc: ${p.description || "N/A"}
     Tags: ${p.tags && p.tags.length > 0 ? p.tags.join(", ") : "None"}
-  `
+  `,
     )
     .join("\n---\n");
 
   const projects = allProperties.map((p) => p.name).join(", ");
   const locations = [...new Set(allProperties.map((p) => p.location))].join(
-    ", "
+    ", ",
   );
 
   return {
@@ -680,7 +686,7 @@ const generateResponse = async (
   userPhone,
   messageBody,
   existingEnquiry,
-  profileName
+  profileName,
 ) => {
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
@@ -704,7 +710,7 @@ const generateResponse = async (
 
       // Check for List Selection (Bracketed or Raw)
       const listMatch = messageBody.match(
-        /\[User selected list option: (.+)\]/
+        /\[User selected list option: (.+)\]/,
       );
 
       const textToCheck = listMatch ? listMatch[1] : messageBody;
@@ -769,16 +775,27 @@ const generateResponse = async (
     // If score is low (< 40), it's likely just a keyword match, so trust the Link.
     if (detectedProjectFromLink && bestMatch && bestMatchScore >= 40) {
       console.log(
-        `✨ Correcting Project Name: "${detectedProjectFromLink}" -> "${bestMatch.name}" (Score: ${bestMatchScore})`
+        `✨ Correcting Project Name: "${detectedProjectFromLink}" -> "${bestMatch.name}" (Score: ${bestMatchScore})`,
       );
       detectedProjectFromLink = bestMatch.name;
     } else if (detectedProjectFromLink && bestMatch) {
       console.log(
-        `⚠️ Keeping Link Name: "${detectedProjectFromLink}" (Best DB Match: "${bestMatch.name}" Score: ${bestMatchScore} < 40)`
+        `⚠️ Keeping Link Name: "${detectedProjectFromLink}" (Best DB Match: "${bestMatch.name}" Score: ${bestMatchScore} < 40)`,
       );
     }
 
-    const history = await getRecentHistory(userPhone);
+    // --- FIX: FORCE FRESH START ON LINK DETECTION ---
+    // If a link was detected, we must IGNORE previous history to prevent the AI
+    // from seeing the old "Goodbye" message and thinking the convo is over.
+    let history = [];
+    if (detectedProjectFromLink) {
+      console.log(
+        "🔄 New Project Link Detected: Clearing Conversation History for Fresh Start.",
+      );
+      history = []; // Explicitly empty
+    } else {
+      history = await getRecentHistory(userPhone);
+    }
 
     // Determine the Project Name for Context
     // Priority: DB > Link (Corrected) > General
@@ -884,7 +901,7 @@ Valid Locations: ${locations || "None"}
         !parsed.extractedData.projectType
       ) {
         console.log(
-          `💾 Auto-saving Link Project to Extracted Data: ${detectedProjectFromLink}`
+          `💾 Auto-saving Link Project to Extracted Data: ${detectedProjectFromLink}`,
         );
         parsed.extractedData.project = detectedProjectFromLink;
       }
