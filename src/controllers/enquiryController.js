@@ -15,15 +15,19 @@ const getEnquiries = async (req, res) => {
       status = "all",
       project = "",
       wabaId = "", // <-- Active WABA
+      phoneNumberFilter = "", // <-- Specific Phone Number
     } = req.query;
 
     const query = {};
 
-    // 0. Filter by Active WABA (via Phone Numbers)
-    if (wabaId) {
+    // 0. Filter by Active WABA OR Specific Phone Number
+    if (phoneNumberFilter) {
+      // If a specific number is selected, filter by that ONLY
+      query.recipientId = phoneNumberFilter;
+    } else if (wabaId) {
+      // Otherwise, show ALL numbers for the active WABA
       const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId });
       const recipientIds = phoneNumbers.map((p) => p.phoneNumberId);
-      // Filter enquiries where recipientId MATCHES one of the WABA's phone numbers
       query.recipientId = { $in: recipientIds };
     }
 
