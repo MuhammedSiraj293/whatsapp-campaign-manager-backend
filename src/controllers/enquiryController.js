@@ -1,6 +1,6 @@
 // backend/src/controllers/enquiryController.js
-
 const Enquiry = require("../models/Enquiry");
+const PhoneNumber = require("../models/PhoneNumber");
 
 // @desc    Get all enquiries
 // @route   GET /api/enquiries
@@ -14,9 +14,18 @@ const getEnquiries = async (req, res) => {
       search = "",
       status = "all",
       project = "",
+      wabaId = "", // <-- Active WABA
     } = req.query;
 
     const query = {};
+
+    // 0. Filter by Active WABA (via Phone Numbers)
+    if (wabaId) {
+      const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId });
+      const recipientIds = phoneNumbers.map((p) => p.phoneNumberId);
+      // Filter enquiries where recipientId MATCHES one of the WABA's phone numbers
+      query.recipientId = { $in: recipientIds };
+    }
 
     // 1. Search Filter (Name, Phone, Project)
     if (search) {
