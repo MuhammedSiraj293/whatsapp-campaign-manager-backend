@@ -35,6 +35,17 @@ const PhoneNumberSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // --- NEW FIELDS ---
+    // Enable/Disable Follow-up for this number
+    isFollowUpEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    // Enable/Disable Review Request for this number
+    isReviewEnabled: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
