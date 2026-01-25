@@ -14,7 +14,7 @@ const getAllWabaAccounts = async (req, res) => {
       return {
         ...account.toObject(),
         phoneNumbers: phoneNumbers.filter(
-          (pn) => pn.wabaAccount.toString() === account._id.toString()
+          (pn) => pn.wabaAccount.toString() === account._id.toString(),
         ),
       };
     });
@@ -61,7 +61,7 @@ const updateWabaAccount = async (req, res) => {
     const account = await WabaAccount.findByIdAndUpdate(
       req.params.id,
       { masterSpreadsheetId },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!account) {
@@ -92,7 +92,10 @@ const addPhoneNumber = async (req, res) => {
     });
     res.status(201).json({ success: true, data: newPhoneNumber });
   } catch (error) {
-    res.status(500).json({ success: false, error: "Server Error" });
+    console.error("Error adding phone number:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Server Error: " + error.message });
   }
 };
 
@@ -135,12 +138,8 @@ const deletePhoneNumber = async (req, res) => {
 const updatePhoneNumber = async (req, res) => {
   try {
     // Only update the 'activeBotFlow' field
-    const {
-      activeBotFlow,
-      isAiEnabled,
-      isFollowUpEnabled,
-      isReviewEnabled,
-    } = req.body;
+    const { activeBotFlow, isAiEnabled, isFollowUpEnabled, isReviewEnabled } =
+      req.body;
 
     const phone = await PhoneNumber.findById(req.params.id);
     if (!phone) {
@@ -278,7 +277,7 @@ const connectWabaAccount = async (req, res) => {
     const phoneUrl = `https://graph.facebook.com/${apiVersion}/${wabaId}/phone_numbers?access_token=${accessToken}`;
     // We need to request fields to get the display Name and ID
     const phonesRes = await axios.get(
-      `${phoneUrl}&fields=id,display_phone_number,name_status,quality_rating`
+      `${phoneUrl}&fields=id,display_phone_number,name_status,quality_rating`,
     );
     const phones = phonesRes.data.data;
 
@@ -305,7 +304,7 @@ const connectWabaAccount = async (req, res) => {
       {},
       {
         headers: { Authorization: `Bearer ${accessToken}` },
-      }
+      },
     );
 
     res.status(200).json({
@@ -319,7 +318,7 @@ const connectWabaAccount = async (req, res) => {
   } catch (error) {
     console.error(
       "Error in connectWabaAccount:",
-      error.response ? error.response.data : error.message
+      error.response ? error.response.data : error.message,
     );
     res
       .status(500)
