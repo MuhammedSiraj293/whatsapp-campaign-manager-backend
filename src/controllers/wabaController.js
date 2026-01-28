@@ -56,11 +56,20 @@ const addWabaAccount = async (req, res) => {
 // @route   PUT /api/waba/accounts/:id
 const updateWabaAccount = async (req, res) => {
   try {
-    const { masterSpreadsheetId } = req.body;
+    const { masterSpreadsheetId, accountName, accessToken, businessAccountId } =
+      req.body;
+
+    const updateData = {};
+    if (masterSpreadsheetId !== undefined)
+      updateData.masterSpreadsheetId = masterSpreadsheetId;
+    if (accountName !== undefined) updateData.accountName = accountName;
+    if (accessToken !== undefined) updateData.accessToken = accessToken;
+    if (businessAccountId !== undefined)
+      updateData.businessAccountId = businessAccountId;
 
     const account = await WabaAccount.findByIdAndUpdate(
       req.params.id,
-      { masterSpreadsheetId },
+      updateData,
       { new: true, runValidators: true },
     );
 
@@ -155,6 +164,11 @@ const updatePhoneNumber = async (req, res) => {
     if (isFollowUpEnabled !== undefined)
       phone.isFollowUpEnabled = isFollowUpEnabled;
     if (isReviewEnabled !== undefined) phone.isReviewEnabled = isReviewEnabled;
+    // New fields
+    if (req.body.phoneNumberName !== undefined)
+      phone.phoneNumberName = req.body.phoneNumberName;
+    if (req.body.phoneNumberId !== undefined)
+      phone.phoneNumberId = req.body.phoneNumberId;
 
     await phone.save();
 
