@@ -1326,16 +1326,30 @@ const processWebhook = async (req, res) => {
       /* -------------------------------------------
        * A4) SAVE INCOMING MESSAGE
        * ------------------------------------------- */
-      const incomingReply = new Reply(newReplyData);
-      const savedReply = await incomingReply.save();
+      // WRAPPED IN TRY/CATCH to handle Race Conditions (Duplicate Webhooks)
+      try {
+        const incomingReply = new Reply(newReplyData);
+        const savedReply = await incomingReply.save();
 
-      io.emit("newMessage", {
-        from: message.from,
-        recipientId,
-        message: savedReply,
-      });
+        io.emit("newMessage", {
+          from: message.from,
+          recipientId,
+          message: savedReply,
+        });
 
-      console.log("💾 Saved incoming reply.");
+        console.log("💾 Saved incoming reply.");
+      } catch (saveErr) {
+        if (saveErr.code === 11000) {
+          console.warn(
+            `⚠️ Race Condition Detected: Message ${message.id} was already saved by another process. Ignoring duplicate.`,
+          );
+          // Stop processing this specific request, but return 200 OK to Meta
+          return res.sendStatus(200);
+        } else {
+          console.error("❌ Error saving reply:", saveErr);
+          throw saveErr; // Rethrow other errors
+        }
+      }
 
       /* ---------------------------------------------------------
        * B & C) DEBOUNCED PROCESSING
