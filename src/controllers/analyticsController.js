@@ -44,16 +44,17 @@ const getCampaignAnalytics = async (req, res) => {
 
     // --- THIS IS THE KEY CHANGE ---
     // Run all count queries in parallel for better performance
-    const [totalSent, delivered, read, failed, totalDelivered] =
+    const [totalSent, delivered, read, failed, skipped, totalDelivered] =
       await Promise.all([
         Analytics.countDocuments({ campaign: campaignId }),
         Analytics.countDocuments({ campaign: campaignId, status: "delivered" }),
         Analytics.countDocuments({ campaign: campaignId, status: "read" }),
         Analytics.countDocuments({ campaign: campaignId, status: "failed" }),
+        Analytics.countDocuments({ campaign: campaignId, status: "skipped" }), // <-- ADDED SKIPPED
         Analytics.countDocuments({
           campaign: campaignId,
           status: { $in: ["delivered", "read"] },
-        }), // <-- ADDED FAILED COUNT
+        }),
       ]);
 
     if (totalSent === 0) {
@@ -65,22 +66,33 @@ const getCampaignAnalytics = async (req, res) => {
           delivered: 0,
           read: 0,
           failed: 0,
+          skipped: 0, // <-- ADDED
           totalDelivered: 0,
           replies: campaign.replyCount || 0,
           deliveryRate: "0%",
           readRate: "0%",
           replyRate: "0%",
           failedRate: "0%",
+          skippedRate: "0%", // <-- ADDED
           totalDeliveryRate: "0%",
         },
       });
     }
 
+    // "Total Sent" usually implies "Attempted".
+    // If skipped are included in totalSent, the rates should likely be based on (totalSent - skipped) or just totalSent?
+    // Usually "Sent" means "Messages pushed to Meta". Skipped were NOT pushed.
+    // However, for accounting purposes, user might want to see them separate.
+    // Let's keep rates based on totalSent for consistency, or maybe exclude skipped from denominator?
+    // User asked "can we add skipped count also here".
+    // I will include it as a separate stat card.
+
     const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + "%";
     const readRate = ((read / totalSent) * 100).toFixed(1) + "%";
     const replyRate =
       ((campaign.replyCount / totalSent) * 100).toFixed(1) + "%";
-    const failedRate = ((failed / totalSent) * 100).toFixed(1) + "%"; // <-- Added failedRat
+    const failedRate = ((failed / totalSent) * 100).toFixed(1) + "%";
+    const skippedRate = ((skipped / totalSent) * 100).toFixed(1) + "%"; // <-- ADDED
     const totalDeliveryRate =
       ((totalDelivered / totalSent) * 100).toFixed(1) + "%";
 
@@ -91,14 +103,16 @@ const getCampaignAnalytics = async (req, res) => {
         totalSent,
         delivered,
         read,
-        failed, // <-- ADDED FAILED COUNT TO RESPONSE
-        totalDelivered, // 👈 added
+        failed,
+        skipped, // <-- ADDED
+        totalDelivered,
         replies: campaign.replyCount || 0,
         deliveryRate,
         readRate,
         replyRate,
         failedRate,
-        totalDeliveryRate, // 👈 added
+        skippedRate, // <-- ADDED
+        totalDeliveryRate,
       },
     });
   } catch (error) {

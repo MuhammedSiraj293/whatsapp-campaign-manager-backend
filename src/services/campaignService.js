@@ -26,7 +26,7 @@ const sendCampaign = async (campaignId) => {
     throw new Error('No "Send From" phone number assigned to this campaign.');
   if (!campaign.phoneNumber.wabaAccount)
     throw new Error(
-      "WABA account for this phone number is missing or deleted."
+      "WABA account for this phone number is missing or deleted.",
     );
 
   const { accessToken } = campaign.phoneNumber.wabaAccount;
@@ -34,7 +34,7 @@ const sendCampaign = async (campaignId) => {
 
   if (!accessToken || !phoneNumberId) {
     throw new Error(
-      "Invalid account credentials. Check WABA account and Phone Number setup."
+      "Invalid account credentials. Check WABA account and Phone Number setup.",
     );
   }
   // --- END NEW VALIDATION ---
@@ -65,7 +65,7 @@ const sendCampaign = async (campaignId) => {
   }
   if (originalCount !== contacts.length) {
     console.log(
-      `📉 Removed ${originalCount - contacts.length} contacts due to exclusion.`
+      `📉 Removed ${originalCount - contacts.length} contacts due to exclusion.`,
     );
   }
   // --- END EXCLUSION LOGIC ---
@@ -93,7 +93,7 @@ const sendCampaign = async (campaignId) => {
     campaign: campaignId,
   }).select("contact");
   const alreadySentContactIds = new Set(
-    alreadySentAnalytics.map((a) => a.contact.toString())
+    alreadySentAnalytics.map((a) => a.contact.toString()),
   );
 
   // 2. Get contacts who have already received this template across any campaign
@@ -113,13 +113,13 @@ const sendCampaign = async (campaignId) => {
   const phoneNumbersWhoReceivedTemplate = new Set(
     analyticsWithPhones
       .filter((a) => a.contact && a.contact.phoneNumber) // ✅ Safety check ensures contact is not null
-      .map((a) => a.contact.phoneNumber)
+      .map((a) => a.contact.phoneNumber),
   ); // --- END OF CORRECTION ---
   console.log(
-    `Found ${alreadySentContactIds.size} contacts who already received this campaign.`
+    `Found ${alreadySentContactIds.size} contacts who already received this campaign.`,
   );
   console.log(
-    `Found ${phoneNumbersWhoReceivedTemplate.size} contacts who already successfully received template "${campaign.templateName}".`
+    `Found ${phoneNumbersWhoReceivedTemplate.size} contacts who already successfully received template "${campaign.templateName}".`,
   );
   // --- END OF CORRECTION ---
 
@@ -143,16 +143,32 @@ const sendCampaign = async (campaignId) => {
     // Skip if already sent this campaign
     if (alreadySentContactIds.has(contactIdStr)) {
       console.log(
-        `Skipping ${contact.phoneNumber}: already sent in this campaign.`
+        `Skipping ${contact.phoneNumber}: already sent in this campaign.`,
       );
+      // --- RECORD SKIPPED STATUS ---
+      await Analytics.create({
+        wamid: `skipped-${contact._id}-${Date.now()}`, // Dummy ID
+        campaign: campaign._id,
+        contact: contact._id,
+        status: "skipped",
+        failureReason: "Already sent in this campaign",
+      });
       continue;
     }
 
     // Skip if this phone number has already received this template
     if (phoneNumbersWhoReceivedTemplate.has(phone)) {
       console.log(
-        `Skipping ${phone}: already received template "${campaign.templateName}".`
+        `Skipping ${phone}: already received template "${campaign.templateName}".`,
       );
+      // --- RECORD SKIPPED STATUS ---
+      await Analytics.create({
+        wamid: `skipped-${contact._id}-${Date.now()}`, // Dummy ID
+        campaign: campaign._id,
+        contact: contact._id,
+        status: "skipped",
+        failureReason: `Already received template "${campaign.templateName}"`,
+      });
       continue;
     }
 
@@ -185,7 +201,7 @@ const sendCampaign = async (campaignId) => {
           buttons: campaign.buttons,
         },
         accessToken, // Pass the dynamic token
-        phoneNumberId // Pass the dynamic phone ID
+        phoneNumberId, // Pass the dynamic phone ID
       );
 
       if (response && response.messages && response.messages[0].id) {
@@ -201,7 +217,7 @@ const sendCampaign = async (campaignId) => {
             const placeholder = `{{${index + 1}}}`;
             resolvedBody = resolvedBody.replace(
               new RegExp(placeholder, "g"),
-              val
+              val,
             );
           });
         }
