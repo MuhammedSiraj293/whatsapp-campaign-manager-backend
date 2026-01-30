@@ -113,9 +113,18 @@ const processBufferedMessages = async (
 
     // FILTER: Ignore STOP/UNSUBSCRIBE messages from being treated as "Leads"
     const stopKeywords = ["stop", "unsubscribe", "cancel", "opt out", "remove"];
-    const isStopMessage = stopKeywords.some((k) =>
-      messageBodyLower.includes(k),
-    );
+    // Also ignore standard unsubscribe reasons (case-insensitive)
+    const unsubscribeReasons = [
+      "too many messages",
+      "not relevant",
+      "already purchased",
+      "prefer another channel",
+      "other",
+    ];
+
+    const isStopMessage =
+      stopKeywords.some((k) => messageBodyLower.includes(k)) ||
+      unsubscribeReasons.some((r) => messageBodyLower === r);
 
     if (isStopMessage) {
       console.log(
