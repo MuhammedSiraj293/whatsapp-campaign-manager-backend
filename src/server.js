@@ -34,18 +34,27 @@ const app = express();
 const httpServer = http.createServer(app);
 
 // CORS Configuration
+// CORS Configuration
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://localhost:5173", // Vite default
   "https://whatsapp-campaign-manager-frontend.vercel.app",
-  "https://whatsapp-campaign-manager-frontend-fhmhx0aob.vercel.app",
 ];
+
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
+
+    // Check if origin is in the allowed list OR if it is a vercel preview deployment
+    if (
+      allowedOrigins.indexOf(origin) !== -1 ||
+      origin.endsWith(".vercel.app") ||
+      origin.endsWith(".onrender.com") // Include Render domains just in case
+    ) {
       callback(null, true);
     } else {
+      console.log("🚫 CORS Blocked Origin:", origin); // Log the blocked origin
       callback(new Error("Not allowed by CORS"));
     }
   },
@@ -55,7 +64,25 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Initialize Socket.IO using the manager
-const io = socketManager.init(httpServer, { origin: allowedOrigins });
+// Note: We need to pass a function or array for origin. Socket.io accepts regex or standard array.
+// For simplicity in socket.io, we will allow all or complex logic.
+// Socket.io 'origin' option can be a function in newer versions or we can just pass specific domains.
+// To keep it simple and consistent with Express CORS:
+const io = socketManager.init(httpServer, {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (
+      allowedOrigins.indexOf(origin) !== -1 ||
+      origin.endsWith(".vercel.app") ||
+      origin.endsWith(".onrender.com")
+    ) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"), false);
+    }
+  },
+  credentials: true,
+});
 
 io.on("connection", (socket) => {
   console.log("🔌 A user connected:", socket.id);
