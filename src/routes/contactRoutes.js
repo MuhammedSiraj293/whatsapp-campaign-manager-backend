@@ -6,9 +6,10 @@ const {
   getAllContactLists,
   bulkAddContacts,
   getContactsInList,
-  deleteContactList, 
+  deleteContactList,
   updateContact, // <-- 1. IMPORT
   deleteContact, // <-- 1. IMPORT
+  getContactStats, // <-- NEW IMPORT
 } = require("../controllers/contactController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -34,8 +35,12 @@ router.get("/lists/:listId/contacts", protect, getContactsInList);
 
 // --- 5. NEW ROUTE for a single contact ---
 // This route handles updating or deleting a specific contact by its ID
-router.route('/contacts/:contactId')
-    .put(protect, authorize('admin', 'manager'), updateContact)
-    .delete(protect, authorize('admin', 'manager'), deleteContact);
+router
+  .route("/contacts/:contactId")
+  .put(protect, authorize("admin", "manager"), updateContact)
+  .delete(protect, authorize("admin", "manager"), deleteContact);
+
+// --- 6. NEW ROUTE for contact stats ---
+router.get("/contacts/:contactId/stats", protect, getContactStats);
 
 module.exports = router;

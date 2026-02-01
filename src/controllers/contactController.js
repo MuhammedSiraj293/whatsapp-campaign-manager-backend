@@ -2,6 +2,8 @@
 
 const Contact = require("../models/Contact");
 const ContactList = require("../models/ContactList");
+const Analytics = require("../models/Analytics");
+const Reply = require("../models/Reply");
 const mongoose = require("mongoose");
 const { getIO } = require("../socketManager"); // <-- 1. IMPORT getIO
 
@@ -91,7 +93,7 @@ const getAllContactLists = async (req, res) => {
           createdAt: 1,
           contactCount: { $size: "$contacts" },
         },
-      }
+      },
     );
 
     const contactLists = await ContactList.aggregate(pipeline);
@@ -204,6 +206,53 @@ const deleteContact = async (req, res) => {
   }
 };
 
+// --- NEW FUNCTION TO GET CONTACT STATS ---
+const getContactStats = async (req, res) => {
+  try {
+    const { contactId } = req.params;
+    const contact = await Contact.findById(contactId);
+
+    if (!contact) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Contact not found" });
+    }
+
+    const [campaignsSent, campaignsFailed, repliesCount] = await Promise.all([
+      // Count sent/delivered/read
+      Analytics.countDocuments({
+        contact: contact._id,
+        status: { $in: ["sent", "delivered", "read"] },
+      }),
+      // Count failed
+      Analytics.countDocuments({
+        contact: contact._id,
+        status: "failed",
+      }),
+      // Count incoming replies
+      Reply.countDocuments({
+        from: contact.phoneNumber,
+        direction: "incoming",
+      }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        contact,
+        stats: {
+          campaignsSent,
+          campaignsFailed,
+          repliesCount,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching contact stats:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 module.exports = {
   createContactList,
   getAllContactLists,
@@ -212,4 +261,5 @@ module.exports = {
   deleteContactList,
   deleteContact,
   updateContact,
+  getContactStats,
 };
