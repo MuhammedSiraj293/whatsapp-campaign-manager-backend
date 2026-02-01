@@ -56,6 +56,9 @@ const checkAndSendFollowUps = async () => {
           const accessToken = phoneDoc.wabaAccount.accessToken;
           const isArabic = enquiry.language === "ar";
 
+          // CHECK: Is Follow-up Enabled?
+          if (!phoneDoc.isFollowUpEnabled) continue;
+
           // Content
           const textEng =
             "Apologies, I didn't get a response from you! Please complete your enquiry so we can arrange the best assistance for you. ";
@@ -169,6 +172,9 @@ const checkAndSendFollowUps = async () => {
 
           const accessToken = phoneDoc.wabaAccount.accessToken;
           const isArabic = enquiry.language === "ar";
+
+          // CHECK: Is Follow-up Enabled? (Also controls auto-close)
+          if (!phoneDoc.isFollowUpEnabled) continue;
           const timeoutText = isArabic
             ? "لم نسمع منك منذ فترة، لذا سنقوم بإنهاء هذه الجلسة. لا تتردد في التواصل معنا مرة أخرى عندما تحتاج إلى مساعدة. شكراً لك!"
             : "I have not heard from you in a while, so I'll be ending this chat session. Feel free to reach out again whenever you require further assistance.\nThank you!";
@@ -248,6 +254,9 @@ const checkAndSendFollowUps = async () => {
           if (freshEnquiry.completionFollowUpSent) continue;
 
           const accessToken = phoneDoc.wabaAccount.accessToken;
+
+          // CHECK: Is Review Enabled?
+          if (!phoneDoc.isReviewEnabled) continue;
 
           // Send List Message for 1-5 Stars (English Only - Premium Experience)
           const listBody =
