@@ -253,6 +253,51 @@ const getContactStats = async (req, res) => {
   }
 };
 
+// --- NEW FUNCTION FOR ANALYTICS DASHBOARD ---
+const getContactAnalytics = async (req, res) => {
+  try {
+    const totalContacts = await Contact.countDocuments({});
+    const subscribed = await Contact.countDocuments({ isSubscribed: true });
+    const unsubscribed = await Contact.countDocuments({ isSubscribed: false });
+
+    // Calculate duplicates: Total Entries - Unique Phone Numbers
+    const uniquePhoneNumbers = await Contact.distinct("phoneNumber");
+    const duplicates = totalContacts - uniquePhoneNumbers.length;
+
+    // Aggregate Unsubscribe Reasons
+    const reasonsAggregation = await Contact.aggregate([
+      { $match: { isSubscribed: false } },
+      {
+        $group: {
+          _id: { $toLower: "$unsubscribeReason" }, // Group by lowercase reason to merge "STOP" and "stop"
+          count: { $sum: 1 },
+          originalReason: { $first: "$unsubscribeReason" }, // Keep one original casing for display
+        },
+      },
+      { $sort: { count: -1 } },
+    ]);
+
+    const reasons = reasonsAggregation.map((r) => ({
+      reason: r.originalReason || "No reason provided", // Handle null/empty reasons
+      count: r.count,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalContacts,
+        subscribed,
+        unsubscribed,
+        duplicates,
+        reasons,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching contact analytics:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 module.exports = {
   createContactList,
   getAllContactLists,
@@ -262,4 +307,5 @@ module.exports = {
   deleteContact,
   updateContact,
   getContactStats,
+  getContactAnalytics, // <-- EXPORT
 };
