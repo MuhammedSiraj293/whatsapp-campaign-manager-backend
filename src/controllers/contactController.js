@@ -298,6 +298,33 @@ const getContactAnalytics = async (req, res) => {
   }
 };
 
+// --- NEW FUNCTION TO GET UNSUBSCRIBED CONTACTS BY REASON ---
+const getUnsubscribedContacts = async (req, res) => {
+  try {
+    const { reason } = req.query;
+    let query = { isSubscribed: false };
+
+    if (reason) {
+      if (reason === "No reason provided") {
+        // Match null or empty string
+        query.unsubscribeReason = { $in: [null, ""] };
+      } else {
+        // Case-insensitive match
+        query.unsubscribeReason = { $regex: new RegExp(`^${reason}$`, "i") };
+      }
+    }
+
+    const contacts = await Contact.find(query).sort({
+      unsubscribeDate: -1,
+      updatedAt: -1,
+    });
+    res.status(200).json({ success: true, data: contacts });
+  } catch (error) {
+    console.error("Error fetching unsubscribed contacts:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 module.exports = {
   createContactList,
   getAllContactLists,
@@ -307,5 +334,6 @@ module.exports = {
   deleteContact,
   updateContact,
   getContactStats,
-  getContactAnalytics, // <-- EXPORT
+  getContactAnalytics,
+  getUnsubscribedContacts, // <-- EXPORT
 };

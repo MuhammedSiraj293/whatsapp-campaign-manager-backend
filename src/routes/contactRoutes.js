@@ -11,6 +11,7 @@ const {
   deleteContact, // <-- 1. IMPORT
   getContactStats, // <-- NEW IMPORT
   getContactAnalytics, // <-- NEW IMPORT
+  getUnsubscribedContacts, // <-- NEW IMPORT
 } = require("../controllers/contactController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -19,6 +20,7 @@ const router = express.Router();
 
 // --- ANALYTICS ROUTE (Place before dynamic ID routes to avoid conflict) ---
 router.get("/analytics", protect, getContactAnalytics);
+router.get("/unsubscribed", protect, getUnsubscribedContacts); // <-- NEW ROUTE
 
 router
   .route("/lists")
