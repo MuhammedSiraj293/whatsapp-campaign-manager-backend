@@ -44,13 +44,14 @@ const getCampaignAnalytics = async (req, res) => {
 
     // --- THIS IS THE KEY CHANGE ---
     // Run all count queries in parallel for better performance
-    const [totalSent, delivered, read, failed, skipped, totalDelivered] =
+    const [totalSent, sent, delivered, read, failed, skipped, totalDelivered] =
       await Promise.all([
         Analytics.countDocuments({ campaign: campaignId }),
+        Analytics.countDocuments({ campaign: campaignId, status: "sent" }), // <-- ADDED SENT (Dispatched)
         Analytics.countDocuments({ campaign: campaignId, status: "delivered" }),
         Analytics.countDocuments({ campaign: campaignId, status: "read" }),
         Analytics.countDocuments({ campaign: campaignId, status: "failed" }),
-        Analytics.countDocuments({ campaign: campaignId, status: "skipped" }), // <-- ADDED SKIPPED
+        Analytics.countDocuments({ campaign: campaignId, status: "skipped" }),
         Analytics.countDocuments({
           campaign: campaignId,
           status: { $in: ["delivered", "read"] },
@@ -63,36 +64,31 @@ const getCampaignAnalytics = async (req, res) => {
         data: {
           name: campaign.name,
           totalSent: 0,
+          sent: 0, // <-- ADDED
           delivered: 0,
           read: 0,
           failed: 0,
-          skipped: 0, // <-- ADDED
+          skipped: 0,
           totalDelivered: 0,
           replies: campaign.replyCount || 0,
           deliveryRate: "0%",
+          sentRate: "0%", // <-- ADDED
           readRate: "0%",
           replyRate: "0%",
           failedRate: "0%",
-          skippedRate: "0%", // <-- ADDED
+          skippedRate: "0%",
           totalDeliveryRate: "0%",
         },
       });
     }
 
-    // "Total Sent" usually implies "Attempted".
-    // If skipped are included in totalSent, the rates should likely be based on (totalSent - skipped) or just totalSent?
-    // Usually "Sent" means "Messages pushed to Meta". Skipped were NOT pushed.
-    // However, for accounting purposes, user might want to see them separate.
-    // Let's keep rates based on totalSent for consistency, or maybe exclude skipped from denominator?
-    // User asked "can we add skipped count also here".
-    // I will include it as a separate stat card.
-
+    const sentRate = ((sent / totalSent) * 100).toFixed(1) + "%"; // <-- ADDED
     const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + "%";
     const readRate = ((read / totalSent) * 100).toFixed(1) + "%";
     const replyRate =
       ((campaign.replyCount / totalSent) * 100).toFixed(1) + "%";
     const failedRate = ((failed / totalSent) * 100).toFixed(1) + "%";
-    const skippedRate = ((skipped / totalSent) * 100).toFixed(1) + "%"; // <-- ADDED
+    const skippedRate = ((skipped / totalSent) * 100).toFixed(1) + "%";
     const totalDeliveryRate =
       ((totalDelivered / totalSent) * 100).toFixed(1) + "%";
 
@@ -101,17 +97,19 @@ const getCampaignAnalytics = async (req, res) => {
       data: {
         name: campaign.name,
         totalSent,
+        sent, // <-- ADDED
         delivered,
         read,
         failed,
-        skipped, // <-- ADDED
+        skipped,
         totalDelivered,
         replies: campaign.replyCount || 0,
+        sentRate, // <-- ADDED
         deliveryRate,
         readRate,
         replyRate,
         failedRate,
-        skippedRate, // <-- ADDED
+        skippedRate,
         totalDeliveryRate,
       },
     });
@@ -232,6 +230,9 @@ const getTemplateAnalytics = async (req, res) => {
         $group: {
           _id: "$campaignData.templateName", // Group by template name
           totalSent: { $sum: 1 }, // Count all messages
+          sent: {
+            $sum: { $cond: [{ $eq: ["$status", "sent"] }, 1, 0] },
+          },
           delivered: {
             $sum: { $cond: [{ $eq: ["$status", "delivered"] }, 1, 0] },
           },
@@ -240,6 +241,9 @@ const getTemplateAnalytics = async (req, res) => {
           },
           failed: {
             $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] },
+          },
+          skipped: {
+            $sum: { $cond: [{ $eq: ["$status", "skipped"] }, 1, 0] },
           },
           lastSent: {
             $max: {
@@ -263,9 +267,11 @@ const getTemplateAnalytics = async (req, res) => {
           _id: 0,
           templateName: "$_id",
           totalSent: 1,
+          sent: 1, // <-- ADDED
           delivered: 1,
           read: 1,
           failed: 1,
+          skipped: 1, // <-- ADDED
           replies: { $sum: "$campaigns.replyCount" }, // Sum replies from all campaigns using this template
           lastSent: 1,
         },
@@ -330,26 +336,41 @@ const getAnalyticsForTemplate = async (req, res) => {
 
     // Calculate stats for each segment
     for (const [segName, segCampaignIds] of Object.entries(segmentMap)) {
-      const [segSent, segDelivered, segRead, segFailed, segTotalDelivered] =
-        await Promise.all([
-          Analytics.countDocuments({ campaign: { $in: segCampaignIds } }),
-          Analytics.countDocuments({
-            campaign: { $in: segCampaignIds },
-            status: "delivered",
-          }),
-          Analytics.countDocuments({
-            campaign: { $in: segCampaignIds },
-            status: "read",
-          }),
-          Analytics.countDocuments({
-            campaign: { $in: segCampaignIds },
-            status: "failed",
-          }),
-          Analytics.countDocuments({
-            campaign: { $in: segCampaignIds },
-            status: { $in: ["delivered", "read"] },
-          }),
-        ]);
+      const [
+        segSentTotal,
+        segSent,
+        segDelivered,
+        segRead,
+        segFailed,
+        segSkipped,
+        segTotalDelivered,
+      ] = await Promise.all([
+        Analytics.countDocuments({ campaign: { $in: segCampaignIds } }),
+        Analytics.countDocuments({
+          campaign: { $in: segCampaignIds },
+          status: "sent",
+        }), // <-- ADDED
+        Analytics.countDocuments({
+          campaign: { $in: segCampaignIds },
+          status: "delivered",
+        }),
+        Analytics.countDocuments({
+          campaign: { $in: segCampaignIds },
+          status: "read",
+        }),
+        Analytics.countDocuments({
+          campaign: { $in: segCampaignIds },
+          status: "failed",
+        }),
+        Analytics.countDocuments({
+          campaign: { $in: segCampaignIds },
+          status: "skipped",
+        }), // <-- ADDED
+        Analytics.countDocuments({
+          campaign: { $in: segCampaignIds },
+          status: { $in: ["delivered", "read"] },
+        }),
+      ]);
 
       // Calculate replies for this segment (sum replyCount of campaigns in this segment)
       const segReplies = campaigns
@@ -362,15 +383,19 @@ const getAnalyticsForTemplate = async (req, res) => {
 
       segmentsData.push({
         name: segName,
-        totalSent: segSent, // Match frontend "Total Sent"
+        totalSent: segSentTotal, // Match frontend "Total Sent"
+        sent: segSent,
         delivered: segDelivered,
         read: segRead,
         failed: segFailed,
+        skipped: segSkipped,
         replies: segReplies,
-        deliveredRate: safeDiv(segDelivered, segSent),
-        readRate: safeDiv(segRead, segSent),
-        failedRate: safeDiv(segFailed, segSent),
-        replyRate: safeDiv(segReplies, segSent),
+        sentRate: safeDiv(segSent, segSentTotal),
+        deliveredRate: safeDiv(segDelivered, segSentTotal),
+        readRate: safeDiv(segRead, segSentTotal),
+        failedRate: safeDiv(segFailed, segSentTotal),
+        skippedRate: safeDiv(segSkipped, segSentTotal),
+        replyRate: safeDiv(segReplies, segSentTotal),
       });
     }
 
@@ -378,9 +403,13 @@ const getAnalyticsForTemplate = async (req, res) => {
     segmentsData.sort((a, b) => b.totalSent - a.totalSent);
 
     // 2. Global Stats (Run parallel query for all IDs)
-    const [totalSent, delivered, read, failed, totalDelivered] =
+    const [totalSent, sent, delivered, read, failed, skipped, totalDelivered] =
       await Promise.all([
         Analytics.countDocuments({ campaign: { $in: allCampaignIds } }),
+        Analytics.countDocuments({
+          campaign: { $in: allCampaignIds },
+          status: "sent",
+        }), // <-- ADDED
         Analytics.countDocuments({
           campaign: { $in: allCampaignIds },
           status: "delivered",
@@ -395,6 +424,10 @@ const getAnalyticsForTemplate = async (req, res) => {
         }),
         Analytics.countDocuments({
           campaign: { $in: allCampaignIds },
+          status: "skipped",
+        }), // <-- ADDED
+        Analytics.countDocuments({
+          campaign: { $in: allCampaignIds },
           status: { $in: ["delivered", "read"] },
         }),
       ]);
@@ -406,28 +439,34 @@ const getAnalyticsForTemplate = async (req, res) => {
     );
 
     // 4. Calculate global rates
+    const sentRate = ((sent / totalSent) * 100).toFixed(1) + "%";
     const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + "%";
     const readRate = ((read / totalSent) * 100).toFixed(1) + "%";
     const replyRate = ((totalReplies / totalSent) * 100).toFixed(1) + "%";
     const totalDeliveryRate =
       ((totalDelivered / totalSent) * 100).toFixed(1) + "%";
     const failedRate = ((failed / totalSent) * 100).toFixed(1) + "%"; // Add failed rate
+    const skippedRate = ((skipped / totalSent) * 100).toFixed(1) + "%";
 
     res.status(200).json({
       success: true,
       data: {
         templateName: templateName,
         total: totalSent,
+        sent,
         delivered,
         read,
         failed,
+        skipped,
         totalDelivered,
         replies: totalReplies,
+        sentRate,
         deliveryRate,
         readRate,
         replyRate,
         totalDeliveryRate,
         failedRate, // Add failed rate
+        skippedRate,
         segments: segmentsData, // <--- Return the segment data
       },
     });
