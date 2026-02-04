@@ -28,51 +28,69 @@ const {
 const { handleBotConversation } = require("../services/botService");
 
 // --- NEW: Helper to update contact stats ---
+// --- NEW: Helper to update contact stats (Thread-Safe) ---
 const updateContactStats = async (phoneNumber, type, status = null) => {
   try {
-    const contact = await Contact.findOne({ phoneNumber });
+    const updateOps = {};
+    const incOps = {};
+
+    // 1. Determine increments based on event type
+    if (type === "outgoing_status" && status) {
+      if (status === "sent") incOps["stats.sent"] = 1;
+      if (status === "delivered") incOps["stats.delivered"] = 1;
+      if (status === "read") incOps["stats.read"] = 1;
+      if (status === "failed") incOps["stats.failed"] = 1;
+    } else if (type === "incoming_message") {
+      incOps["stats.replied"] = 1;
+      updateOps.lastActive = new Date();
+    }
+
+    if (Object.keys(incOps).length > 0) {
+      updateOps.$inc = incOps;
+    }
+
+    // 2. Perform Atomic Update for Counters
+    // We assume contact exists. If not, we ignore.
+    const contact = await Contact.findOneAndUpdate(
+      { phoneNumber },
+      updateOps,
+      { new: true }, // Return updated document to calculate score
+    );
+
     if (!contact) return;
 
-    // Initialize stats if missing
-    if (!contact.stats) {
-      contact.stats = { sent: 0, delivered: 0, read: 0, failed: 0, replied: 0 };
-    }
+    // 3. Calculate Derived Metrics (Score & Status) based on NEW counters
+    const sent = contact.stats?.sent || 0;
+    const read = contact.stats?.read || 0;
+    const replied = contact.stats?.replied || 0;
+    const failed = contact.stats?.failed || 0;
+    const lastActive = contact.lastActive;
+    const isSubscribed = contact.isSubscribed;
 
-    if (type === "outgoing_status" && status) {
-      if (status === "sent") contact.stats.sent = (contact.stats.sent || 0) + 1;
-      if (status === "delivered")
-        contact.stats.delivered = (contact.stats.delivered || 0) + 1;
-      if (status === "read") contact.stats.read = (contact.stats.read || 0) + 1;
-      if (status === "failed")
-        contact.stats.failed = (contact.stats.failed || 0) + 1;
-    } else if (type === "incoming_message") {
-      contact.stats.replied = (contact.stats.replied || 0) + 1;
-      contact.lastActive = new Date();
-    }
-
-    // Recalculate Score & Status
-    const { sent, read, replied, failed } = contact.stats;
     let score = 0;
     if (sent > 0) {
       const readRate = (read / sent) * 100;
       const replyRate = (replied / sent) * 100;
       score = readRate * 0.4 + replyRate * 0.6;
     }
-    contact.engagementScore = score;
 
-    // Status Logic
-    const daysSinceActive = contact.lastActive
-      ? (new Date() - new Date(contact.lastActive)) / (1000 * 60 * 60 * 24)
+    const daysSinceActive = lastActive
+      ? (new Date() - new Date(lastActive)) / (1000 * 60 * 60 * 24)
       : 999;
 
     let computedStatus = "Cold";
-    if (!contact.isSubscribed || failed > 3) computedStatus = "Dead";
+    if (!isSubscribed || failed > 3) computedStatus = "Dead";
     else if (score > 60 || daysSinceActive < 3) computedStatus = "Hot";
     else if (score > 20 || daysSinceActive < 14) computedStatus = "Warm";
 
-    contact.computedStatus = computedStatus;
-
-    await contact.save();
+    // 4. Atomic Update for Computed Fields (No critical race condition here)
+    await Contact.updateOne(
+      { _id: contact._id },
+      {
+        engagementScore: score,
+        computedStatus: computedStatus,
+      },
+    );
   } catch (error) {
     console.error(`Error updating contact stats for ${phoneNumber}:`, error);
   }
