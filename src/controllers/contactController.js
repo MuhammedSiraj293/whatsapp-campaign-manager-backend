@@ -337,232 +337,83 @@ const getContactAnalyticsDashboard = async (req, res) => {
     } = req.query;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
+    const query = {};
 
-    // 1. Base Match Stage for Contacts
-    const matchStage = {};
+    // 1. Search (Name/Phone)
     if (search) {
-      matchStage.$or = [
+      query.$or = [
         { name: { $regex: search, $options: "i" } },
         { phoneNumber: { $regex: search, $options: "i" } },
       ];
     }
+
+    // 2. List Filter
     if (listId) {
-      matchStage.contactList = new mongoose.Types.ObjectId(listId);
+      query.contactList = listId;
     }
 
-    const pipeline = [
-      { $match: matchStage },
-      // 2. Lookup Metrics from Analytics collection
-      {
-        $lookup: {
-          from: "analytics",
-          localField: "_id",
-          foreignField: "contact",
-          as: "analyticsData",
-        },
-      },
-      // 3. Lookup Replies (for Last Active & Reply Count)
-      // Note: We join on phoneNumber as Reply model uses 'from' (phone string), not ObjectId
-      // Optimization: This might be slow on huge datasets. Index on 'from' in Reply is crucial.
-      // 3. Lookup Replies (optimized)
-      {
-        $lookup: {
-          from: "replies",
-          localField: "phoneNumber",
-          foreignField: "from",
-          pipeline: [
-            { $match: { direction: "incoming" } },
-            { $project: { timestamp: 1 } },
-          ],
-          as: "replyData",
-        },
-      },
-      // 4. Calculate Raw Metrics
-      {
-        $project: {
-          name: 1,
-          phoneNumber: 1,
-          contactList: 1,
-          createdAt: 1,
-          totalSent: {
-            $size: {
-              $filter: {
-                input: "$analyticsData",
-                as: "a",
-                cond: { $eq: ["$$a.status", "sent"] },
-              },
-            },
-          },
-          delivered: {
-            $size: {
-              $filter: {
-                input: "$analyticsData",
-                as: "a",
-                cond: { $eq: ["$$a.status", "delivered"] },
-              },
-            },
-          },
-          read: {
-            $size: {
-              $filter: {
-                input: "$analyticsData",
-                as: "a",
-                cond: { $eq: ["$$a.status", "read"] },
-              },
-            },
-          },
-          failed: {
-            $size: {
-              $filter: {
-                input: "$analyticsData",
-                as: "a",
-                cond: { $eq: ["$$a.status", "failed"] },
-              },
-            },
-          },
-          replied: { $size: "$replyData" },
-          lastActive: { $max: "$replyData.timestamp" },
-          isSubscribed: 1, // Determine if Unsubscribed/Dead
-        },
-      },
-      // 5. Calculate Scores & Status
-      {
-        $addFields: {
-          // Avoid division by zero
-          readRate: {
-            $cond: [
-              { $gt: ["$totalSent", 0] },
-              { $multiply: [{ $divide: ["$read", "$totalSent"] }, 100] },
-              0,
-            ],
-          },
-          replyRate: {
-            $cond: [
-              { $gt: ["$totalSent", 0] },
-              { $multiply: [{ $divide: ["$replied", "$totalSent"] }, 100] },
-              0,
-            ],
-          },
-          daysSinceActive: {
-            $cond: [
-              { $ifNull: ["$lastActive", false] },
-              {
-                $divide: [
-                  { $subtract: [new Date(), "$lastActive"] },
-                  1000 * 60 * 60 * 24, // Convert ms to days
-                ],
-              },
-              999, // If never active, treat as very old
-            ],
-          },
-        },
-      },
-      {
-        $addFields: {
-          // Engagement Score Formula: (ReadRate * 0.4) + (ReplyRate * 0.6)
-          engagementScore: {
-            $add: [
-              { $multiply: ["$readRate", 0.4] },
-              { $multiply: ["$replyRate", 0.6] },
-            ],
-          },
-        },
-      },
-      {
-        $addFields: {
-          computedStatus: {
-            $switch: {
-              branches: [
-                // DEAD: Unsubscribed or >3 fails
-                {
-                  case: {
-                    $or: [
-                      { $eq: ["$isSubscribed", false] },
-                      { $gt: ["$failed", 3] },
-                    ],
-                  },
-                  then: "Dead",
-                },
-                // HOT: Score > 60 OR Active < 3 days
-                {
-                  case: {
-                    $or: [
-                      { $gt: ["$engagementScore", 60] },
-                      { $lt: ["$daysSinceActive", 3] },
-                    ],
-                  },
-                  then: "Hot",
-                },
-                // WARM: Score > 20 OR Active < 14 days
-                {
-                  case: {
-                    $or: [
-                      { $gt: ["$engagementScore", 20] },
-                      { $lt: ["$daysSinceActive", 14] },
-                    ],
-                  },
-                  then: "Warm",
-                },
-              ],
-              default: "Cold",
-            },
-          },
-        },
-      },
-      // 6. Filter by Computed Status & Advanced Metrics
-      // We use a single $match stage for all post-calculation filters for efficiency
-      {
-        $match: {
-          $and: [
-            // Status Filter
-            status && status !== "all"
-              ? { computedStatus: { $regex: status, $options: "i" } }
-              : {},
-            // Min Replies Filter
-            req.query.minReplies
-              ? { replied: { $gte: parseInt(req.query.minReplies) } }
-              : {},
-            // Min Engagement Score Filter
-            req.query.minScore
-              ? { engagementScore: { $gte: parseInt(req.query.minScore) } }
-              : {},
-            // Last Active (Days) Filter - "Within X Days"
-            req.query.lastActiveDays
-              ? {
-                  daysSinceActive: { $lte: parseInt(req.query.lastActiveDays) },
-                }
-              : {},
-          ],
-        },
-      },
-      // 7. Sort
-      { $sort: { [sortBy]: sortOrder === "asc" ? 1 : -1 } },
-      // 8. Pagination Facet
-      {
-        $facet: {
-          metadata: [
-            { $count: "total" },
-            { $addFields: { page: parseInt(page) } },
-          ],
-          data: [{ $skip: skip }, { $limit: parseInt(limit) }],
-        },
-      },
-    ];
+    // 3. Status Filter (Use denormalized computedStatus)
+    if (status && status !== "all") {
+      query.computedStatus = { $regex: status, $options: "i" };
+    }
 
-    const result = await Contact.aggregate(pipeline);
-    const data = result[0].data;
-    const metadata = result[0].metadata[0] || { total: 0, page: 1 };
+    // 4. Min Replies Filter (Use denormalized stats.replied)
+    if (minReplies) {
+      query["stats.replied"] = { $gte: parseInt(minReplies) };
+    }
 
-    // Populate List Name (since we projected ContactList ID earlier)
-    await Contact.populate(data, { path: "contactList", select: "name" });
+    // 5. Min Engagement Score Filter
+    if (minScore) {
+      query.engagementScore = { $gte: parseInt(minScore) };
+    }
+
+    // 6. Last Active Filter
+    // "Within X Days" means lastActive >= Date.now() - X days
+    if (lastActiveDays) {
+      const dateLimit = new Date();
+      dateLimit.setDate(dateLimit.getDate() - parseInt(lastActiveDays));
+      query.lastActive = { $gte: dateLimit };
+    }
+
+    // 7. Sorting Field Mapping
+    // Map frontend sort keys to backend schema paths
+    let sortField = sortBy;
+    if (sortBy === "sent") sortField = "stats.sent";
+    if (sortBy === "replies") sortField = "stats.replied";
+
+    // 8. Execute Query with Pagination
+    const [contacts, total] = await Promise.all([
+      Contact.find(query)
+        .populate("contactList", "name")
+        .sort({ [sortField]: sortOrder === "asc" ? 1 : -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(), // Use lean for performance
+      Contact.countDocuments(query),
+    ]);
+
+    // 9. Format response to match expected frontend structure
+    // Frontend expects flat fields like totalSent, replied, etc.
+    const formattedContacts = contacts.map((c) => ({
+      ...c,
+      totalSent: c.stats?.sent || 0,
+      delivered: c.stats?.delivered || 0,
+      read: c.stats?.read || 0,
+      failed: c.stats?.failed || 0,
+      replied: c.stats?.replied || 0,
+      // Recalculate rates on the fly for display if needed, or trust stored ones if we added them.
+      // We didn't add rate fields to schema, so calc here is cheap O(1).
+      readRate: c.stats?.sent > 0 ? (c.stats.read / c.stats.sent) * 100 : 0,
+      replyRate: c.stats?.sent > 0 ? (c.stats.replied / c.stats.sent) * 100 : 0,
+    }));
 
     res.status(200).json({
       success: true,
-      data,
+      data: formattedContacts,
       pagination: {
-        total: metadata.total,
-        page: metadata.page,
-        pages: Math.ceil(metadata.total / limit),
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
       },
     });
   } catch (error) {
@@ -660,6 +511,96 @@ const getContactDetails = async (req, res) => {
   }
 };
 
+// --- MIGRATION UTILITY ---
+const migrateContactStats = async (req, res) => {
+  try {
+    console.log("Starting migration of contact stats...");
+    const contacts = await Contact.find({}).select(
+      "_id phoneNumber isSubscribed",
+    );
+
+    let processed = 0;
+    const batchSize = 100;
+
+    // Process in batches manually or just iterate but use Promise.all limit
+    // We'll iterate and update one by one for safety/simplicity in this script, or batches.
+    // Batch updates are better.
+
+    const updates = [];
+
+    for (const contact of contacts) {
+      // 1. Get Analytics Counts
+      const [sent, delivered, read, failed] = await Promise.all([
+        Analytics.countDocuments({ contact: contact._id, status: "sent" }),
+        Analytics.countDocuments({ contact: contact._id, status: "delivered" }),
+        Analytics.countDocuments({ contact: contact._id, status: "read" }),
+        Analytics.countDocuments({ contact: contact._id, status: "failed" }),
+      ]);
+
+      // 2. Get Reply Count & Last Active
+      const replies = await Reply.find({
+        from: contact.phoneNumber,
+        direction: "incoming",
+      })
+        .sort({ timestamp: -1 })
+        .select("timestamp");
+
+      const replyCount = replies.length;
+      const lastActive = replies.length > 0 ? replies[0].timestamp : null;
+
+      // 3. Compute Score & Status
+      let score = 0;
+      if (sent > 0) {
+        const readRate = (read / sent) * 100;
+        const replyRate = (replyCount / sent) * 100;
+        score = readRate * 0.4 + replyRate * 0.6;
+      }
+
+      const daysSinceActive = lastActive
+        ? (new Date() - new Date(lastActive)) / (1000 * 60 * 60 * 24)
+        : 999;
+
+      let status = "Cold";
+      if (!contact.isSubscribed || failed > 3) status = "Dead";
+      else if (score > 60 || daysSinceActive < 3) status = "Hot";
+      else if (score > 20 || daysSinceActive < 14) status = "Warm";
+
+      updates.push({
+        updateOne: {
+          filter: { _id: contact._id },
+          update: {
+            $set: {
+              stats: { sent, delivered, read, failed, replied: replyCount },
+              lastActive,
+              engagementScore: score,
+              computedStatus: status,
+            },
+          },
+        },
+      });
+
+      processed++;
+      if (updates.length >= batchSize) {
+        await Contact.bulkWrite(updates);
+        updates.length = 0; // Clear array
+        console.log(`Migrated ${processed} contacts...`);
+      }
+    }
+
+    if (updates.length > 0) {
+      await Contact.bulkWrite(updates);
+    }
+
+    console.log("Migration complete.");
+    res
+      .status(200)
+      .json({ success: true, message: `Migrated ${processed} contacts.` });
+  } catch (error) {
+    console.error("Migration failed:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
   createContactList,
   getAllContactLists,
@@ -670,8 +611,9 @@ module.exports = {
   updateContact,
   getContactStats,
   getContactAnalytics,
-  getUnsubscribedContacts, // <-- EXPORT
+  getUnsubscribedContacts,
   bulkDeleteContacts,
-  getContactAnalyticsDashboard, // <-- EXPORT
-  getContactDetails, // <-- NEW EXPORT
+  getContactAnalyticsDashboard,
+  getContactDetails,
+  migrateContactStats, // <-- EXPORT MIGRATION
 };

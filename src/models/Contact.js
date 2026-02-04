@@ -47,10 +47,34 @@ const ContactSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // Denormalized Stats for Performance
+    stats: {
+      sent: { type: Number, default: 0 },
+      delivered: { type: Number, default: 0 },
+      read: { type: Number, default: 0 },
+      failed: { type: Number, default: 0 },
+      replied: { type: Number, default: 0 },
+    },
+    lastActive: {
+      type: Date,
+    },
+    engagementScore: {
+      type: Number,
+      default: 0,
+    },
+    computedStatus: {
+      type: String,
+      default: "Cold",
+      index: true,
+    },
   },
   { timestamps: true },
 );
 
 ContactSchema.index({ phoneNumber: 1, contactList: 1 }, { unique: true });
+ContactSchema.index({ "stats.sent": 1 });
+ContactSchema.index({ engagementScore: -1 });
+ContactSchema.index({ lastActive: -1 });
+ContactSchema.index({ computedStatus: 1 });
 
 module.exports = mongoose.model("Contact", ContactSchema);

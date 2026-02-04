@@ -23,8 +23,14 @@ const router = express.Router();
 
 // --- ANALYTICS ROUTE (Place before dynamic ID routes to avoid conflict) ---
 router.get("/analytics", protect, getContactAnalytics);
-router.get("/dashboard", protect, getContactAnalyticsDashboard); // <-- NEW ROUTE
-router.get("/unsubscribed", protect, getUnsubscribedContacts); // <-- NEW ROUTE
+router.get("/dashboard", protect, getContactAnalyticsDashboard);
+router.get("/unsubscribed", protect, getUnsubscribedContacts);
+router.post(
+  "/migrate-stats",
+  protect,
+  authorize("admin"),
+  require("../controllers/contactController").migrateContactStats,
+); // <-- NEW ROUTE
 
 // --- BULK DELETE ROUTE ---
 router.post(

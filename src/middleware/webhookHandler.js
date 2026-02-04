@@ -27,6 +27,57 @@ const {
 // Bot service
 const { handleBotConversation } = require("../services/botService");
 
+// --- NEW: Helper to update contact stats ---
+const updateContactStats = async (phoneNumber, type, status = null) => {
+  try {
+    const contact = await Contact.findOne({ phoneNumber });
+    if (!contact) return;
+
+    // Initialize stats if missing
+    if (!contact.stats) {
+      contact.stats = { sent: 0, delivered: 0, read: 0, failed: 0, replied: 0 };
+    }
+
+    if (type === "outgoing_status" && status) {
+      if (status === "sent") contact.stats.sent = (contact.stats.sent || 0) + 1;
+      if (status === "delivered")
+        contact.stats.delivered = (contact.stats.delivered || 0) + 1;
+      if (status === "read") contact.stats.read = (contact.stats.read || 0) + 1;
+      if (status === "failed")
+        contact.stats.failed = (contact.stats.failed || 0) + 1;
+    } else if (type === "incoming_message") {
+      contact.stats.replied = (contact.stats.replied || 0) + 1;
+      contact.lastActive = new Date();
+    }
+
+    // Recalculate Score & Status
+    const { sent, read, replied, failed } = contact.stats;
+    let score = 0;
+    if (sent > 0) {
+      const readRate = (read / sent) * 100;
+      const replyRate = (replied / sent) * 100;
+      score = readRate * 0.4 + replyRate * 0.6;
+    }
+    contact.engagementScore = score;
+
+    // Status Logic
+    const daysSinceActive = contact.lastActive
+      ? (new Date() - new Date(contact.lastActive)) / (1000 * 60 * 60 * 24)
+      : 999;
+
+    let computedStatus = "Cold";
+    if (!contact.isSubscribed || failed > 3) computedStatus = "Dead";
+    else if (score > 60 || daysSinceActive < 3) computedStatus = "Hot";
+    else if (score > 20 || daysSinceActive < 14) computedStatus = "Warm";
+
+    contact.computedStatus = computedStatus;
+
+    await contact.save();
+  } catch (error) {
+    console.error(`Error updating contact stats for ${phoneNumber}:`, error);
+  }
+};
+
 /* ---------------------------------------------------------
  * 1) META VERIFY WEBHOOK
  * --------------------------------------------------------- */
@@ -1042,6 +1093,10 @@ const processWebhook = async (req, res) => {
      * --------------------------------------------------------- */
     if (value?.messages?.[0]) {
       const message = value.messages[0];
+
+      // --- NEW: Update Contact Stats (Incoming) ---
+      await updateContactStats(message.from, "incoming_message");
+
       let messageBody = "";
       let campaignToCredit = null;
 
@@ -1409,6 +1464,16 @@ const processWebhook = async (req, res) => {
      * --------------------------------------------------------- */
     if (value?.statuses?.[0]) {
       const status = value.statuses[0];
+
+      // --- NEW: Update Contact Stats (Status) ---
+      // status.recipient_id usually matches the contact phone number
+      if (status.recipient_id) {
+        updateContactStats(
+          status.recipient_id,
+          "outgoing_status",
+          status.status,
+        ).catch((err) => console.error(err));
+      }
 
       // 🔥 NEW: Capture error details
       let failureReason = null;
