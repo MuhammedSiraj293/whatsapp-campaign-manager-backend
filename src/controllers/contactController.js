@@ -364,7 +364,6 @@ const getContactAnalyticsDashboard = async (req, res) => {
       // 3. Lookup Replies (for Last Active & Reply Count)
       // Note: We join on phoneNumber as Reply model uses 'from' (phone string), not ObjectId
       // Optimization: This might be slow on huge datasets. Index on 'from' in Reply is crucial.
-      {
       // 3. Lookup Replies (optimized)
       {
         $lookup: {
@@ -377,7 +376,6 @@ const getContactAnalyticsDashboard = async (req, res) => {
           ],
           as: "replyData",
         },
-      },
       },
       // 4. Calculate Raw Metrics
       {
