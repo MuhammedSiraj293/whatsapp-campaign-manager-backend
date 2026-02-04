@@ -104,7 +104,11 @@ const ReplySchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
+
+// Indexes for performance
+ReplySchema.index({ from: 1, direction: 1, timestamp: -1 });
+ReplySchema.index({ recipientId: 1, timestamp: -1 });
 
 module.exports = mongoose.model("Reply", ReplySchema);

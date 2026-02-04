@@ -365,24 +365,19 @@ const getContactAnalyticsDashboard = async (req, res) => {
       // Note: We join on phoneNumber as Reply model uses 'from' (phone string), not ObjectId
       // Optimization: This might be slow on huge datasets. Index on 'from' in Reply is crucial.
       {
+      // 3. Lookup Replies (optimized)
+      {
         $lookup: {
           from: "replies",
-          let: { phone: "$phoneNumber" },
+          localField: "phoneNumber",
+          foreignField: "from",
           pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$from", "$$phone"] },
-                    { $eq: ["$direction", "incoming"] },
-                  ],
-                },
-              },
-            },
-            { $project: { timestamp: 1 } }, // Only need timestamp
+            { $match: { direction: "incoming" } },
+            { $project: { timestamp: 1 } },
           ],
           as: "replyData",
         },
+      },
       },
       // 4. Calculate Raw Metrics
       {

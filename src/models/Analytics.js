@@ -35,4 +35,8 @@ const AnalyticsSchema = new mongoose.Schema(
   },
 );
 
+// Indexes for performance
+AnalyticsSchema.index({ contact: 1, status: 1 });
+AnalyticsSchema.index({ campaign: 1, status: 1 });
+
 module.exports = mongoose.model("Analytics", AnalyticsSchema);
