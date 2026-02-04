@@ -37,8 +37,18 @@ const ContactSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "ContactList",
     },
+    tags: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    notes: {
+      type: String,
+      trim: true,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 ContactSchema.index({ phoneNumber: 1, contactList: 1 }, { unique: true });

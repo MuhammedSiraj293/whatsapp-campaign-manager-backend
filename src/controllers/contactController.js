@@ -329,6 +329,9 @@ const getContactAnalyticsDashboard = async (req, res) => {
       search,
       listId,
       status, // hot, warm, cold, dead
+      minReplies,
+      minScore,
+      lastActiveDays,
       sortBy = "lastActive", // engagementScore, lastActive, sent, replies
       sortOrder = "desc",
     } = req.query;
@@ -513,10 +516,32 @@ const getContactAnalyticsDashboard = async (req, res) => {
           },
         },
       },
-      // 6. Filter by Computed Status (if requested)
-      ...(status && status !== "all"
-        ? [{ $match: { computedStatus: { $regex: status, $options: "i" } } }]
-        : []),
+      // 6. Filter by Computed Status & Advanced Metrics
+      // We use a single $match stage for all post-calculation filters for efficiency
+      {
+        $match: {
+          $and: [
+            // Status Filter
+            status && status !== "all"
+              ? { computedStatus: { $regex: status, $options: "i" } }
+              : {},
+            // Min Replies Filter
+            req.query.minReplies
+              ? { replied: { $gte: parseInt(req.query.minReplies) } }
+              : {},
+            // Min Engagement Score Filter
+            req.query.minScore
+              ? { engagementScore: { $gte: parseInt(req.query.minScore) } }
+              : {},
+            // Last Active (Days) Filter - "Within X Days"
+            req.query.lastActiveDays
+              ? {
+                  daysSinceActive: { $lte: parseInt(req.query.lastActiveDays) },
+                }
+              : {},
+          ],
+        },
+      },
       // 7. Sort
       { $sort: { [sortBy]: sortOrder === "asc" ? 1 : -1 } },
       // 8. Pagination Facet
