@@ -11,7 +11,10 @@ const {
   deleteContact, // <-- 1. IMPORT
   getContactStats, // <-- NEW IMPORT
   getContactAnalytics, // <-- NEW IMPORT
+  getContactAnalyticsDashboard, // <-- NEW IMPORT
   getUnsubscribedContacts, // <-- NEW IMPORT
+  getContactDetails, // <-- NEW IMPORT
+  bulkDeleteContacts,
 } = require("../controllers/contactController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -20,7 +23,19 @@ const router = express.Router();
 
 // --- ANALYTICS ROUTE (Place before dynamic ID routes to avoid conflict) ---
 router.get("/analytics", protect, getContactAnalytics);
+router.get("/dashboard", protect, getContactAnalyticsDashboard); // <-- NEW ROUTE
 router.get("/unsubscribed", protect, getUnsubscribedContacts); // <-- NEW ROUTE
+
+// --- BULK DELETE ROUTE ---
+router.post(
+  "/bulk-delete",
+  protect,
+  authorize("admin", "manager"),
+  bulkDeleteContacts,
+);
+
+// --- CONTACT DETAILS ROUTE ---
+router.get("/:contactId/details", protect, getContactDetails);
 
 router
   .route("/lists")

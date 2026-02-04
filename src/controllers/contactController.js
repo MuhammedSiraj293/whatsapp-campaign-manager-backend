@@ -206,6 +206,28 @@ const deleteContact = async (req, res) => {
   }
 };
 
+// --- NEW BULK DELETE FUNCTION ---
+const bulkDeleteContacts = async (req, res) => {
+  try {
+    const { contactIds } = req.body;
+    if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "No contact IDs provided." });
+    }
+
+    await Contact.deleteMany({ _id: { $in: contactIds } });
+    getIO().emit("campaignsUpdated");
+    res.status(200).json({
+      success: true,
+      message: `${contactIds.length} contacts deleted successfully.`,
+    });
+  } catch (error) {
+    console.error("Error bulk deleting contacts:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 // --- NEW FUNCTION TO GET CONTACT STATS ---
 const getContactStats = async (req, res) => {
   try {
@@ -298,6 +320,239 @@ const getContactAnalytics = async (req, res) => {
   }
 };
 
+// --- NEW CONTACT ANALYTICS DASHBOARD ---
+const getContactAnalyticsDashboard = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 25,
+      search,
+      listId,
+      status, // hot, warm, cold, dead
+      sortBy = "lastActive", // engagementScore, lastActive, sent, replies
+      sortOrder = "desc",
+    } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // 1. Base Match Stage for Contacts
+    const matchStage = {};
+    if (search) {
+      matchStage.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { phoneNumber: { $regex: search, $options: "i" } },
+      ];
+    }
+    if (listId) {
+      matchStage.contactList = new mongoose.Types.ObjectId(listId);
+    }
+
+    const pipeline = [
+      { $match: matchStage },
+      // 2. Lookup Metrics from Analytics collection
+      {
+        $lookup: {
+          from: "analytics",
+          localField: "_id",
+          foreignField: "contact",
+          as: "analyticsData",
+        },
+      },
+      // 3. Lookup Replies (for Last Active & Reply Count)
+      // Note: We join on phoneNumber as Reply model uses 'from' (phone string), not ObjectId
+      // Optimization: This might be slow on huge datasets. Index on 'from' in Reply is crucial.
+      {
+        $lookup: {
+          from: "replies",
+          let: { phone: "$phoneNumber" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$from", "$$phone"] },
+                    { $eq: ["$direction", "incoming"] },
+                  ],
+                },
+              },
+            },
+            { $project: { timestamp: 1 } }, // Only need timestamp
+          ],
+          as: "replyData",
+        },
+      },
+      // 4. Calculate Raw Metrics
+      {
+        $project: {
+          name: 1,
+          phoneNumber: 1,
+          contactList: 1,
+          createdAt: 1,
+          totalSent: {
+            $size: {
+              $filter: {
+                input: "$analyticsData",
+                as: "a",
+                cond: { $eq: ["$$a.status", "sent"] },
+              },
+            },
+          },
+          delivered: {
+            $size: {
+              $filter: {
+                input: "$analyticsData",
+                as: "a",
+                cond: { $eq: ["$$a.status", "delivered"] },
+              },
+            },
+          },
+          read: {
+            $size: {
+              $filter: {
+                input: "$analyticsData",
+                as: "a",
+                cond: { $eq: ["$$a.status", "read"] },
+              },
+            },
+          },
+          failed: {
+            $size: {
+              $filter: {
+                input: "$analyticsData",
+                as: "a",
+                cond: { $eq: ["$$a.status", "failed"] },
+              },
+            },
+          },
+          replied: { $size: "$replyData" },
+          lastActive: { $max: "$replyData.timestamp" },
+          isSubscribed: 1, // Determine if Unsubscribed/Dead
+        },
+      },
+      // 5. Calculate Scores & Status
+      {
+        $addFields: {
+          // Avoid division by zero
+          readRate: {
+            $cond: [
+              { $gt: ["$totalSent", 0] },
+              { $multiply: [{ $divide: ["$read", "$totalSent"] }, 100] },
+              0,
+            ],
+          },
+          replyRate: {
+            $cond: [
+              { $gt: ["$totalSent", 0] },
+              { $multiply: [{ $divide: ["$replied", "$totalSent"] }, 100] },
+              0,
+            ],
+          },
+          daysSinceActive: {
+            $cond: [
+              { $ifNull: ["$lastActive", false] },
+              {
+                $divide: [
+                  { $subtract: [new Date(), "$lastActive"] },
+                  1000 * 60 * 60 * 24, // Convert ms to days
+                ],
+              },
+              999, // If never active, treat as very old
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          // Engagement Score Formula: (ReadRate * 0.4) + (ReplyRate * 0.6)
+          engagementScore: {
+            $add: [
+              { $multiply: ["$readRate", 0.4] },
+              { $multiply: ["$replyRate", 0.6] },
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          computedStatus: {
+            $switch: {
+              branches: [
+                // DEAD: Unsubscribed or >3 fails
+                {
+                  case: {
+                    $or: [
+                      { $eq: ["$isSubscribed", false] },
+                      { $gt: ["$failed", 3] },
+                    ],
+                  },
+                  then: "Dead",
+                },
+                // HOT: Score > 60 OR Active < 3 days
+                {
+                  case: {
+                    $or: [
+                      { $gt: ["$engagementScore", 60] },
+                      { $lt: ["$daysSinceActive", 3] },
+                    ],
+                  },
+                  then: "Hot",
+                },
+                // WARM: Score > 20 OR Active < 14 days
+                {
+                  case: {
+                    $or: [
+                      { $gt: ["$engagementScore", 20] },
+                      { $lt: ["$daysSinceActive", 14] },
+                    ],
+                  },
+                  then: "Warm",
+                },
+              ],
+              default: "Cold",
+            },
+          },
+        },
+      },
+      // 6. Filter by Computed Status (if requested)
+      ...(status && status !== "all"
+        ? [{ $match: { computedStatus: { $regex: status, $options: "i" } } }]
+        : []),
+      // 7. Sort
+      { $sort: { [sortBy]: sortOrder === "asc" ? 1 : -1 } },
+      // 8. Pagination Facet
+      {
+        $facet: {
+          metadata: [
+            { $count: "total" },
+            { $addFields: { page: parseInt(page) } },
+          ],
+          data: [{ $skip: skip }, { $limit: parseInt(limit) }],
+        },
+      },
+    ];
+
+    const result = await Contact.aggregate(pipeline);
+    const data = result[0].data;
+    const metadata = result[0].metadata[0] || { total: 0, page: 1 };
+
+    // Populate List Name (since we projected ContactList ID earlier)
+    await Contact.populate(data, { path: "contactList", select: "name" });
+
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        total: metadata.total,
+        page: metadata.page,
+        pages: Math.ceil(metadata.total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching contact analytics dashboard:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 // --- NEW FUNCTION TO GET UNSUBSCRIBED CONTACTS BY REASON ---
 const getUnsubscribedContacts = async (req, res) => {
   try {
@@ -325,6 +580,68 @@ const getUnsubscribedContacts = async (req, res) => {
   }
 };
 
+// --- NEW CONTACT DETAILS ENDPOINT ---
+const getContactDetails = async (req, res) => {
+  try {
+    const { contactId } = req.params;
+
+    const contact = await Contact.findById(contactId).populate("contactList");
+    if (!contact) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Contact not found" });
+    }
+
+    // 1. Get Analytics (Campaign History)
+    const analytics = await Analytics.find({ contact: contactId })
+      .populate("campaign", "name scheduledFor")
+      .sort({ createdAt: -1 });
+
+    // 2. Get Replies
+    const replies = await Reply.find({
+      $or: [
+        { recipientId: contact.phoneNumber }, // Outgoing
+        { from: contact.phoneNumber }, // Incoming
+      ],
+    }).sort({ timestamp: -1 });
+
+    // 3. Merge into a Timeline
+    const timeline = [
+      ...analytics.map((a) => ({
+        type: "campaign_event",
+        date: a.createdAt,
+        status: a.status,
+        campaignName: a.campaign?.name || "Unknown Campaign",
+        details: a.failureReason,
+      })),
+      ...replies.map((r) => ({
+        type:
+          r.direction === "incoming" ? "incoming_message" : "outgoing_message",
+        date: r.timestamp,
+        content: r.body,
+        media: r.mediaUrl,
+      })),
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        contact,
+        timeline,
+        stats: {
+          sent: analytics.filter((a) => a.status === "sent").length,
+          delivered: analytics.filter((a) => a.status === "delivered").length,
+          read: analytics.filter((a) => a.status === "read").length,
+          replied: replies.filter((r) => r.direction === "incoming").length,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching contact details:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 module.exports = {
   createContactList,
   getAllContactLists,
@@ -336,4 +653,7 @@ module.exports = {
   getContactStats,
   getContactAnalytics,
   getUnsubscribedContacts, // <-- EXPORT
+  bulkDeleteContacts,
+  getContactAnalyticsDashboard, // <-- EXPORT
+  getContactDetails, // <-- NEW EXPORT
 };
