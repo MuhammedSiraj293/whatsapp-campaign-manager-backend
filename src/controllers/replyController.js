@@ -111,7 +111,7 @@ const getConversations = async (req, res) => {
     pipeline.push(
       { $sort: { lastMessageTimestamp: -1 } },
       { $skip: skip },
-      { $limit: limit }
+      { $limit: limit },
     );
 
     const conversations = await Reply.aggregate(pipeline);
@@ -198,7 +198,7 @@ const getMessagesByNumber = async (req, res) => {
   } catch (error) {
     console.error(
       `Error fetching messages for ${req.params.phoneNumber}:`,
-      error
+      error,
     );
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -216,9 +216,8 @@ const sendReply = async (req, res) => {
     const { phoneNumber, recipientId } = req.params;
     const { message, context } = req.body; // Extract context (quoted message)
 
-    const { accessToken, phoneNumberId } = await getCredentialsFromRecipientId(
-      recipientId
-    );
+    const { accessToken, phoneNumberId } =
+      await getCredentialsFromRecipientId(recipientId);
 
     // If context is provided, it should be the WAMID of the message being replied to
     const contextMessageId = context ? context.messageId : null;
@@ -228,7 +227,7 @@ const sendReply = async (req, res) => {
       message,
       accessToken,
       phoneNumberId,
-      contextMessageId
+      contextMessageId,
     );
 
     if (result?.messages?.[0]?.id) {
@@ -266,16 +265,15 @@ const sendReaction = async (req, res) => {
     const { phoneNumber, recipientId } = req.params;
     const { messageId, emoji } = req.body;
 
-    const { accessToken, phoneNumberId } = await getCredentialsFromRecipientId(
-      recipientId
-    );
+    const { accessToken, phoneNumberId } =
+      await getCredentialsFromRecipientId(recipientId);
 
     await sendReactionMessage(
       phoneNumber,
       messageId,
       emoji,
       accessToken,
-      phoneNumberId
+      phoneNumberId,
     );
 
     // Save reaction as a new Reply document (or update existing if you prefer, but your aggregation uses a separate doc)
@@ -325,14 +323,13 @@ const sendMediaReply = async (req, res) => {
         .json({ success: false, error: "No file uploaded." });
     }
 
-    const { accessToken, phoneNumberId } = await getCredentialsFromRecipientId(
-      recipientId
-    );
+    const { accessToken, phoneNumberId } =
+      await getCredentialsFromRecipientId(recipientId);
     const result = await sendMediaMessage(
       phoneNumber,
       req.file,
       accessToken,
-      phoneNumberId
+      phoneNumberId,
     );
 
     if (result?.sendResponse?.messages?.[0]?.id) {
@@ -376,7 +373,7 @@ const markAsRead = async (req, res) => {
         read: false,
         direction: "incoming",
       },
-      { $set: { read: true } }
+      { $set: { read: true } },
     );
     res
       .status(200)
@@ -466,7 +463,7 @@ const deleteMessage = async (req, res) => {
 const toggleSubscription = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
-    const { status } = req.body; // true = Resubscribe, false = Unsubscribe
+    const { status, unsubscribeReason } = req.body; // true = Resubscribe, false = Unsubscribe
 
     console.log(`Manual subscription toggle for ${phoneNumber}: ${status}`);
 
@@ -475,7 +472,13 @@ const toggleSubscription = async (req, res) => {
       // 1. Mark ALL existing contacts for this number as unsubscribed
       await Contact.updateMany(
         { phoneNumber: phoneNumber },
-        { $set: { isSubscribed: false } }
+        {
+          $set: {
+            isSubscribed: false,
+            unsubscribeReason: unsubscribeReason || "Manual Unsubscribe",
+            unsubscribeDate: new Date(),
+          },
+        },
       );
 
       // 2. Add to "Unsubscriber List" if not already there
@@ -500,6 +503,8 @@ const toggleSubscription = async (req, res) => {
           name: contactName,
           contactList: unsubList._id,
           isSubscribed: false,
+          unsubscribeReason: unsubscribeReason || "Manual Unsubscribe",
+          unsubscribeDate: new Date(),
         });
       }
 
@@ -511,7 +516,10 @@ const toggleSubscription = async (req, res) => {
       // 1. Mark ALL existing contacts for this number as subscribed
       await Contact.updateMany(
         { phoneNumber: phoneNumber },
-        { $set: { isSubscribed: true } }
+        {
+          $set: { isSubscribed: true },
+          $unset: { unsubscribeReason: 1, unsubscribeDate: 1 },
+        },
       );
 
       // 2. Remove from "Unsubscriber List"
