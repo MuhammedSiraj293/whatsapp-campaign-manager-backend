@@ -65,7 +65,6 @@ const ContactSchema = new mongoose.Schema(
     computedStatus: {
       type: String,
       default: "Cold",
-      index: true,
     },
   },
   { timestamps: true },
