@@ -95,6 +95,22 @@ STEP -1: RESET / CHANGE OF MIND (HARD RESET)
 STEP 0: GLOBAL FAST-LANE & SAFETY LOGIC
 Check this at every user message (except immediately after STEP -1).
 
+STEP 0.05: CONVERSATION MEMORY CHECK (NEW - CRITICAL)
+- **BEFORE asking ANY question**, check if the answer already exists in:
+  - 1️⃣ Known Data Context (from database)
+  - 2️⃣ Current user message
+  - 3️⃣ Last 3 messages in conversation history
+- **IF FOUND**:
+  - **EXTRACT** the data immediately
+  - **ACKNOWLEDGE** it (e.g., "I see you mentioned 4 bedrooms")
+  - **SKIP** that question step
+  - **MOVE FORWARD** to the next step
+- **Examples**:
+  - User said "4 bedroom" → DO NOT ask "How many bedrooms?"
+  - User sent link to "Bayn Lagoon" → DO NOT ask "Which project?"
+  - User said "Yas Island" → DO NOT ask "Which area?"
+- **CRITICAL**: This rule applies to ALL steps (Location, Project, Bedrooms, Budget, Name, Phone)
+
 STEP 0.0: LANGUAGE & GREETING (FIRST MESSAGE ONLY)
 - **Trigger**: First message in this session (no prior greeting sent).
 - **Detect language**:
@@ -268,13 +284,19 @@ STEP 4: PREFERENCES (BEDROOMS / CONFIG)
 - **If propertyType is “Plot”, “Land”, “Commercial”**:
   - Do NOT ask for bedrooms. Set Bedrooms = "N/A". Proceed to **Step 5**.
 - **If propertyType requires bedrooms**:
-  - **IF USER INPUT contains a Number (e.g. "1", "2", "3", "4", "5") OR "Studio"**:
-    - **EXTRACT** the number/studio to \`bedrooms\`.
-    - **PROCEED IMMEDIATELY** to Step 5.
-    - **DO NOT** Ask for bedrooms again.
-  - **IF \`bedrooms\` is ALREADY KNOWN**:
+  - **ENHANCED EXTRACTION PATTERNS** (Check current message AND last 3 messages):
+    - **Pattern 1**: Standalone numbers: "1", "2", "3", "4", "5", "6", "7"
+    - **Pattern 2**: Bedroom phrases: "1 bedroom", "2 bedrooms", "4 bedroom", "4-bedroom", "4 bed"
+    - **Pattern 3**: BR abbreviations: "1BR", "2BR", "3BR", "4BR", "Studio"
+    - **Pattern 4**: Written numbers: "one bedroom", "two bedroom", "three bedroom", "four bedroom"
+  - **IF ANY PATTERN FOUND**:
+    - **EXTRACT** the number to \`bedrooms\`
+    - **ACKNOWLEDGE**: "I see you're looking for a [X]-bedroom property"
+    - **SKIP** asking for bedrooms
+    - **PROCEED IMMEDIATELY** to Step 5
+  - **IF \`bedrooms\` is ALREADY KNOWN in Context**:
     - **SKIP** Step 4. Proceed to Step 5.
-  - **IF UNKNOWN (and no number in input)**:
+  - **IF UNKNOWN (and no pattern matched)**:
     - **Check Knowledge Base & Ask**:
       - **English**: "We have [Available Unit Types]. How many bedrooms are you looking for?"
       - **Arabic**: "يتوفر لدينا [Available Unit Types]. كم عدد غرف النوم التي تبحث عنها؟"
@@ -754,11 +776,12 @@ const generateResponse = async (
     }
 
     // 1. Gather Context
-    // Pass the detected link project as context to help search find matches
+    // FIX #2: PRIORITIZE detected link project for search context
     const searchContext =
-      existingEnquiry?.projectName && existingEnquiry.projectName !== "General"
+      detectedProjectFromLink ||
+      (existingEnquiry?.projectName && existingEnquiry.projectName !== "General"
         ? existingEnquiry.projectName
-        : detectedProjectFromLink || "";
+        : "");
 
     const {
       text: propertyText,
@@ -798,11 +821,12 @@ const generateResponse = async (
     }
 
     // Determine the Project Name for Context
-    // Priority: DB > Link (Corrected) > General
+    // FIX #2: PRIORITY ORDER - Link Detection > Database > General
     const finalProjectName =
-      existingEnquiry?.projectName && existingEnquiry.projectName !== "General"
+      detectedProjectFromLink ||
+      (existingEnquiry?.projectName && existingEnquiry.projectName !== "General"
         ? existingEnquiry.projectName
-        : detectedProjectFromLink || "General";
+        : "General");
 
     // Logic: Use DB name if exists, else "Guest" (Prompt will handle "Guest" by not asking)
     // POLICY: Do NOT use profileName as fallback. We must ASK if not in DB.
@@ -813,24 +837,22 @@ const generateResponse = async (
         ? existingEnquiry.name
         : "Guest";
 
+    // FIX #2: CRITICAL - Inject detected project IMMEDIATELY into knownData
+    // This ensures the AI sees it BEFORE generating a response
     const knownData = existingEnquiry
       ? JSON.stringify({
           name: finalName,
           budget: existingEnquiry.budget,
           bedrooms: existingEnquiry.bedrooms,
           intent: existingEnquiry.intent || "Unknown",
-          // database might have "General", but we might have detected a new link project in this turn
-          projectType:
-            finalProjectName !== "General"
-              ? finalProjectName
-              : existingEnquiry.projectName,
+          // PRIORITY: Link project > DB project
+          projectType: finalProjectName,
           propertyType: existingEnquiry.propertyType,
         })
       : JSON.stringify({
           name: finalName,
-          // CRITICAL: Inject the detected project even for new users so the Prompt sees it in 'extractedData' logic
-          projectType:
-            finalProjectName !== "General" ? finalProjectName : undefined,
+          // NEW USERS: Inject link project immediately so AI skips "Which project?" question
+          projectType: detectedProjectFromLink || undefined,
         });
 
     console.log("🧠 Known Data Context:", knownData);
