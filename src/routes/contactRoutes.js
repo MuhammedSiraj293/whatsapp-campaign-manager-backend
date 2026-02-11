@@ -17,6 +17,12 @@ const {
   bulkDeleteContacts,
 } = require("../controllers/contactController");
 
+const {
+  getDashboardSummary,
+  getEngagementTrends,
+  getTopPerformers,
+} = require("../controllers/dashboardController");
+
 const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
@@ -24,6 +30,9 @@ const router = express.Router();
 // --- ANALYTICS ROUTE (Place before dynamic ID routes to avoid conflict) ---
 router.get("/analytics", protect, getContactAnalytics);
 router.get("/dashboard", protect, getContactAnalyticsDashboard);
+router.get("/dashboard/summary", protect, getDashboardSummary);
+router.get("/dashboard/trends", protect, getEngagementTrends);
+router.get("/dashboard/top-performers", protect, getTopPerformers);
 router.get("/unsubscribed", protect, getUnsubscribedContacts);
 router.post(
   "/migrate-stats",
