@@ -3,310 +3,250 @@
 const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const Analytics = require("../models/Analytics");
-const Log = require("../models/Log"); // <-- 1. IMPORT THE LOG MODEL
+const Log = require("../models/Log");
 const Reply = require("../models/Reply");
 const { sendTemplateMessage } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const sendCampaign = async (campaignId, options = {}) => {
-  const { limit, offset, isPartial } = options;
+const processCampaignBackground = async (campaignId, options = {}) => {
   const io = getIO();
-  const campaign = await Campaign.findById(campaignId).populate({
-    path: "phoneNumber", // <-- 3. Populate the phone number
-    populate: {
-      path: "wabaAccount", // <-- 4. Populate the parent WABA account
-    },
-  });
+  try {
+    const campaign = await Campaign.findById(campaignId).populate({
+      path: "phoneNumber",
+      populate: { path: "wabaAccount" },
+    });
 
-  // --- NEW VALIDATION ---
-  if (!campaign) throw new Error("Campaign not found.");
-  if (!campaign.contactList) throw new Error("No contact list assigned.");
-  if (!campaign.phoneNumber)
-    throw new Error('No "Send From" phone number assigned to this campaign.');
-  if (!campaign.phoneNumber.wabaAccount)
-    throw new Error(
-      "WABA account for this phone number is missing or deleted.",
-    );
-
-  const { accessToken } = campaign.phoneNumber.wabaAccount;
-  const { phoneNumberId } = campaign.phoneNumber;
-
-  if (!accessToken || !phoneNumberId) {
-    throw new Error(
-      "Invalid account credentials. Check WABA account and Phone Number setup.",
-    );
-  }
-  // --- END NEW VALIDATION ---
-
-  // Build the query
-  let query = Contact.find({
-    contactList: campaign.contactList,
-    isSubscribed: true,
-  });
-
-  // Apply batching if provided
-  if (limit !== undefined && offset !== undefined) {
-    query = query.skip(offset).limit(limit);
-  }
-
-  const contacts = await query;
-
-  // --- NEW EXCLUSION LOGIC ---
-  let excludedPhoneNumbers = new Set();
-  if (campaign.exclusionList) {
-    const excludedContacts = await Contact.find({
-      contactList: campaign.exclusionList,
-    }).select("phoneNumber");
-
-    excludedContacts.forEach((c) => excludedPhoneNumbers.add(c.phoneNumber));
-    console.log(`🚫 Found ${excludedPhoneNumbers.size} contacts to exclude.`);
-  }
-
-  // Filter existing contacts array
-  // We keep only those whose phone number is NOT in the excluded set
-  const originalCount = contacts.length;
-  for (let i = contacts.length - 1; i >= 0; i--) {
-    if (excludedPhoneNumbers.has(contacts[i].phoneNumber)) {
-      contacts.splice(i, 1);
+    if (!campaign) {
+      console.error(
+        `Campaign ${campaignId} not found for background processing.`,
+      );
+      return;
     }
-  }
-  if (originalCount !== contacts.length) {
+
+    // Mark as sending
+    campaign.status = "sending";
+    await campaign.save();
+    io.emit("campaignsUpdated");
+
+    // Use settings from request (frontend) or fall back to saved campaign values
+    const batchSize = options.batchSize || campaign.batchSize || 50;
+    const batchDelay = options.batchDelay || campaign.batchDelay || 2000;
+    const messageDelay = options.messageDelay || campaign.messageDelay || 2000;
+
     console.log(
-      `📉 Removed ${originalCount - contacts.length} contacts due to exclusion.`,
+      `Batch config: size=${batchSize}, batchDelay=${batchDelay}ms, msgDelay=${messageDelay}ms`,
     );
-  }
-  // --- END EXCLUSION LOGIC ---
-  if (contacts.length === 0) {
-    await Log.create({
-      level: "info",
-      message: `Batch for campaign "${campaign.name}" has no eligible contacts (offset: ${offset}, limit: ${limit}).`,
-      campaign: campaignId,
-    });
 
-    // Only mark as sent if this is NOT a partial/batch send or if it's the last batch (handled by caller)
-    // Actually, for batching, the caller manages the 'sent' status.
-    // However, if it's a regular send (no batch options), we mark it as sent here.
-    if (!isPartial) {
-      campaign.status = "sent";
-      campaign.sentAt = new Date();
-      await campaign.save();
-      io.emit("campaignsUpdated");
-    }
-
-    return {
-      message: `Batch processed. No contacts sent in this batch.`,
-      count: 0,
+    // Build query
+    const query = {
+      contactList: campaign.contactList,
+      isSubscribed: true,
     };
-  }
 
-  // ---------------------------------------
-  // 🧠 Deduplication Checks
-  // ---------------------------------------
+    const totalContacts = await Contact.countDocuments(query);
+    console.log(
+      `Starting background campaign "${campaign.name}". Total contacts: ${totalContacts}`,
+    );
 
-  // 1. Get contacts who already received this campaign
-  const alreadySentAnalytics = await Analytics.find({
-    campaign: campaignId,
-  }).select("contact");
-  const alreadySentContactIds = new Set(
-    alreadySentAnalytics.map((a) => a.contact.toString()),
-  );
-
-  // 2. Get contacts who have already received this template across any campaign
-  // --- THIS IS THE CORRECTED DEDUPLICATION LOGIC ---
-  const campaignsWithSameTemplate = await Campaign.find({
-    templateName: campaign.templateName,
-  }).select("_id");
-
-  const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
-
-  const analyticsWithPhones = await Analytics.find({
-    campaign: { $in: campaignIds },
-    status: { $ne: "failed" },
-  }).populate("contact", "phoneNumber");
-
-  // Filter out any records where the contact has been deleted
-  const phoneNumbersWhoReceivedTemplate = new Set(
-    analyticsWithPhones
-      .filter((a) => a.contact && a.contact.phoneNumber) // ✅ Safety check ensures contact is not null
-      .map((a) => a.contact.phoneNumber),
-  ); // --- END OF CORRECTION ---
-  console.log(
-    `Found ${alreadySentContactIds.size} contacts who already received this campaign.`,
-  );
-  console.log(
-    `Found ${phoneNumbersWhoReceivedTemplate.size} contacts who already successfully received template "${campaign.templateName}".`,
-  );
-  // --- END OF CORRECTION ---
-
-  // ---------------------------------------
-  // 🚀 Send messages
-  // ---------------------------------------
-
-  let successCount = 0;
-  let failureCount = 0;
-
-  await Log.create({
-    level: "info",
-    message: `Starting batch for campaign "${campaign.name}" (Count: ${contacts.length}, Offset: ${offset}).`,
-    campaign: campaignId,
-  });
-
-  for (const contact of contacts) {
-    const contactIdStr = contact._id.toString();
-    const phone = contact.phoneNumber;
-
-    // Skip if already sent this campaign
-    if (alreadySentContactIds.has(contactIdStr)) {
-      console.log(
-        `Skipping ${contact.phoneNumber}: already sent in this campaign.`,
-      );
-      // --- RECORD SKIPPED STATUS ---
-      await Analytics.create({
-        wamid: `skipped-${contact._id}-${Date.now()}`, // Dummy ID
-        campaign: campaign._id,
-        contact: contact._id,
-        status: "skipped",
-        failureReason: "Already sent in this campaign",
-      });
-      continue;
+    // Exclusion List Handling
+    let excludedPhoneNumbers = new Set();
+    if (campaign.exclusionList) {
+      const excludedContacts = await Contact.find({
+        contactList: campaign.exclusionList,
+      }).select("phoneNumber");
+      excludedContacts.forEach((c) => excludedPhoneNumbers.add(c.phoneNumber));
+      console.log(`🚫 Found ${excludedPhoneNumbers.size} contacts to exclude.`);
     }
 
-    // Skip if this phone number has already received this template
-    if (phoneNumbersWhoReceivedTemplate.has(phone)) {
+    // Deduplication Data
+    const campaignsWithSameTemplate = await Campaign.find({
+      templateName: campaign.templateName,
+    }).select("_id");
+    const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
+    const analyticsWithPhones = await Analytics.find({
+      campaign: { $in: campaignIds },
+      status: { $ne: "failed" },
+    }).populate("contact", "phoneNumber");
+
+    const phoneNumbersWhoReceivedTemplate = new Set(
+      analyticsWithPhones
+        .filter((a) => a.contact && a.contact.phoneNumber)
+        .map((a) => a.contact.phoneNumber),
+    );
+
+    // BATCH LOOP
+    let offset = 0;
+    let successCount = 0;
+    let failureCount = 0;
+
+    while (offset < totalContacts) {
       console.log(
-        `Skipping ${phone}: already received template "${campaign.templateName}".`,
+        `Processing batch offset ${offset} for campaign ${campaign.name}`,
       );
-      // --- RECORD SKIPPED STATUS ---
-      await Analytics.create({
-        wamid: `skipped-${contact._id}-${Date.now()}`, // Dummy ID
-        campaign: campaign._id,
-        contact: contact._id,
-        status: "skipped",
-        failureReason: `Already received template "${campaign.templateName}"`,
-      });
-      continue;
-    }
 
-    let wamid = `failed-${contact._id}-${Date.now()}`;
-    let status = "sent";
-    let failureReason = null;
+      const contacts = await Contact.find(query).skip(offset).limit(batchSize);
 
-    try {
-      const finalBodyVariables = [];
-      if (campaign.expectedVariables > 0) {
-        for (let i = 0; i < campaign.expectedVariables; i++) {
-          let value =
-            (contact.variables && contact.variables.get(`var${i + 1}`)) ||
-            undefined;
-          if (i === 0 && !value) {
-            value = contact.name || "Valued Customer";
+      if (contacts.length === 0) break;
+
+      // MESSAGE LOOP
+      for (const contact of contacts) {
+        // 1. Exclusion Check
+        if (excludedPhoneNumbers.has(contact.phoneNumber)) continue;
+
+        // 2. Deduplication Check
+        if (phoneNumbersWhoReceivedTemplate.has(contact.phoneNumber)) {
+          console.log(
+            `Skipping ${contact.phoneNumber}: already received template.`,
+          );
+          continue;
+        }
+
+        // Send Logic
+        try {
+          const { accessToken } = campaign.phoneNumber.wabaAccount;
+          const { phoneNumberId } = campaign.phoneNumber;
+
+          const finalBodyVariables = [];
+          if (campaign.expectedVariables > 0) {
+            for (let i = 0; i < campaign.expectedVariables; i++) {
+              let value =
+                (contact.variables && contact.variables.get(`var${i + 1}`)) ||
+                undefined;
+              if (i === 0 && !value) value = contact.name || "Valued Customer";
+              finalBodyVariables.push(String(value || ""));
+            }
           }
-          finalBodyVariables.push(String(value || ""));
-        }
-      }
 
-      const response = await sendTemplateMessage(
-        contact.phoneNumber,
-        campaign.templateName,
-        campaign.templateLanguage,
-        {
-          headerImageUrl: campaign.headerImageUrl,
-          headerMediaId: campaign.headerMediaId,
-          bodyVariables: finalBodyVariables,
-          buttons: campaign.buttons,
-        },
-        accessToken, // Pass the dynamic token
-        phoneNumberId, // Pass the dynamic phone ID
-      );
+          const response = await sendTemplateMessage(
+            contact.phoneNumber,
+            campaign.templateName,
+            campaign.templateLanguage,
+            {
+              headerImageUrl: campaign.headerImageUrl,
+              bodyVariables: finalBodyVariables,
+              buttons: campaign.buttons,
+            },
+            accessToken,
+            phoneNumberId,
+          );
 
-      if (response && response.messages && response.messages[0].id) {
-        wamid = response.messages[0].id;
+          // Log/Analytics/Reply logic (simplified for brevity, ensuring core matching)
+          if (response?.messages?.[0]?.id) {
+            const wamid = response.messages[0].id;
 
-        // --- FIX: Interpolate Variables into Body for History Context ---
-        let resolvedBody = campaign.message;
-        if (finalBodyVariables.length > 0) {
-          // Replace {{1}}, {{2}} etc with their corresponding values
-          finalBodyVariables.forEach((val, index) => {
-            // Create regex to replace {{1}}, {{2}} globally
-            // Whatsapp templates use {{1}}, {{2}}. Index is 0-based in array.
-            const placeholder = `{{${index + 1}}}`;
-            resolvedBody = resolvedBody.replace(
-              new RegExp(placeholder, "g"),
-              val,
-            );
+            // --- FIX: Interpolate Variables into Body for History Context ---
+            let resolvedBody = campaign.message || "";
+            if (finalBodyVariables.length > 0) {
+              finalBodyVariables.forEach((val, index) => {
+                resolvedBody = resolvedBody.replace(
+                  new RegExp(`{{${index + 1}}}`, "g"),
+                  val,
+                );
+              });
+            }
+
+            // Save Reply
+            try {
+              await Reply.create({
+                messageId: wamid,
+                from: contact.phoneNumber,
+                recipientId: phoneNumberId,
+                body: resolvedBody,
+                timestamp: new Date(),
+                direction: "outgoing",
+                read: true,
+                campaign: campaign._id,
+              });
+            } catch (err) {
+              console.error("Error saving reply:", err.message);
+            }
+
+            await Log.create({
+              campaign: campaign._id,
+              contact: contact._id,
+              status: "sent",
+              messageId: wamid,
+            });
+            await Analytics.create({
+              wamid,
+              campaign: campaign._id,
+              contact: contact._id,
+              status: "sent",
+            });
+            // Add to deduplication set
+            phoneNumbersWhoReceivedTemplate.add(contact.phoneNumber);
+            successCount++;
+
+            // Emit new message
+            io.emit("newMessage", {
+              from: contact.phoneNumber,
+              recipientId: phoneNumberId,
+              message: {
+                body: resolvedBody,
+                direction: "outgoing",
+                timestamp: new Date(),
+              }, // Simplified
+            });
+          }
+        } catch (error) {
+          console.error(
+            `Failed to send to ${contact.phoneNumber}: ${error.message}`,
+          );
+          await Log.create({
+            campaign: campaign._id,
+            contact: contact._id,
+            status: "failed",
+            error: error.message,
           });
+          failureCount++;
         }
 
-        // Save the outgoing campaign message to the 'replies' collection
-        const campaignMessage = new Reply({
-          messageId: wamid,
-          from: contact.phoneNumber,
-          recipientId: phoneNumberId, // Save which number sent it
-          body: resolvedBody, // Use the resolved body!
-          timestamp: new Date(),
-          direction: "outgoing",
-          read: true,
-          campaign: campaign._id,
-        });
-        await campaignMessage.save();
-
-        // Emit an event so the frontend chat updates instantly
-        io.emit("newMessage", {
-          from: contact.phoneNumber,
-          recipientId: phoneNumberId,
-          message: campaignMessage,
-        });
+        // Message Delay
+        if (messageDelay > 0) await sleep(messageDelay);
       }
-      successCount++;
-    } catch (error) {
-      failureReason = error.response?.data?.error?.message || error.message;
-      status = "failed";
-      await Log.create({
-        level: "error",
-        message: `Failed to send to ${contact.phoneNumber}. Reason: ${failureReason}`,
-        campaign: campaignId,
-      });
-      failureCount++;
+
+      offset += batchSize;
+
+      // Batch Delay
+      if (offset < totalContacts) {
+        console.log(`Waiting ${batchDelay}ms before next batch...`);
+        await sleep(batchDelay);
+      }
     }
 
-    await Analytics.create({
-      wamid: wamid,
+    // Finish
+    campaign.status = "sent";
+    campaign.sentAt = new Date();
+    await campaign.save();
+
+    await Log.create({
+      level: "success",
+      message: `Campaign "${campaign.name}" completed. Success: ${successCount}, Failed: ${failureCount}.`,
       campaign: campaign._id,
-      contact: contact._id,
-      status: status,
-      failureReason: failureReason,
     });
-
-    // Small delay between messages within the batch (can vary)
-    await sleep(200);
-  }
-
-  // --- THIS IS THE KEY CHANGE ---
-  // If not partial, or if specifically finished, mark as done.
-  // BUT: logic is easiest if we ONLY mark as sent if NOT partial.
-  if (!isPartial) {
-    const finalCampaign = await Campaign.findById(campaignId);
-    if (finalCampaign) {
-      finalCampaign.status = "sent";
-      finalCampaign.sentAt = new Date(); // <-- Set the exact sent time
-      await finalCampaign.save();
+    console.log(`Campaign "${campaign.name}" finished.`);
+    io.emit("campaignsUpdated");
+  } catch (error) {
+    console.error(`Background processing error: ${error.message}`);
+    try {
+      const c = await Campaign.findById(campaignId);
+      if (c) {
+        c.status = "failed";
+        await c.save();
+        io.emit("campaignsUpdated");
+      }
+    } catch (e) {
+      /* ignore */
     }
   }
+};
 
-  await Log.create({
-    level: "success",
-    message: `Batch for campaign "${campaign.name}" finished. Success: ${successCount}, Failures: ${failureCount}.`,
-    campaign: campaignId,
-  });
-  io.emit("campaignsUpdated"); // <-- EMIT EVENT
-  return {
-    message: `Batch processed.`,
-    totalRecipients: contacts.length,
-    successCount,
-    failureCount,
-  };
+const sendCampaign = async (campaignId, options = {}) => {
+  // Fire and forget — pass options (batch settings from frontend) to background processor
+  processCampaignBackground(campaignId, options);
+  return { message: "Campaign started in background.", campaignId };
 };
 
 module.exports = {

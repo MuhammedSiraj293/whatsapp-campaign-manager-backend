@@ -7,7 +7,7 @@ const {
   getCampaigns,
   createCampaign,
   executeCampaign,
-  executeCampaignBatch, // <-- IMPORT BATCH FUNCTION
+  // executeCampaignBatch, // Removed
   getMessageTemplates,
   getRecipientCount,
   deleteCampaign,

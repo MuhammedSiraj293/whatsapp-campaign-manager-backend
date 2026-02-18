@@ -152,55 +152,54 @@ const createCampaign = async (req, res) => {
 const executeCampaign = async (req, res) => {
   try {
     const campaignId = req.params.id;
+    // Extract batch settings from request body (sent by frontend)
+    const { batchSize, batchDelay, messageDelay } = req.body;
+
     const campaign = await Campaign.findById(campaignId);
 
     if (!campaign) {
       return res
         .status(404)
         .json({ success: false, error: "Campaign not found" });
-    } // Prevent re-sending already processed campaigns
+    }
 
+    // Prevent re-sending already processed campaigns
     if (["sending", "sent"].includes(campaign.status)) {
       return res.status(400).json({
         success: false,
         error: `This campaign has already been ${campaign.status}.`,
       });
-    } // 1. Immediately mark as "sending"
+    }
 
-    campaign.status = "sending";
-    await campaign.save(); // 2. Log that manual send started
-    getIO().emit("campaignsUpdated"); // <-- 2. EMIT EVENT
-
+    // Log that manual send started
     await Log.create({
       level: "info",
-      message: `Manual send triggered for campaign "${campaign.name}" and set status to 'sending'.`,
+      message: `Manual send triggered for campaign "${campaign.name}" with batchSize=${batchSize}, batchDelay=${batchDelay}ms, messageDelay=${messageDelay}ms.`,
       campaign: campaign._id,
-    }); // 3. Start sending asynchronously (don't use 'await' on sendCampaign)
+    });
 
-    sendCampaign(campaign._id)
-      // Note: The campaignService.js already updates status to 'sent' or 'failed'
-      // and logs the result, so we don't need to do it here.
-      // We just need to catch any *initial* error from the service.
-      .catch(async (error) => {
-        // This catch block will run if sendCampaign fails immediately
+    // Start sending asynchronously (fire and forget)
+    sendCampaign(campaign._id, { batchSize, batchDelay, messageDelay }).catch(
+      async (error) => {
         console.error(`Error starting sendCampaign ${campaign._id}:`, error);
-        // Ensure status is marked as failed if an error occurs during initiation
         const failedCampaign = await Campaign.findById(campaign._id);
         if (failedCampaign && failedCampaign.status !== "sent") {
           failedCampaign.status = "failed";
           await failedCampaign.save();
-          getIO().emit("campaignsUpdated"); // <-- 2. EMIT EVENT
+          getIO().emit("campaignsUpdated");
         }
         await Log.create({
           level: "error",
-          message: `Campaign "${campaign.name}" failed during manual send. Reason: ${error.message}`,
+          message: `Campaign "${campaign.name}" failed. Reason: ${error.message}`,
           campaign: campaign._id,
         });
-      }); // 4. Return response immediately
+      },
+    );
 
+    // Return immediately
     res.status(200).json({
       success: true,
-      data: { message: "Campaign is being sent..." },
+      data: { message: "Campaign is being sent in background..." },
     });
   } catch (error) {
     console.error("Error executing campaign:", error);
@@ -208,57 +207,7 @@ const executeCampaign = async (req, res) => {
   }
 };
 
-// --- BATCH EXECUTION ---
-const executeCampaignBatch = async (req, res) => {
-  try {
-    const campaignId = req.params.id;
-    const { limit, offset, finalBatch } = req.body; // Expect limit and offset, and finalBatch flag
-
-    console.log(
-      `🚀 Executing batch for ${campaignId} | Offset: ${offset} | Limit: ${limit}`,
-    );
-
-    const campaign = await Campaign.findById(campaignId);
-    if (!campaign) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Campaign not found" });
-    }
-
-    // For the FIRST batch (offset 0), set status to sending
-    if (offset === 0 && campaign.status === "scheduled") {
-      campaign.status = "sending";
-      await campaign.save();
-      getIO().emit("campaignsUpdated");
-    }
-
-    // Execute this batch synchronously (wait for it to finish)
-    // We pass isPartial: true so sendCampaign doesn't mark it as "sent" yet
-    const result = await sendCampaign(campaignId, {
-      limit: parseInt(limit) || 10,
-      offset: parseInt(offset) || 0,
-      isPartial: true,
-    });
-
-    // If this is the final batch, or if we want to manually close it
-    if (finalBatch) {
-      campaign.status = "sent";
-      campaign.sentAt = new Date();
-      await campaign.save();
-      await Log.create({
-        level: "success",
-        message: `Campaign "${campaign.name}" fully completed via batching.`,
-        campaign: campaignId,
-      });
-      getIO().emit("campaignsUpdated");
-    }
-
-    res.status(200).json({ success: true, data: result });
-  } catch (error) {
-    console.error("Error executing batch:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
+// executeCampaignBatch REMOVED - Logic moved to background service
 // --- END OF YOUR NEW FUNCTION ---
 
 // --- NEW FUNCTION ---
@@ -327,6 +276,9 @@ const getCampaignsByWaba = async (req, res) => {
             },
           },
           contactCount: { $size: "$contacts" }, // <-- Calculate the count here
+          batchSize: 1, // <-- Include batch size
+          batchDelay: 1, // <-- Include batch delay
+          messageDelay: 1, // <-- Include message delay
         },
       },
     ]);
@@ -415,7 +367,8 @@ module.exports = {
   getRecipientCount,
   createCampaign,
   executeCampaign,
-  executeCampaignBatch,
+  executeCampaign,
+  // executeCampaignBatch, // Removed
   getCampaignsByWaba,
   getMessageTemplates,
   deleteCampaign,
