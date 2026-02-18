@@ -124,7 +124,11 @@ const processCampaignBackground = async (campaignId, options = {}) => {
             campaign.templateName,
             campaign.templateLanguage,
             {
-              headerImageUrl: campaign.headerImageUrl,
+              // Prefer the stored Meta media ID; fall back to URL if no ID
+              headerMediaId: campaign.headerMediaId || undefined,
+              headerImageUrl: campaign.headerMediaId
+                ? undefined
+                : campaign.headerImageUrl,
               bodyVariables: finalBodyVariables,
               buttons: campaign.buttons,
             },
