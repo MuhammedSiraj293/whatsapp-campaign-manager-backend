@@ -26,7 +26,7 @@ const CampaignSchema = new mongoose.Schema(
     expectedVariables: { type: Number, default: 0 },
     status: {
       type: String,
-      enum: ["draft", "scheduled", "sending", "sent", "failed"],
+      enum: ["draft", "scheduled", "sending", "paused", "sent", "failed"],
       default: "draft",
     },
     contactList: { type: mongoose.Schema.Types.ObjectId, ref: "ContactList" },
