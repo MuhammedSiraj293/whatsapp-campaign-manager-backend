@@ -48,7 +48,8 @@ const CampaignSchema = new mongoose.Schema(
     },
     // --- BATCH CONFIGURATION ---
     batchSize: { type: Number, default: 50 }, // Default batch size
-    batchDelay: { type: Number, default: 2000 }, // Default delay in ms
+    batchDelay: { type: Number, default: 120000 }, // Default delay between BATCHES (2 mins)
+    messageDelay: { type: Number, default: 2000 }, // Default delay between MESSAGES (2s)
   },
   {
     timestamps: true,

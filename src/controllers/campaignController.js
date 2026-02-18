@@ -59,6 +59,7 @@ const createCampaign = async (req, res) => {
       headerImageUrl, // Fallback if they provided a URL
       batchSize, // <-- New Field
       batchDelay, // <-- New Field
+      messageDelay, // <-- New Field
     } = req.body;
 
     // Parse buttons if they came as a string
@@ -132,7 +133,8 @@ const createCampaign = async (req, res) => {
         scheduledFor: new Date(scheduledFor).toISOString(),
       }),
       batchSize: parseInt(batchSize) || 50,
-      batchDelay: parseInt(batchDelay) || 2000,
+      batchDelay: parseInt(batchDelay) || 120000,
+      messageDelay: parseInt(messageDelay) || 2000,
     };
 
     const campaign = await Campaign.create(campaignData);
