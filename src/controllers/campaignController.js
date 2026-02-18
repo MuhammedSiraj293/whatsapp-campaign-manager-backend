@@ -68,12 +68,10 @@ const createCampaign = async (req, res) => {
     }
 
     if (!phoneNumber || !contactList) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: '"Send From" and "Send To" are required.',
-        });
+      return res.status(400).json({
+        success: false,
+        error: '"Send From" and "Send To" are required.',
+      });
     }
 
     // --- NEW LOGIC: UPLOAD TO META ---
@@ -84,16 +82,13 @@ const createCampaign = async (req, res) => {
       console.log("📂 File detected. Uploading to Meta...");
 
       // 1. Find credentials to upload
-      const phoneDoc = await PhoneNumber.findById(phoneNumber).populate(
-        "wabaAccount"
-      );
+      const phoneDoc =
+        await PhoneNumber.findById(phoneNumber).populate("wabaAccount");
       if (!phoneDoc || !phoneDoc.wabaAccount) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error: "WABA credentials not found for this phone number.",
-          });
+        return res.status(400).json({
+          success: false,
+          error: "WABA credentials not found for this phone number.",
+        });
       }
 
       // 2. Upload to Meta
@@ -101,18 +96,16 @@ const createCampaign = async (req, res) => {
         finalHeaderMediaId = await uploadMedia(
           req.file,
           phoneDoc.wabaAccount.accessToken,
-          phoneDoc.phoneNumberId
+          phoneDoc.phoneNumberId,
         );
         console.log(`✅ Media uploaded to Meta. ID: ${finalHeaderMediaId}`);
         // We don't need a URL if we have an ID, but we can clear it to be safe
         finalHeaderImageUrl = "";
       } catch (uploadError) {
-        return res
-          .status(500)
-          .json({
-            success: false,
-            error: `Failed to upload image to WhatsApp: ${uploadError.message}`,
-          });
+        return res.status(500).json({
+          success: false,
+          error: `Failed to upload image to WhatsApp: ${uploadError.message}`,
+        });
       }
     }
 
@@ -208,6 +201,58 @@ const executeCampaign = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+// --- BATCH EXECUTION ---
+const executeCampaignBatch = async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const { limit, offset, finalBatch } = req.body; // Expect limit and offset, and finalBatch flag
+
+    console.log(
+      `🚀 Executing batch for ${campaignId} | Offset: ${offset} | Limit: ${limit}`,
+    );
+
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Campaign not found" });
+    }
+
+    // For the FIRST batch (offset 0), set status to sending
+    if (offset === 0 && campaign.status === "scheduled") {
+      campaign.status = "sending";
+      await campaign.save();
+      getIO().emit("campaignsUpdated");
+    }
+
+    // Execute this batch synchronously (wait for it to finish)
+    // We pass isPartial: true so sendCampaign doesn't mark it as "sent" yet
+    const result = await sendCampaign(campaignId, {
+      limit: parseInt(limit) || 10,
+      offset: parseInt(offset) || 0,
+      isPartial: true,
+    });
+
+    // If this is the final batch, or if we want to manually close it
+    if (finalBatch) {
+      campaign.status = "sent";
+      campaign.sentAt = new Date();
+      await campaign.save();
+      await Log.create({
+        level: "success",
+        message: `Campaign "${campaign.name}" fully completed via batching.`,
+        campaign: campaignId,
+      });
+      getIO().emit("campaignsUpdated");
+    }
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error executing batch:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 // --- END OF YOUR NEW FUNCTION ---
 
 // --- NEW FUNCTION ---
@@ -221,7 +266,7 @@ const getCampaignsByWaba = async (req, res) => {
   try {
     const { wabaId } = req.params;
     const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId }).select(
-      "_id"
+      "_id",
     );
     const phoneNumberIds = phoneNumbers.map((p) => p._id);
 
@@ -320,13 +365,13 @@ const getMessageTemplates = async (req, res) => {
           .filter(
             (t) =>
               t.status === "APPROVED" &&
-              t.components.some((c) => c.type === "BODY")
+              t.components.some((c) => c.type === "BODY"),
           )
           .map((t) => ({ ...t, wabaAccountId: account._id }));
         allTemplates = allTemplates.concat(approvedTemplates);
       } catch (fetchError) {
         console.error(
-          `Failed to fetch templates for WABA ${account.accountName}: ${fetchError.message}`
+          `Failed to fetch templates for WABA ${account.accountName}: ${fetchError.message}`,
         );
       }
     }
@@ -364,6 +409,7 @@ module.exports = {
   getRecipientCount,
   createCampaign,
   executeCampaign,
+  executeCampaignBatch,
   getCampaignsByWaba,
   getMessageTemplates,
   deleteCampaign,

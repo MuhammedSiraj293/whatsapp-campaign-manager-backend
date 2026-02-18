@@ -10,7 +10,8 @@ const { getIO } = require("../socketManager");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const sendCampaign = async (campaignId) => {
+const sendCampaign = async (campaignId, options = {}) => {
+  const { limit, offset, isPartial } = options;
   const io = getIO();
   const campaign = await Campaign.findById(campaignId).populate({
     path: "phoneNumber", // <-- 3. Populate the phone number
@@ -39,10 +40,18 @@ const sendCampaign = async (campaignId) => {
   }
   // --- END NEW VALIDATION ---
 
-  const contacts = await Contact.find({
+  // Build the query
+  let query = Contact.find({
     contactList: campaign.contactList,
     isSubscribed: true,
   });
+
+  // Apply batching if provided
+  if (limit !== undefined && offset !== undefined) {
+    query = query.skip(offset).limit(limit);
+  }
+
+  const contacts = await query;
 
   // --- NEW EXCLUSION LOGIC ---
   let excludedPhoneNumbers = new Set();
@@ -72,15 +81,23 @@ const sendCampaign = async (campaignId) => {
   if (contacts.length === 0) {
     await Log.create({
       level: "info",
-      message: `Campaign "${campaign.name}" has no contacts in its list.`,
+      message: `Batch for campaign "${campaign.name}" has no eligible contacts (offset: ${offset}, limit: ${limit}).`,
       campaign: campaignId,
     });
-    campaign.status = "sent";
-    campaign.sentAt = new Date();
-    await campaign.save();
-    io.emit("campaignsUpdated"); // <-- EMIT EVENT
+
+    // Only mark as sent if this is NOT a partial/batch send or if it's the last batch (handled by caller)
+    // Actually, for batching, the caller manages the 'sent' status.
+    // However, if it's a regular send (no batch options), we mark it as sent here.
+    if (!isPartial) {
+      campaign.status = "sent";
+      campaign.sentAt = new Date();
+      await campaign.save();
+      io.emit("campaignsUpdated");
+    }
+
     return {
-      message: `Campaign "${campaign.name}" sent. No subscribed contacts found.`,
+      message: `Batch processed. No contacts sent in this batch.`,
+      count: 0,
     };
   }
 
@@ -132,7 +149,7 @@ const sendCampaign = async (campaignId) => {
 
   await Log.create({
     level: "info",
-    message: `Starting campaign "${campaign.name}" for ${contacts.length} contacts.`,
+    message: `Starting batch for campaign "${campaign.name}" (Count: ${contacts.length}, Offset: ${offset}).`,
     campaign: campaignId,
   });
 
@@ -262,25 +279,30 @@ const sendCampaign = async (campaignId) => {
       failureReason: failureReason,
     });
 
-    await sleep(1000);
+    // Small delay between messages within the batch (can vary)
+    await sleep(200);
   }
 
   // --- THIS IS THE KEY CHANGE ---
-  // Find the campaign again to update its status and set the sentAt timestamp
-  const finalCampaign = await Campaign.findById(campaignId);
-  if (finalCampaign) {
-    finalCampaign.status = "sent";
-    finalCampaign.sentAt = new Date(); // <-- Set the exact sent time
-    await finalCampaign.save();
+  // If not partial, or if specifically finished, mark as done.
+  // BUT: logic is easiest if we ONLY mark as sent if NOT partial.
+  if (!isPartial) {
+    const finalCampaign = await Campaign.findById(campaignId);
+    if (finalCampaign) {
+      finalCampaign.status = "sent";
+      finalCampaign.sentAt = new Date(); // <-- Set the exact sent time
+      await finalCampaign.save();
+    }
   }
+
   await Log.create({
     level: "success",
-    message: `Campaign "${campaign.name}" finished. Success: ${successCount}, Failures: ${failureCount}.`,
+    message: `Batch for campaign "${campaign.name}" finished. Success: ${successCount}, Failures: ${failureCount}.`,
     campaign: campaignId,
   });
   io.emit("campaignsUpdated"); // <-- EMIT EVENT
   return {
-    message: `Campaign "${campaign.name}" sent.`,
+    message: `Batch processed.`,
     totalRecipients: contacts.length,
     successCount,
     failureCount,

@@ -1,12 +1,13 @@
 // backend/src/routes/campaignRoutes.js
 
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
+const express = require("express");
+const multer = require("multer");
+const path = require("path");
 const {
   getCampaigns,
   createCampaign,
   executeCampaign,
+  executeCampaignBatch, // <-- IMPORT BATCH FUNCTION
   getMessageTemplates,
   getRecipientCount,
   deleteCampaign,
@@ -20,7 +21,7 @@ const router = express.Router();
 // Configure Multer for image uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, "uploads/");
   },
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`);
@@ -33,7 +34,12 @@ router
   .route("/")
   .get(protect, authorize("admin", "manager"), getCampaigns)
   // --- UPDATED: Add upload.single('headerImage') middleware ---
-  .post(protect, authorize('admin', 'manager'), upload.single('headerImage'), createCampaign);
+  .post(
+    protect,
+    authorize("admin", "manager"),
+    upload.single("headerImage"),
+    createCampaign,
+  );
 
 // --- 2. NEW ROUTES ---
 // Get campaigns for a SPECIFIC WABA
@@ -41,7 +47,7 @@ router.get(
   "/waba/:wabaId",
   protect,
   authorize("admin", "manager"),
-  getCampaignsByWaba
+  getCampaignsByWaba,
 );
 
 // Get templates for a SPECIFIC WABA
@@ -49,14 +55,14 @@ router.get(
   "/templates/:wabaId",
   protect,
   authorize("admin", "manager"),
-  getMessageTemplates
+  getMessageTemplates,
 );
 // Get all templates
 router.get(
   "/templates",
   protect,
   authorize("admin", "manager"),
-  getMessageTemplates
+  getMessageTemplates,
 );
 // --- END NEW ROUTES ---
 
@@ -64,14 +70,14 @@ router.get(
   "/:id/recipients/count",
   protect,
   authorize("admin", "manager"),
-  getRecipientCount
+  getRecipientCount,
 );
 
 router.post(
   "/:id/send",
   protect,
   authorize("admin", "manager"),
-  executeCampaign
+  executeCampaign,
 );
 
 router
