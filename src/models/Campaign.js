@@ -46,10 +46,13 @@ const CampaignSchema = new mongoose.Schema(
     sentAt: {
       type: Date,
     },
+    // --- BATCH CONFIGURATION ---
+    batchSize: { type: Number, default: 50 }, // Default batch size
+    batchDelay: { type: Number, default: 2000 }, // Default delay in ms
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 module.exports = mongoose.model("Campaign", CampaignSchema);

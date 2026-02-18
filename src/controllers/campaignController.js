@@ -57,6 +57,8 @@ const createCampaign = async (req, res) => {
       phoneNumber,
       buttons: buttonsString,
       headerImageUrl, // Fallback if they provided a URL
+      batchSize, // <-- New Field
+      batchDelay, // <-- New Field
     } = req.body;
 
     // Parse buttons if they came as a string
@@ -129,6 +131,8 @@ const createCampaign = async (req, res) => {
       ...(scheduledFor && {
         scheduledFor: new Date(scheduledFor).toISOString(),
       }),
+      batchSize: parseInt(batchSize) || 50,
+      batchDelay: parseInt(batchDelay) || 2000,
     };
 
     const campaign = await Campaign.create(campaignData);
