@@ -103,7 +103,7 @@ const processCampaignBackground = async (campaignId, options = {}) => {
           continue;
         }
 
-        // Send Logic
+        // 3. Send Logic — wrapped in try/catch so one failure doesn't stop the loop
         try {
           const { accessToken } = campaign.phoneNumber.wabaAccount;
           const { phoneNumberId } = campaign.phoneNumber;
@@ -132,11 +132,10 @@ const processCampaignBackground = async (campaignId, options = {}) => {
             phoneNumberId,
           );
 
-          // Log/Analytics/Reply logic (simplified for brevity, ensuring core matching)
           if (response?.messages?.[0]?.id) {
             const wamid = response.messages[0].id;
 
-            // --- FIX: Interpolate Variables into Body for History Context ---
+            // Interpolate variables into body for chat history
             let resolvedBody = campaign.message || "";
             if (finalBodyVariables.length > 0) {
               finalBodyVariables.forEach((val, index) => {
@@ -147,7 +146,7 @@ const processCampaignBackground = async (campaignId, options = {}) => {
               });
             }
 
-            // Save Reply
+            // Save Reply (non-fatal)
             try {
               await Reply.create({
                 messageId: wamid,
@@ -159,27 +158,34 @@ const processCampaignBackground = async (campaignId, options = {}) => {
                 read: true,
                 campaign: campaign._id,
               });
-            } catch (err) {
-              console.error("Error saving reply:", err.message);
+            } catch (replyErr) {
+              console.error("Error saving reply:", replyErr.message);
             }
 
-            await Log.create({
-              campaign: campaign._id,
-              contact: contact._id,
-              status: "sent",
-              messageId: wamid,
-            });
+            // Log success
+            try {
+              await Log.create({
+                level: "info",
+                message: `Sent to ${contact.phoneNumber} (wamid: ${wamid}).`,
+                campaign: campaign._id,
+              });
+            } catch (logErr) {
+              console.error("Log save error:", logErr.message);
+            }
+
+            // Analytics
             await Analytics.create({
               wamid,
               campaign: campaign._id,
               contact: contact._id,
               status: "sent",
             });
+
             // Add to deduplication set
             phoneNumbersWhoReceivedTemplate.add(contact.phoneNumber);
             successCount++;
 
-            // Emit new message
+            // Emit new message to frontend
             io.emit("newMessage", {
               from: contact.phoneNumber,
               recipientId: phoneNumberId,
@@ -187,45 +193,54 @@ const processCampaignBackground = async (campaignId, options = {}) => {
                 body: resolvedBody,
                 direction: "outgoing",
                 timestamp: new Date(),
-              }, // Simplified
+              },
             });
           }
         } catch (error) {
+          // Log failure but continue to next contact — don't crash the whole loop
           console.error(
             `Failed to send to ${contact.phoneNumber}: ${error.message}`,
           );
-          await Log.create({
-            campaign: campaign._id,
-            contact: contact._id,
-            status: "failed",
-            error: error.message,
-          });
+          try {
+            await Log.create({
+              level: "error",
+              message: `Failed to send to ${contact.phoneNumber}: ${error.message}`,
+              campaign: campaign._id,
+            });
+          } catch (logErr) {
+            console.error("Log save error:", logErr.message);
+          }
           failureCount++;
         }
 
-        // Message Delay
+        // Message Delay between individual messages
         if (messageDelay > 0) await sleep(messageDelay);
       }
 
       offset += batchSize;
 
-      // Batch Delay
+      // Batch Delay before next batch
       if (offset < totalContacts) {
         console.log(`Waiting ${batchDelay}ms before next batch...`);
         await sleep(batchDelay);
       }
     }
 
-    // Finish
+    // Mark campaign as completed
     campaign.status = "sent";
     campaign.sentAt = new Date();
     await campaign.save();
 
-    await Log.create({
-      level: "success",
-      message: `Campaign "${campaign.name}" completed. Success: ${successCount}, Failed: ${failureCount}.`,
-      campaign: campaign._id,
-    });
+    try {
+      await Log.create({
+        level: "success",
+        message: `Campaign "${campaign.name}" completed. Success: ${successCount}, Failed: ${failureCount}.`,
+        campaign: campaign._id,
+      });
+    } catch (logErr) {
+      console.error("Final log save error:", logErr.message);
+    }
+
     console.log(`Campaign "${campaign.name}" finished.`);
     io.emit("campaignsUpdated");
   } catch (error) {
