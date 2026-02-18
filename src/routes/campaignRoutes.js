@@ -7,11 +7,12 @@ const {
   getCampaigns,
   createCampaign,
   executeCampaign,
-  // executeCampaignBatch, // Removed
   getMessageTemplates,
   getRecipientCount,
   deleteCampaign,
-  getCampaignsByWaba, // <-- 1. IMPORT NEW FUNCTION
+  getCampaignsByWaba,
+  pauseCampaignHandler,
+  resumeCampaignHandler,
 } = require("../controllers/campaignController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -78,6 +79,19 @@ router.post(
   protect,
   authorize("admin", "manager"),
   executeCampaign,
+);
+
+router.post(
+  "/:id/pause",
+  protect,
+  authorize("admin", "manager"),
+  pauseCampaignHandler,
+);
+router.post(
+  "/:id/resume",
+  protect,
+  authorize("admin", "manager"),
+  resumeCampaignHandler,
 );
 
 router

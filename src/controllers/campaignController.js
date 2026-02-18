@@ -5,7 +5,11 @@ const Contact = require("../models/Contact");
 const WabaAccount = require("../models/WabaAccount");
 const PhoneNumber = require("../models/PhoneNumber"); // <-- 1. IMPORT
 const Log = require("../models/Log"); // <-- 1. IMPORT THE LOG MODEL
-const { sendCampaign } = require("../services/campaignService");
+const {
+  sendCampaign,
+  pauseCampaign,
+  resumeCampaign,
+} = require("../services/campaignService");
 const { getIO } = require("../socketManager");
 const axios = require("axios");
 const { uploadMedia } = require("../integrations/whatsappAPI");
@@ -362,14 +366,62 @@ const deleteCampaign = async (req, res) => {
   }
 };
 
+const pauseCampaignHandler = async (req, res) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign)
+      return res
+        .status(404)
+        .json({ success: false, error: "Campaign not found" });
+    if (campaign.status !== "sending") {
+      return res
+        .status(400)
+        .json({ success: false, error: "Campaign is not currently sending." });
+    }
+    pauseCampaign(req.params.id);
+    campaign.status = "paused";
+    await campaign.save();
+    getIO().emit("campaignsUpdated");
+    res
+      .status(200)
+      .json({ success: true, data: { message: "Campaign paused." } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const resumeCampaignHandler = async (req, res) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign)
+      return res
+        .status(404)
+        .json({ success: false, error: "Campaign not found" });
+    if (campaign.status !== "paused") {
+      return res
+        .status(400)
+        .json({ success: false, error: "Campaign is not paused." });
+    }
+    resumeCampaign(req.params.id);
+    campaign.status = "sending";
+    await campaign.save();
+    getIO().emit("campaignsUpdated");
+    res
+      .status(200)
+      .json({ success: true, data: { message: "Campaign resumed." } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
   getCampaigns,
   getRecipientCount,
   createCampaign,
   executeCampaign,
-  executeCampaign,
-  // executeCampaignBatch, // Removed
   getCampaignsByWaba,
   getMessageTemplates,
   deleteCampaign,
+  pauseCampaignHandler,
+  resumeCampaignHandler,
 };

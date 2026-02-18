@@ -10,8 +10,36 @@ const { getIO } = require("../socketManager");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// --- In-memory state map for pause/resume ---
+// Maps campaignId (string) -> 'running' | 'paused' | 'stopped'
+const campaignStateMap = new Map();
+
+const pauseCampaign = (campaignId) => {
+  campaignStateMap.set(String(campaignId), "paused");
+};
+
+const resumeCampaign = (campaignId) => {
+  campaignStateMap.set(String(campaignId), "running");
+};
+
+const getCampaignState = (campaignId) => {
+  return campaignStateMap.get(String(campaignId)) || "running";
+};
+
+// Waits while campaign is paused, resolves when running again
+const waitWhilePaused = async (campaignId) => {
+  while (getCampaignState(campaignId) === "paused") {
+    await sleep(2000); // poll every 2 seconds
+  }
+};
+
 const processCampaignBackground = async (campaignId, options = {}) => {
   const io = getIO();
+  const idStr = String(campaignId);
+
+  // Register as running
+  campaignStateMap.set(idStr, "running");
+
   try {
     const campaign = await Campaign.findById(campaignId).populate({
       path: "phoneNumber",
@@ -22,6 +50,7 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       console.error(
         `Campaign ${campaignId} not found for background processing.`,
       );
+      campaignStateMap.delete(idStr);
       return;
     }
 
@@ -82,6 +111,9 @@ const processCampaignBackground = async (campaignId, options = {}) => {
     let failureCount = 0;
 
     while (offset < totalContacts) {
+      // --- PAUSE CHECK (between batches) ---
+      await waitWhilePaused(idStr);
+
       console.log(
         `Processing batch offset ${offset} for campaign ${campaign.name}`,
       );
@@ -92,6 +124,9 @@ const processCampaignBackground = async (campaignId, options = {}) => {
 
       // MESSAGE LOOP
       for (const contact of contacts) {
+        // --- PAUSE CHECK (between messages) ---
+        await waitWhilePaused(idStr);
+
         // 1. Exclusion Check
         if (excludedPhoneNumbers.has(contact.phoneNumber)) continue;
 
@@ -205,6 +240,20 @@ const processCampaignBackground = async (campaignId, options = {}) => {
           console.error(
             `Failed to send to ${contact.phoneNumber}: ${error.message}`,
           );
+
+          // Create Analytics record for failed message
+          try {
+            await Analytics.create({
+              wamid: `failed_${contact._id}_${Date.now()}`,
+              campaign: campaign._id,
+              contact: contact._id,
+              status: "failed",
+              failureReason: error.message,
+            });
+          } catch (analyticsErr) {
+            console.error("Analytics save error:", analyticsErr.message);
+          }
+
           try {
             await Log.create({
               level: "error",
@@ -259,6 +308,9 @@ const processCampaignBackground = async (campaignId, options = {}) => {
     } catch (e) {
       /* ignore */
     }
+  } finally {
+    // Always clean up state map when done
+    campaignStateMap.delete(idStr);
   }
 };
 
@@ -270,4 +322,7 @@ const sendCampaign = async (campaignId, options = {}) => {
 
 module.exports = {
   sendCampaign,
+  pauseCampaign,
+  resumeCampaign,
+  getCampaignState,
 };
