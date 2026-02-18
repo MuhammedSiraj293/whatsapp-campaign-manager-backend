@@ -80,13 +80,6 @@ router.post(
   executeCampaign,
 );
 
-router.post(
-  "/:id/send-batch",
-  protect,
-  authorize("admin", "manager"),
-  executeCampaignBatch,
-);
-
 router
   .route("/:id")
   .delete(protect, authorize("admin", "manager"), deleteCampaign);
