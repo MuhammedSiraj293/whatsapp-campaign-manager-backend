@@ -320,9 +320,14 @@ const sendCampaign = async (campaignId, options = {}) => {
   return { message: "Campaign started in background.", campaignId };
 };
 
+const isCampaignActive = (campaignId) => {
+  return campaignStateMap.has(String(campaignId));
+};
+
 module.exports = {
   sendCampaign,
   pauseCampaign,
   resumeCampaign,
   getCampaignState,
+  isCampaignActive,
 };

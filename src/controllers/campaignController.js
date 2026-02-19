@@ -9,6 +9,7 @@ const {
   sendCampaign,
   pauseCampaign,
   resumeCampaign,
+  isCampaignActive,
 } = require("../services/campaignService");
 const { getIO } = require("../socketManager");
 const axios = require("axios");
@@ -397,12 +398,28 @@ const resumeCampaignHandler = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, error: "Campaign not found" });
-    if (campaign.status !== "paused") {
+
+    // Allow resuming if it's paused OR if it's stuck in "sending" but process is dead
+    if (campaign.status !== "paused" && campaign.status !== "sending") {
       return res
         .status(400)
-        .json({ success: false, error: "Campaign is not paused." });
+        .json({ success: false, error: "Campaign is not paused or sending." });
     }
-    resumeCampaign(req.params.id);
+
+    // Check if the background process is actually alive
+    const isActive = isCampaignActive(campaign._id);
+
+    if (isActive) {
+      // Logic A: Process is alive, just unpause the flag
+      console.log(`Resuming in-memory campaign ${campaign._id}`);
+      resumeCampaign(req.params.id);
+    } else {
+      // Logic B: Process is dead (server restart?), restart it
+      console.log(`Restarting background process for campaign ${campaign._id}`);
+      // We start it again; sendCampaign handles "skipping" already sent ones via deduplication
+      sendCampaign(campaign._id);
+    }
+
     campaign.status = "sending";
     await campaign.save();
     getIO().emit("campaignsUpdated");
