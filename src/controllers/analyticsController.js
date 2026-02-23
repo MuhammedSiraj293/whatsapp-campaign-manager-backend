@@ -325,11 +325,23 @@ const getTemplateAnalytics = async (req, res) => {
 const getAnalyticsForTemplate = async (req, res) => {
   try {
     const { templateName } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const campaignQuery = { templateName: templateName };
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      // Fallback to createdAt if sentAt is not set, but sentAt is preferred
+      campaignQuery.$or = [
+        { sentAt: { $gte: start, $lte: end } },
+        { sentAt: { $exists: false }, createdAt: { $gte: start, $lte: end } },
+      ];
+    }
 
     // 1. Find all campaigns that use this template and populate contactList
-    const campaigns = await Campaign.find({
-      templateName: templateName,
-    }).populate("contactList");
+    const campaigns =
+      await Campaign.find(campaignQuery).populate("contactList");
 
     if (!campaigns || campaigns.length === 0) {
       return res.status(200).json({
