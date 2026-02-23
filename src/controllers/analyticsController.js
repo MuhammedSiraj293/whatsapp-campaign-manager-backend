@@ -11,10 +11,25 @@ const mongoose = require("mongoose"); // <--- Added import
 // @desc    Get key analytics stats
 const getStats = async (req, res) => {
   try {
+    const { startDate, endDate } = req.query;
+
+    const campaignQuery = { status: "sent" };
+    const contactQuery = {};
+    const replyQuery = { direction: "incoming" };
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      campaignQuery.createdAt = { $gte: start, $lte: end };
+      contactQuery.createdAt = { $gte: start, $lte: end };
+      replyQuery.timestamp = { $gte: start, $lte: end };
+    }
+
     const [campaignCount, contactCount, replyCount] = await Promise.all([
-      Campaign.countDocuments({ status: "sent" }),
-      Contact.countDocuments(),
-      Reply.countDocuments({ direction: "incoming" }),
+      Campaign.countDocuments(campaignQuery),
+      Contact.countDocuments(contactQuery),
+      Reply.countDocuments(replyQuery),
     ]);
 
     res.status(200).json({
@@ -213,7 +228,9 @@ const exportLeadsToSheet = async (req, res) => {
 // @route   GET /api/analytics/templates
 const getTemplateAnalytics = async (req, res) => {
   try {
-    const stats = await Analytics.aggregate([
+    const { startDate, endDate } = req.query;
+
+    const basePipeline = [
       // 1. Join with the 'campaigns' collection to get template names
       {
         $lookup: {
@@ -225,6 +242,22 @@ const getTemplateAnalytics = async (req, res) => {
       },
       // 2. Deconstruct the campaignData array
       { $unwind: "$campaignData" },
+    ];
+
+    // If dates are provided, filter the records
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      basePipeline.push({
+        $match: {
+          "campaignData.sentAt": { $gte: start, $lte: end },
+        },
+      });
+    }
+
+    const stats = await Analytics.aggregate([
+      ...basePipeline,
       // 3. Group by the template name and count statuses
       {
         $group: {
