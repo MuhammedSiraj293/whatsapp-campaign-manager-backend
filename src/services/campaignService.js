@@ -283,7 +283,7 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       offset += batchSize;
 
       // Batch Delay before next batch
-      if (offset < totalContacts) {
+      if (offset < totalContactsToProcess) {
         console.log(`Waiting ${batchDelay}ms before next batch...`);
         await sleep(batchDelay);
       }
