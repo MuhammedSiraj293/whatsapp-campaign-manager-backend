@@ -69,24 +69,26 @@ const processCampaignBackground = async (campaignId, options = {}) => {
     );
 
     // Build query
-    const query = {
+    const baseQuery = {
       contactList: campaign.contactList,
       isSubscribed: true,
     };
 
-    const totalContacts = await Contact.countDocuments(query);
+    const totalContactsBeforeFilters = await Contact.countDocuments(baseQuery);
     console.log(
-      `Starting background campaign "${campaign.name}". Total contacts: ${totalContacts}`,
+      `Starting background campaign "${campaign.name}". Total contacts before filters: ${totalContactsBeforeFilters}`,
     );
 
     // Exclusion List Handling
-    let excludedPhoneNumbers = new Set();
+    let excludedPhoneNumbers = [];
     if (campaign.exclusionList) {
       const excludedContacts = await Contact.find({
         contactList: campaign.exclusionList,
       }).select("phoneNumber");
-      excludedContacts.forEach((c) => excludedPhoneNumbers.add(c.phoneNumber));
-      console.log(`🚫 Found ${excludedPhoneNumbers.size} contacts to exclude.`);
+      excludedPhoneNumbers = excludedContacts.map((c) => c.phoneNumber);
+      console.log(
+        `🚫 Found ${excludedPhoneNumbers.length} contacts to exclude.`,
+      );
     }
 
     // Deduplication Data
@@ -99,10 +101,23 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       status: { $ne: "failed" },
     }).populate("contact", "phoneNumber");
 
-    const phoneNumbersWhoReceivedTemplate = new Set(
-      analyticsWithPhones
-        .filter((a) => a.contact && a.contact.phoneNumber)
-        .map((a) => a.contact.phoneNumber),
+    const phoneNumbersWhoReceivedTemplate = analyticsWithPhones
+      .filter((a) => a.contact && a.contact.phoneNumber)
+      .map((a) => a.contact.phoneNumber);
+
+    // Build the final query excluding numbers
+    const allNumbersToSkip = [
+      ...new Set([...excludedPhoneNumbers, ...phoneNumbersWhoReceivedTemplate]),
+    ];
+
+    const finalQuery = {
+      ...baseQuery,
+      phoneNumber: { $nin: allNumbersToSkip },
+    };
+
+    const totalContactsToProcess = await Contact.countDocuments(finalQuery);
+    console.log(
+      `Final contacts to process after deduplication/exclusion: ${totalContactsToProcess}`,
     );
 
     // BATCH LOOP
@@ -110,15 +125,17 @@ const processCampaignBackground = async (campaignId, options = {}) => {
     let successCount = 0;
     let failureCount = 0;
 
-    while (offset < totalContacts) {
+    while (offset < totalContactsToProcess) {
       // --- PAUSE CHECK (between batches) ---
       await waitWhilePaused(idStr);
 
       console.log(
-        `Processing batch offset ${offset} for campaign ${campaign.name}`,
+        `Processing batch offset ${offset} of ${totalContactsToProcess} for campaign ${campaign.name}`,
       );
 
-      const contacts = await Contact.find(query).skip(offset).limit(batchSize);
+      const contacts = await Contact.find(finalQuery)
+        .skip(offset)
+        .limit(batchSize);
 
       if (contacts.length === 0) break;
 
@@ -126,17 +143,6 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       for (const contact of contacts) {
         // --- PAUSE CHECK (between messages) ---
         await waitWhilePaused(idStr);
-
-        // 1. Exclusion Check
-        if (excludedPhoneNumbers.has(contact.phoneNumber)) continue;
-
-        // 2. Deduplication Check
-        if (phoneNumbersWhoReceivedTemplate.has(contact.phoneNumber)) {
-          console.log(
-            `Skipping ${contact.phoneNumber}: already received template.`,
-          );
-          continue;
-        }
 
         // 3. Send Logic — wrapped in try/catch so one failure doesn't stop the loop
         try {
@@ -220,8 +226,6 @@ const processCampaignBackground = async (campaignId, options = {}) => {
               status: "sent",
             });
 
-            // Add to deduplication set
-            phoneNumbersWhoReceivedTemplate.add(contact.phoneNumber);
             successCount++;
 
             // Emit new message to frontend
