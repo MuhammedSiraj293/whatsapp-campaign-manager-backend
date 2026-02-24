@@ -96,9 +96,15 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       templateName: campaign.templateName,
     }).select("_id");
     const campaignIds = campaignsWithSameTemplate.map((c) => c._id);
+
+    // We want to skip:
+    // 1. Any SUCCESSFUL/PENDING message from ANY campaign using this template (status != "failed")
+    // 2. ANY message (even failed) from THIS EXACT campaign, so we don't infinitely loop on them when resuming.
     const analyticsWithPhones = await Analytics.find({
-      campaign: { $in: campaignIds },
-      status: { $ne: "failed" },
+      $or: [
+        { campaign: { $in: campaignIds }, status: { $ne: "failed" } },
+        { campaign: campaignId }, // Skip ALL existing records (successful or failed) from THIS specific campaign instance
+      ],
     }).populate("contact", "phoneNumber");
 
     const phoneNumbersWhoReceivedTemplate = analyticsWithPhones
