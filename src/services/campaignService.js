@@ -116,6 +116,40 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       ...new Set([...excludedPhoneNumbers, ...phoneNumbersWhoReceivedTemplate]),
     ];
 
+    // --- RECORD SKIPPED CONTACTS IN ANALYTICS ---
+    // We keep the existing skip rule unchanged (contacts are still excluded from
+    // sending). We just insert Analytics rows so the SKIPPED count is visible
+    // in the dashboard. A deterministic wamid prevents duplicate rows on resume.
+    if (allNumbersToSkip.length > 0) {
+      try {
+        const skippedContacts = await Contact.find({
+          contactList: campaign.contactList,
+          phoneNumber: { $in: allNumbersToSkip },
+          isSubscribed: true,
+        }).select("_id");
+
+        if (skippedContacts.length > 0) {
+          const skippedRecords = skippedContacts.map((contact) => ({
+            wamid: `skipped_${campaign._id}_${contact._id}`,
+            campaign: campaign._id,
+            contact: contact._id,
+            status: "skipped",
+          }));
+
+          // ordered:false → continue even if some wamids already exist (resume case)
+          await Analytics.insertMany(skippedRecords, { ordered: false });
+          console.log(
+            `📊 Recorded ${skippedContacts.length} skipped contacts for campaign "${campaign.name}".`,
+          );
+        }
+      } catch (err) {
+        // E11000 = duplicate key — safe to ignore on resume; log anything else
+        if (err.code !== 11000 && !/E11000/.test(err.message)) {
+          console.error("Error recording skipped contacts:", err.message);
+        }
+      }
+    }
+
     const finalQuery = {
       ...baseQuery,
       phoneNumber: { $nin: allNumbersToSkip },
