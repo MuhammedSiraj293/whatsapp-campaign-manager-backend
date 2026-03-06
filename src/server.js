@@ -37,7 +37,7 @@ const httpServer = http.createServer(app);
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173", // Vite default
-  "https://whatsapp-campaign-manager-frontend.vercel.app",
+  "https://whatsapp-campaign-manager-sigma.vercel.app/",
 ];
 
 const corsOptions = {
