@@ -187,42 +187,57 @@ const getTemplateAnalytics = async (req, res) => {
       : Math.floor(defaultStart.getTime() / 1000);
     const endVal = end ? parseInt(end) : Math.floor(now.getTime() / 1000);
 
-    const analyticsUrl = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_template_analytics?start=${startVal}&end=${endVal}&granularity=DAILY&metric_types=SENT,DELIVERED,READ&template_ids=["${templateId}"]`;
-
-    const response = await axios.get(analyticsUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    // Build URL with properly encoded params to avoid path parsing errors
+    const params = new URLSearchParams({
+      start: startVal,
+      end: endVal,
+      granularity: "DAILY",
+      metric_types: "SENT,DELIVERED,READ",
+      template_ids: JSON.stringify([templateId]),
     });
+    const analyticsUrl = `https://graph.facebook.com/${apiVersion}/${wabaId}/message_template_analytics?${params.toString()}`;
 
-    // Response form: { data: [ { id, analytics: [ { date_start, date_end, stats: [] } ] } ] }
-    const rawData = response.data.data[0]?.analytics || [];
+    let graphData = [];
 
-    const graphData = rawData.map((day) => {
-      const point = {
-        name: new Date(day.date_start * 1000).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
-        sent: 0,
-        delivered: 0,
-        read: 0,
-      };
-      if (day.stats) {
-        day.stats.forEach((s) => {
-          if (s.metric_type === "SENT") point.sent = s.value;
-          if (s.metric_type === "DELIVERED") point.delivered = s.value;
-          // Meta sometimes uses READ vs MESSAGE_READ, check metric_types support
-          if (s.metric_type === "READ") point.read = s.value;
-        });
-      }
-      return point;
-    });
+    try {
+      const response = await axios.get(analyticsUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      // Response form: { data: [ { id, analytics: [ { date_start, date_end, stats: [] } ] } ] }
+      const rawData = response.data.data[0]?.analytics || [];
+
+      graphData = rawData.map((day) => {
+        const point = {
+          name: new Date(day.date_start * 1000).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          }),
+          sent: 0,
+          delivered: 0,
+          read: 0,
+        };
+        if (day.stats) {
+          day.stats.forEach((s) => {
+            if (s.metric_type === "SENT") point.sent = s.value;
+            if (s.metric_type === "DELIVERED") point.delivered = s.value;
+            if (s.metric_type === "READ") point.read = s.value;
+          });
+        }
+        return point;
+      });
+    } catch (analyticsError) {
+      // Analytics endpoint may be unavailable for this WABA tier or account.
+      // Log the issue but return empty data gracefully instead of crashing.
+      const metaMsg = analyticsError.response?.data?.error?.message || analyticsError.message;
+      console.warn("Template analytics unavailable (returning empty):", metaMsg);
+    }
 
     res.status(200).json({ success: true, data: graphData });
   } catch (error) {
     console.error(
-      "Error fetching template analytics:",
-      error.response?.data || error.message,
-      error.stack
+      "Error in getTemplateAnalytics:",
+      error.response?.data || error.message
     );
     res.status(500).json({
       success: false,
