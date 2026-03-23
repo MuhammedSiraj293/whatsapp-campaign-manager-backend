@@ -61,9 +61,7 @@ const getTemplates = async (req, res) => {
     ]);
 
     if (templatesResult.status === "rejected") {
-      throw new Error(
-        templatesResult.reason?.message || "Failed to fetch templates"
-      );
+      throw templatesResult.reason;
     }
 
     let templates = templatesResult.value.data.data;
@@ -144,13 +142,24 @@ const getTemplates = async (req, res) => {
       .status(200)
       .json({ success: true, count: templates.length, data: templates });
   } catch (error) {
+    const metaError = error.response?.data?.error;
     console.error(
       "Error fetching templates:",
-      error.response?.data || error.message
+      metaError || error.message
     );
+    
+    // Distinguish generic vs Meta API errors (e.g. token expired)
+    if (metaError) {
+      return res.status(401).json({
+        success: false,
+        error: metaError.message || "Meta API Error",
+        details: metaError
+      });
+    }
+
     res
       .status(500)
-      .json({ success: false, error: "Failed to fetch templates" });
+      .json({ success: false, error: "Failed to fetch templates", details: error.message });
   }
 };
 

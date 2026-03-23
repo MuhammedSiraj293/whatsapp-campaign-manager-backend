@@ -5,7 +5,6 @@ const Contact = require("../models/Contact");
 const Reply = require("../models/Reply");
 const Analytics = require("../models/Analytics");
 const { Parser } = require("json2csv");
-const { appendToSheet, clearSheet } = require("../integrations/googleSheets");
 const mongoose = require("mongoose"); // <--- Added import
 
 // @desc    Get key analytics stats
@@ -169,59 +168,7 @@ const exportCampaignAnalytics = async (req, res) => {
   }
 };
 
-// @desc    Export campaign replies (leads) to a Google Sheet
-const exportLeadsToSheet = async (req, res) => {
-  try {
-    const { campaignId } = req.params;
-    const { spreadsheetId } = req.body;
-    if (!spreadsheetId) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Spreadsheet ID is required." });
-    }
-    const campaign = await Campaign.findById(campaignId);
-    if (!campaign) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Campaign not found." });
-    }
-    const contactsInList = await Contact.find({
-      contactList: campaign.contactList,
-    });
-    const contactPhoneNumbers = contactsInList.map((c) => c.phoneNumber);
-    const replies = await Reply.find({
-      from: { $in: contactPhoneNumbers },
-      direction: "incoming",
-      campaign: campaignId,
-    }).sort({ timestamp: "asc" });
-    if (replies.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "No new replies to export for this campaign.",
-      });
-    }
-    const headerRow = ["Timestamp", "From", "Name", "Message"];
-    const dataRows = replies.map((reply) => {
-      const contact = contactsInList.find((c) => c.phoneNumber === reply.from);
-      return [
-        new Date(reply.timestamp).toLocaleString(),
-        reply.from,
-        contact ? contact.name : "Unknown",
-        reply.body,
-      ];
-    });
-    const range = "Sheet1";
-    await clearSheet(spreadsheetId, `${range}!A:D`);
-    await appendToSheet(spreadsheetId, `${range}!A1`, [headerRow, ...dataRows]);
-    res.status(200).json({
-      success: true,
-      message: "Successfully exported leads to Google Sheet.",
-    });
-  } catch (error) {
-    console.error("Error exporting to Google Sheets:", error);
-    res.status(500).json({ success: false, error: "Failed to export leads." });
-  }
-};
+// exportLeadsToSheet function has been removed based on user request.
 
 // --- NEW FUNCTION TO GET STATS GROUPED BY TEMPLATE ---
 // @desc    Get aggregated stats for all templates
@@ -692,7 +639,6 @@ module.exports = {
   getStats,
   getCampaignAnalytics,
   exportCampaignAnalytics,
-  exportLeadsToSheet,
   getTemplateAnalytics,
   getAnalyticsForTemplate,
   getCampaignAnalyticsDetails, // <-- Exported

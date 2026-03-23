@@ -1,57 +1,72 @@
 // backend/src/controllers/enquiryController.js
 const Enquiry = require("../models/Enquiry");
 const PhoneNumber = require("../models/PhoneNumber");
+const { Parser } = require("json2csv");
 
-// @desc    Get all enquiries
-// @route   GET /api/enquiries
+const buildEnquiryQuery = async (req) => {
+  const {
+    search = "",
+    status = "all",
+    project = "",
+    wabaId = "",
+    phoneNumberFilter = "",
+    dateFilter = "all", // "1", "3", "5", "7", "custom", "all"
+    startDate = "",
+    endDate = "",
+  } = req.query;
+
+  const query = {};
+
+  if (phoneNumberFilter) {
+    query.recipientId = phoneNumberFilter;
+  } else if (wabaId) {
+    const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId });
+    const recipientIds = phoneNumbers.map((p) => p.phoneNumberId);
+    query.recipientId = { $in: recipientIds };
+  }
+
+  if (search) {
+    const searchRegex = new RegExp(search, "i");
+    query.$or = [
+      { name: searchRegex },
+      { phoneNumber: searchRegex },
+      { projectName: searchRegex },
+    ];
+  }
+
+  if (status && status !== "all") {
+    query.status = status;
+  }
+
+  if (project) {
+    query.projectName = project;
+  }
+
+  if (dateFilter && dateFilter !== "all") {
+    if (dateFilter === "custom" && startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
+      };
+    } else if (!isNaN(parseInt(dateFilter))) {
+      const days = parseInt(dateFilter);
+      const pastDate = new Date();
+      pastDate.setDate(pastDate.getDate() - days);
+      query.createdAt = { $gte: pastDate };
+    }
+  }
+
+  return query;
+};
+
 // @desc    Get all enquiries with Search, Filter, and Pagination
 // @route   GET /api/enquiries
 const getEnquiries = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      search = "",
-      status = "all",
-      project = "",
-      wabaId = "", // <-- Active WABA
-      phoneNumberFilter = "", // <-- Specific Phone Number
-    } = req.query;
+    const { page = 1, limit = 10 } = req.query;
+    
+    const query = await buildEnquiryQuery(req);
 
-    const query = {};
-
-    // 0. Filter by Active WABA OR Specific Phone Number
-    if (phoneNumberFilter) {
-      // If a specific number is selected, filter by that ONLY
-      query.recipientId = phoneNumberFilter;
-    } else if (wabaId) {
-      // Otherwise, show ALL numbers for the active WABA
-      const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId });
-      const recipientIds = phoneNumbers.map((p) => p.phoneNumberId);
-      query.recipientId = { $in: recipientIds };
-    }
-
-    // 1. Search Filter (Name, Phone, Project)
-    if (search) {
-      const searchRegex = new RegExp(search, "i");
-      query.$or = [
-        { name: searchRegex },
-        { phoneNumber: searchRegex },
-        { projectName: searchRegex },
-      ];
-    }
-
-    // 2. Status Filter
-    if (status && status !== "all") {
-      query.status = status;
-    }
-
-    // 3. Project Specific Filter (Optional extra)
-    if (project) {
-      query.projectName = project;
-    }
-
-    // 4. Pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
@@ -142,9 +157,42 @@ const bulkDeleteEnquiries = async (req, res) => {
   }
 };
 
+// @desc    Export enquiries to CSV
+// @route   GET /api/enquiries/export
+const exportEnquiries = async (req, res) => {
+  try {
+    const query = await buildEnquiryQuery(req);
+    const enquiries = await Enquiry.find(query).sort({ createdAt: -1 });
+
+    const fields = [
+      { label: "Date", value: "createdAt" },
+      { label: "Status", value: "status" },
+      { label: "Name", value: "name" },
+      { label: "Phone", value: "phoneNumber" },
+      { label: "Project", value: "projectName" },
+      { label: "Bedrooms", value: "bedrooms" },
+      { label: "Budget", value: "budget" },
+      { label: "Entry Source", value: "entrySource" },
+      { label: "URL", value: "pageUrl" }
+    ];
+
+    const json2csvParser = new Parser({ fields });
+    const csv = json2csvParser.parse(enquiries);
+
+    res.header("Content-Type", "text/csv");
+    res.attachment("enquiries_export.csv");
+    res.send(csv);
+
+  } catch (error) {
+    console.error("Error exporting enquiries:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
 module.exports = {
   getEnquiries,
   updateEnquiryStatus,
   deleteEnquiry,
   bulkDeleteEnquiries,
+  exportEnquiries,
 };

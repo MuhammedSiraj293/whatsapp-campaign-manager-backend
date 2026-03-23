@@ -6,6 +6,7 @@ const {
   updateEnquiryStatus,
   deleteEnquiry,
   bulkDeleteEnquiries,
+  exportEnquiries,
 } = require("../controllers/enquiryController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -16,6 +17,7 @@ const router = express.Router();
 router.use(protect);
 router.use(authorize("admin", "manager"));
 
+router.route("/export").get(exportEnquiries);
 router.route("/").get(getEnquiries);
 
 router.post("/bulk-delete", bulkDeleteEnquiries);

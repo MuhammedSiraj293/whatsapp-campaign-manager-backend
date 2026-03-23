@@ -15,15 +15,7 @@ const axios = require("axios");
 const { uploadToCloudinary } = require("../integrations/cloudinary");
 const { getIO } = require("../socketManager");
 
-// Google Sheets API helpers
-const {
-  appendToSheet,
-  clearSheet,
-  findSheetIdByName,
-  createSheet,
-  addHeaderRow,
-} = require("../integrations/googleSheets");
-
+// Google Sheets API helpers completely removed as per request
 // Bot service
 const { handleBotConversation } = require("../services/botService");
 
@@ -215,111 +207,7 @@ const processBufferedMessages = async (
         console.log(`✨ NEW LEAD for campaign "${campaignToCredit.name}"`);
 
         const contact = await Contact.findOne({ phoneNumber: userPhone });
-
-        const timestampOptions = {
-          timeZone: "Asia/Dubai",
-          year: "numeric",
-          month: "numeric",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: true,
-        };
-
-        const formattedDate = new Date().toLocaleString(
-          "en-US",
-          timestampOptions,
-        );
-
-        const dataRow = [
-          [
-            `'${formattedDate}`,
-            userPhone,
-            contact ? contact.name : "Unknown",
-            messageBody,
-          ],
-        ];
-
-        const headerRow = ["Timestamp", "From", "Name", "Message"];
-
-        /* -------------------------------
-         * SYSTEM 1 — Campaign Sheet
-         * ------------------------------- */
-        if (campaignToCredit.spreadsheetId) {
-          try {
-            console.log(
-              `📁 Writing lead → Campaign Sheet: ${campaignToCredit.spreadsheetId}`,
-            );
-
-            await clearSheet(campaignToCredit.spreadsheetId, "Sheet1!A:D");
-            await appendToSheet(campaignToCredit.spreadsheetId, "Sheet1!A1", [
-              headerRow,
-              ...dataRow,
-            ]);
-          } catch (err) {
-            console.error("❌ Campaign Sheet Error:", err);
-          }
-        } else {
-          /* -------------------------------
-           * SYSTEM 2 — Master Sheet
-           * ------------------------------- */
-          if (phoneNumberDoc?.wabaAccount?.masterSpreadsheetId) {
-            const masterSheetId =
-              phoneNumberDoc.wabaAccount.masterSpreadsheetId;
-            const tab = campaignToCredit.templateName || "Leads";
-
-            try {
-              let sheetId = await findSheetIdByName(masterSheetId, tab);
-
-              if (!sheetId) {
-                console.log(`📄 Creating new tab: "${tab}"`);
-                await createSheet(masterSheetId, tab);
-                await addHeaderRow(masterSheetId, tab, headerRow);
-              }
-
-              console.log(`📁 Appending lead → Master Sheet tab "${tab}"`);
-              await appendToSheet(masterSheetId, `${tab}!A1`, dataRow);
-            } catch (err) {
-              console.error("❌ Master Sheet Error:", err);
-            }
-          } else {
-            console.log("⚠️ No master sheet configured for this WABA.");
-          }
-        }
-
-        /* ---------------------------------------------------------
-         * NOTIFY ADMIN (LIVE LEAD)
-         * --------------------------------------------------------- */
-        try {
-          const ADMIN_NUMBER = "971506796073"; // User specified number
-          const templateName =
-            campaignToCredit.templateName ||
-            campaignToCredit.name ||
-            "Unknown Campaign";
-
-          const notificationBody = `NEW LEAD RECEIVED
-
-${contact ? contact.name : "Unknown"}
-${userPhone}
-${templateName}
-WhatsApp`;
-
-          console.log(
-            `🔔 Sending Live Lead Notification to Admin (${ADMIN_NUMBER})...`,
-          );
-          const { sendTextMessage } = require("../integrations/whatsappAPI");
-
-          // We use the same credentials to send the notification FROM the bot TO the admin
-          await sendTextMessage(
-            ADMIN_NUMBER,
-            notificationBody,
-            credentials.accessToken,
-            recipientId, // Sending from this phone ID
-          );
-        } catch (notifyErr) {
-          console.error("❌ Failed to notify admin:", notifyErr.message);
-        }
+        // Admin Notifications and Google Sheets API integration removed
       }
 
       // Update campaign reply count
@@ -972,44 +860,7 @@ WhatsApp`;
                 existingEnquiry.createdAt = new Date();
                 await existingEnquiry.save();
 
-                // NOTIFY ADMIN (AI ENQUIRY HANDOVER)
-                // Skip notification if this is just a Review Completion
-                if (
-                  !existingEnquiry.reviewStatus ||
-                  existingEnquiry.reviewStatus === "PENDING"
-                ) {
-                  try {
-                    console.log(
-                      "🔔 AI Handover Triggered - Sending Notification...",
-                    );
-                    const ADMIN_NUMBER = "971506796073";
-                    const noteBody = `NEW AI ENQUIRY
-
-${existingEnquiry.name || "Unknown"}
-${userPhone}
-${existingEnquiry.projectName || "General"}
-${existingEnquiry.bedrooms || "N/A"}
-${existingEnquiry.pageUrl || "N/A"}`;
-
-                    const {
-                      sendTextMessage,
-                    } = require("../integrations/whatsappAPI");
-                    await sendTextMessage(
-                      ADMIN_NUMBER,
-                      noteBody,
-                      credentials.accessToken,
-                      recipientId,
-                    );
-                    console.log(
-                      `🔔 Sent AI Enquiry Notification to ${ADMIN_NUMBER}`,
-                    );
-                  } catch (noteErr) {
-                    console.error(
-                      "❌ Failed to notify admin for AI Handover:",
-                      noteErr,
-                    );
-                  }
-                }
+                // ADMIN NOTIFICATION REMOVED AS REQUESTED
               }
             }
             return;
