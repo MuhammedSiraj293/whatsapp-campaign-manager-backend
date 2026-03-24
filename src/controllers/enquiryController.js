@@ -35,7 +35,11 @@ const buildEnquiryQuery = async (req) => {
   }
 
   if (status && status !== "all") {
-    query.status = status;
+    if (status === "completed") {
+      query.status = { $regex: /^COMPLETED/i };
+    } else {
+      query.status = status;
+    }
   }
 
   if (project) {
@@ -169,6 +173,30 @@ const exportEnquiries = async (req, res) => {
     }
 
     const enquiries = await Enquiry.find(query).sort({ createdAt: -1 });
+
+    // Auto-update the Status for tracking exports
+    const updatedEnquiries = await Promise.all(
+      enquiries.map(async (eq) => {
+        let num = 0;
+        const currentStatus = eq.status || "pending";
+        const upperStatus = currentStatus.toUpperCase();
+
+        if (upperStatus.startsWith("COMPLETED")) {
+          const match = upperStatus.match(/\[(\d+)\]/);
+          if (match) {
+            num = parseInt(match[1]) + 1;
+          } else {
+            num = 2; // Was 'COMPLETED' without a number
+          }
+        } else {
+          num = 1;
+        }
+
+        eq.status = `COMPLETED [${num}]`;
+        await eq.save();
+        return eq;
+      })
+    );
 
     const fields = [
       { label: "Date", value: "createdAt" },
