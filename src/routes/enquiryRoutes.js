@@ -17,7 +17,7 @@ const router = express.Router();
 router.use(protect);
 router.use(authorize("admin", "manager"));
 
-router.route("/export").get(exportEnquiries);
+router.route("/export").post(exportEnquiries);
 router.route("/").get(getEnquiries);
 
 router.post("/bulk-delete", bulkDeleteEnquiries);

@@ -158,10 +158,16 @@ const bulkDeleteEnquiries = async (req, res) => {
 };
 
 // @desc    Export enquiries to CSV
-// @route   GET /api/enquiries/export
+// @route   POST /api/enquiries/export
 const exportEnquiries = async (req, res) => {
   try {
-    const query = await buildEnquiryQuery(req);
+    const { ids } = req.body;
+    let query = await buildEnquiryQuery(req);
+
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      query = { _id: { $in: ids } };
+    }
+
     const enquiries = await Enquiry.find(query).sort({ createdAt: -1 });
 
     const fields = [
