@@ -207,7 +207,26 @@ const processBufferedMessages = async (
         console.log(`✨ NEW LEAD for campaign "${campaignToCredit.name}"`);
 
         const contact = await Contact.findOne({ phoneNumber: userPhone });
-        // Admin Notifications and Google Sheets API integration removed
+        const Enquiry = require("../models/Enquiry");
+
+        let existingEnquiry = await Enquiry.findOne({ phoneNumber: userPhone }).sort({ createdAt: -1 });
+        
+        if (!existingEnquiry) {
+           await Enquiry.create({
+             phoneNumber: userPhone,
+             name: contact ? contact.name : "Unknown",
+             projectName: campaignToCredit.templateName,
+             status: "pending",
+             entrySource: "campaign",
+             recipientId: recipientId
+           });
+           console.log(`📂 Created new Enquiry for Campaign Lead: ${campaignToCredit.templateName}`);
+        } else {
+           existingEnquiry.projectName = campaignToCredit.templateName;
+           existingEnquiry.entrySource = "campaign";
+           await existingEnquiry.save();
+           console.log(`📂 Updated Enquiry Project for Campaign: ${campaignToCredit.templateName}`);
+        }
       }
 
       // Update campaign reply count
