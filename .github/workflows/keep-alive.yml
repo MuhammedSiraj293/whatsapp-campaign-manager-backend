@@ -11,4 +11,4 @@ jobs:
     steps:
       - name: Ping Render backend
         run: |
-          curl -s https://whatsapp-campaign-backend-fqbo.onrender.com/health || true
+          curl -s https://whatsapp-campaign-backend-fqbo-onrender.onrender.com/health || true
