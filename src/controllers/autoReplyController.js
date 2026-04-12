@@ -66,7 +66,7 @@ const updateAutoReplyConfig = async (req, res) => {
         officeHours,
         timezone,
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
     );
 
     res.status(200).json({ success: true, data: config });

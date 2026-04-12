@@ -157,7 +157,7 @@ const updateContact = async (req, res) => {
   try {
     const { contactId } = req.params;
     const contact = await Contact.findByIdAndUpdate(contactId, req.body, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     });
     if (!contact) {

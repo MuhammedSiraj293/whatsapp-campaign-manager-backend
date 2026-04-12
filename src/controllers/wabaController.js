@@ -70,7 +70,7 @@ const updateWabaAccount = async (req, res) => {
     const account = await WabaAccount.findByIdAndUpdate(
       req.params.id,
       updateData,
-      { new: true, runValidators: true },
+      { returnDocument: 'after', runValidators: true },
     );
 
     if (!account) {

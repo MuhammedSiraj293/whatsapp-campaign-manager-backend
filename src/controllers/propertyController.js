@@ -94,7 +94,7 @@ const updateProperty = async (req, res) => {
   try {
     const { id } = req.params;
     const property = await Property.findByIdAndUpdate(id, req.body, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     });
 

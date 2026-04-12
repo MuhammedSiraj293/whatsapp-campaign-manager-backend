@@ -46,7 +46,7 @@ const updateContactStats = async (phoneNumber, type, status = null) => {
     const contact = await Contact.findOneAndUpdate(
       { phoneNumber },
       updateOps,
-      { new: true }, // Return updated document to calculate score
+      { returnDocument: 'after' }, // Return updated document to calculate score
     );
 
     if (!contact) return;
@@ -1380,7 +1380,7 @@ const processWebhook = async (req, res) => {
           status: status.status,
           failureReason: failureReason, // <-- save errors
         },
-        { new: true },
+        { returnDocument: 'after' },
       );
 
       if (updated) {

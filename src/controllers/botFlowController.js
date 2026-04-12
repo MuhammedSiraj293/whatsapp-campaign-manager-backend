@@ -87,7 +87,7 @@ const getFlowById = async (req, res) => {
 const updateFlow = async (req, res) => {
   try {
     const flow = await BotFlow.findByIdAndUpdate(req.params.flowId, req.body, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     });
     if (!flow) {
@@ -135,7 +135,7 @@ const updateNode = async (req, res) => {
   try {
     const { nodeId } = req.params;
     const node = await BotNode.findByIdAndUpdate(nodeId, req.body, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     });
     if (!node) {
