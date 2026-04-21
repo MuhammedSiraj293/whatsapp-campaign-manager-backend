@@ -9,6 +9,7 @@ const WabaAccount = require("../models/WabaAccount");
 const Enquiry = require("../models/Enquiry");
 const ContactList = require("../models/ContactList");
 const AutoReplyConfig = require("../models/AutoReplyConfig");
+const PropertyInquirySession = require("../models/PropertyInquirySession");
 
 const { sendTextMessage, getMediaUrl } = require("../integrations/whatsappAPI");
 const axios = require("axios");
@@ -89,6 +90,183 @@ const updateContactStats = async (phoneNumber, type, status = null) => {
 };
 
 /* ---------------------------------------------------------
+ * PROPERTY INQUIRY AUTO-REPLY FLOW
+ * Handles the 2-step greeting → confirmation flow for
+ * incoming messages that contain a Capital Avenue property URL.
+ *
+ * Returns true  → message was handled; skip AI/bot
+ * Returns false → not applicable; continue normal pipeline
+ * --------------------------------------------------------- */
+const CAPITAL_AVENUE_DOMAIN = "thecapitalavenue.com/properties/";
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Extract a human-readable property name from a CA URL slug.
+ * e.g. ".../tara-park-modon-reem-island-abu-dhabi" → "Tara Park Modon Reem Island Abu Dhabi"
+ */
+const extractPropertyName = (url) => {
+  try {
+    const parts = url.split("/properties/");
+    if (parts.length < 2) return null;
+    const slug = parts[1].split("?")[0].replace(/\/$/, ""); // strip query & trailing slash
+    return slug
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  } catch {
+    return null;
+  }
+};
+
+const handlePropertyInquiryFlow = async (
+  userPhone,
+  recipientId,
+  messageBody,
+  credentials,
+  io,
+) => {
+  if (!credentials?.accessToken) return false;
+
+  const { sendTextMessage } = require("../integrations/whatsappAPI");
+  const msgLower = messageBody.toLowerCase();
+
+  // ── STEP 1: New property URL detected ──────────────────────────────────────
+  if (msgLower.includes(CAPITAL_AVENUE_DOMAIN)) {
+    const urlMatch = messageBody.match(/(https?:\/\/[^\s]+)/i);
+    const propertyUrl = urlMatch ? urlMatch[0] : null;
+    const propertyName = propertyUrl ? extractPropertyName(propertyUrl) : null;
+
+    console.log(`🏠 Property URL detected from ${userPhone}. Starting inquiry flow.`);
+
+    // Upsert session → reset to awaiting_details (handles repeat sends)
+    await PropertyInquirySession.findOneAndUpdate(
+      { phoneNumber: userPhone, recipientId },
+      {
+        propertyUrl,
+        propertyName,
+        state: "awaiting_details",
+        updatedAt: new Date(),
+      },
+      { upsert: true, returnDocument: "after" }
+    );
+
+    // Build Step 1 message
+    const propertyLine = propertyName
+      ? `We received interest in *${propertyName}*.`
+      : "We received your property inquiry.";
+
+    const step1Text =
+      `Good day from Capital Avenue Real Estate,\n\n` +
+      `${propertyLine}\n\n` +
+      `Please share details in the form below:\n` +
+      `Name: \n` +
+      `No. Of Bedrooms: \n\n` +
+      `So we can forward your inquiry to the best person who can assist you.`;
+
+    try {
+      const sent = await sendTextMessage(
+        userPhone,
+        step1Text,
+        credentials.accessToken,
+        recipientId,
+      );
+
+      if (sent?.messages?.[0]?.id) {
+        const dbMsg = new (require("../models/Reply"))({
+          messageId: sent.messages[0].id,
+          from: recipientId,
+          recipientId: userPhone,
+          body: step1Text,
+          timestamp: new Date(),
+          direction: "outgoing",
+          read: true,
+        });
+        await dbMsg.save();
+        io.emit("newMessage", { from: userPhone, recipientId, message: dbMsg });
+      }
+    } catch (err) {
+      console.error("❌ Property inquiry Step 1 send failed:", err.message);
+    }
+
+    return true; // Handled — skip AI/bot
+  }
+
+  // ── STEP 2: User replied to the form ───────────────────────────────────────
+  const session = await PropertyInquirySession.findOne({
+    phoneNumber: userPhone,
+    recipientId,
+    state: "awaiting_details",
+  });
+
+  if (session) {
+    // Check session is not stale (within 24h)
+    const ageMs = Date.now() - new Date(session.updatedAt).getTime();
+    if (ageMs > SESSION_TTL_MS) {
+      // Session expired — clean up and let normal pipeline handle it
+      await PropertyInquirySession.deleteOne({ _id: session._id });
+      return false;
+    }
+
+    console.log(`✅ Property inquiry Step 2 triggered for ${userPhone}. Sending confirmation.`);
+
+    // Mark session complete
+    session.state = "completed";
+    await session.save();
+
+    // Save enquiry to DB so it appears in CRM
+    try {
+      await Enquiry.create({
+        phoneNumber: userPhone,
+        recipientId,
+        projectName: session.propertyName || "Unknown Property",
+        pageUrl: session.propertyUrl,
+        status: "handover",
+        conversationState: "END",
+        handoverReason: "Website Property Inquiry",
+        entrySource: "Website Enquiry",
+        completionFollowUpSent: true,
+        endedAt: new Date(),
+      });
+    } catch (err) {
+      console.error("⚠️ Could not save property inquiry enquiry:", err.message);
+    }
+
+    // Send Step 2 confirmation
+    const step2Text =
+      "Your interest has been noted. One of our Sales Consultant will contact you shortly to assist you, Thank you for your response.";
+
+    try {
+      const sent = await sendTextMessage(
+        userPhone,
+        step2Text,
+        credentials.accessToken,
+        recipientId,
+      );
+
+      if (sent?.messages?.[0]?.id) {
+        const dbMsg = new (require("../models/Reply"))({
+          messageId: sent.messages[0].id,
+          from: recipientId,
+          recipientId: userPhone,
+          body: step2Text,
+          timestamp: new Date(),
+          direction: "outgoing",
+          read: true,
+        });
+        await dbMsg.save();
+        io.emit("newMessage", { from: userPhone, recipientId, message: dbMsg });
+      }
+    } catch (err) {
+      console.error("❌ Property inquiry Step 2 send failed:", err.message);
+    }
+
+    return true; // Handled — skip AI/bot
+  }
+
+  return false; // Not a property inquiry message
+};
+
+/* ---------------------------------------------------------
  * 1) META VERIFY WEBHOOK
  * --------------------------------------------------------- */
 const verifyWebhook = (req, res) => {
@@ -166,6 +344,23 @@ const processBufferedMessages = async (
   let isHandledByWebhook = false; // Flag to prevent AI from running if webhook handled it
 
   /* ---------------------------------------------------------
+   * B0) PROPERTY INQUIRY AUTO-REPLY (HIGHEST PRIORITY)
+   * Intercepts Capital Avenue property URL messages before
+   * campaign routing, AI, or any other logic.
+   * --------------------------------------------------------- */
+  const propertyInquiryHandled = await handlePropertyInquiryFlow(
+    userPhone,
+    recipientId,
+    messageBody,
+    credentials,
+    io,
+  );
+  if (propertyInquiryHandled) {
+    console.log("🏠 Property inquiry flow handled. Skipping further processing.");
+    return;
+  }
+
+  /* ---------------------------------------------------------
    * B) LEAD ROUTING (CAMPAIGN REPLY → GOOGLE SHEET)
    * --------------------------------------------------------- */
   // Only log if it is a DIRECT reply (Context/Button) to the campaign
@@ -236,316 +431,252 @@ const processBufferedMessages = async (
     } // Close else (Proceed with Lead Processing)
   }
 
-  /* ---------------------------------------------------------
-   * C) AUTO-REPLY + BOT (DYNAMIC CONFIG)
-   * --------------------------------------------------------- */
+   /* ---------------------------------------------------------
+    * C) AUTO-REPLY + BOT (DYNAMIC CONFIG)
+    * --------------------------------------------------------- */
   if (messageBody) {
     const isCampaignReply = !!campaignToCredit;
     let autoReplyText = null;
 
-    // 1. Fetch Config for this phone number
-    const config = await AutoReplyConfig.findOne({
-      phoneNumberId: recipientId,
-    });
-
-    // --- CHECK OFFICE HOURS (If Enabled) ---
-    let isAway = false;
-    if (
-      config &&
-      config.officeHoursEnabled &&
-      config.officeHours &&
-      config.officeHours.length > 0
-    ) {
-      const now = new Date();
-      const days = [
-        "Sunday",
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-      ];
-      const currentDay = days[now.getDay()];
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
-      const currentTimeStr = `${currentHour
-        .toString()
-        .padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`;
-
-      const todayConfig = config.officeHours.find((d) => d.day === currentDay);
-
-      if (todayConfig) {
-        if (!todayConfig.isOpen) {
-          isAway = true; // Closed all day
-        } else {
-          if (
-            currentTimeStr < todayConfig.startTime ||
-            currentTimeStr > todayConfig.endTime
-          ) {
-            isAway = true;
-          }
-        }
-      }
-    }
-
-    if (isAway && config.awayMessageEnabled) {
-      if (!isCampaignReply) {
-        autoReplyText = config.awayMessageText;
-        console.log("🌙 Office Closed. Queuing Away Message.");
-      }
+    // Handle "stop", "re-subscribe", and keyword logic
+    if (!credentials || !credentials.accessToken) {
+      console.error(
+        `❌ Could not find credentials for recipientId ${recipientId}. Aborting auto-reply.`,
+      );
     } else {
-      // --- WE ARE OPEN (OR NO CONFIG) ---
-      if (!credentials || !credentials.accessToken) {
-        console.error(
-          `❌ Could not find credentials for recipientId ${recipientId}. Aborting auto-reply.`,
-        );
-      } else {
-        // 2. Handle "stop" and "re-subscribe" logic
-        const unsubscribeReasons = [
-          "Too many messages",
-          "Not relevant",
-          "Already purchased",
-          "Prefer another channel",
-          "Other",
-        ];
+      const unsubscribeReasons = [
+        "Too many messages",
+        "Not relevant",
+        "Already purchased",
+        "Prefer another channel",
+        "Other",
+      ];
 
-        // 2.1 CHECK IF USER IS PROVIDING CUSTOM "OTHER" REASON
-        const contactCheck = await Contact.findOne({ phoneNumber: userPhone });
-        if (
-          contactCheck &&
-          contactCheck.unsubscribeReason === "Other" &&
-          contactCheck.isSubscribed &&
-          !messageBodyLower.includes("stop")
-        ) {
-          // Helper function to handle Adding to Unsubscriber List
-          const addToUnsubscriberList = async () => {
-            const ContactList = require("../models/ContactList");
-            let unsubList = await ContactList.findOne({
+      // 2.1 CHECK IF USER IS PROVIDING CUSTOM "OTHER" REASON
+      const contactCheck = await Contact.findOne({ phoneNumber: userPhone });
+      if (
+        contactCheck &&
+        contactCheck.unsubscribeReason === "Other" &&
+        contactCheck.isSubscribed &&
+        !messageBodyLower.includes("stop")
+      ) {
+        // Helper function to handle Adding to Unsubscriber List
+        const addToUnsubscriberList = async () => {
+          const ContactList = require("../models/ContactList");
+          let unsubList = await ContactList.findOne({
+            name: "Unsubscriber List",
+          });
+          if (!unsubList) {
+            unsubList = await ContactList.create({
               name: "Unsubscriber List",
             });
-            if (!unsubList) {
-              unsubList = await ContactList.create({
-                name: "Unsubscriber List",
-              });
-            }
-            return unsubList._id;
-          };
+          }
+          return unsubList._id;
+        };
 
-          const unsubListId = await addToUnsubscriberList();
+        const unsubListId = await addToUnsubscriberList();
 
-          // Treat this message as the custom reason
+        // Treat this message as the custom reason
+        await Contact.findOneAndUpdate(
+          { phoneNumber: userPhone },
+          {
+            unsubscribeReason: messageBody, // Save the text as reason
+            isSubscribed: false,
+            unsubscribeDate: new Date(),
+            contactList: unsubListId, // Add to Unsubscriber List
+            previousContactList: contactCheck.contactList, // Backup current list
+          },
+        );
+        autoReplyText =
+          "You've been unsubscribed. Thank you for your feedback.";
+        isHandledByWebhook = true;
+        console.log(
+          `✅ Contact ${userPhone} unsubscribed with custom reason: ${messageBody}`,
+        );
+      } else if (
+        messageBodyLower.includes("stop") ||
+        messageBodyLower.includes("إيقاف")
+      ) {
+        // A) STOP RECEIVED: Request Feedback (Do NOT unsubscribe yet)
+        const {
+          sendTextMessage,
+          sendListMessage,
+        } = require("../integrations/whatsappAPI");
+
+        await sendTextMessage(
+          userPhone,
+          "We've received your request to unsubscribe. Before you go, could you tell us why?",
+          credentials.accessToken,
+          recipientId,
+        );
+
+        const sections = [
+          {
+            title: "Select a reason",
+            rows: unsubscribeReasons.map((r) => ({
+              id: `reason_${r.replace(/\s/g, "_").toLowerCase()}`,
+              title: r,
+            })),
+          },
+        ];
+
+        await sendListMessage(
+          userPhone,
+          "Please select a reason:",
+          "Reason",
+          sections,
+          credentials.accessToken,
+          recipientId,
+        );
+
+        autoReplyText = null;
+        isHandledByWebhook = true; // Prevent AI
+        console.log(`🛑 Contact ${userPhone} requested STOP. Survey sent.`);
+      } else if (
+        unsubscribeReasons.some((r) => r.toLowerCase() === messageBodyLower)
+      ) {
+        // Helper function to handle Adding to Unsubscriber List
+        const addToUnsubscriberList = async (phone) => {
+          const ContactList = require("../models/ContactList");
+          let unsubList = await ContactList.findOne({
+            name: "Unsubscriber List",
+          });
+          if (!unsubList) {
+            unsubList = await ContactList.create({
+              name: "Unsubscriber List",
+            });
+          }
+          return unsubList._id;
+        };
+
+        // B) REASON SELECTED
+        const unsubListId = await addToUnsubscriberList(userPhone);
+
+        if (messageBody === "Other") {
+          // Handle "Other" -> Ask for details
           await Contact.findOneAndUpdate(
             { phoneNumber: userPhone },
             {
-              unsubscribeReason: messageBody, // Save the text as reason
+              unsubscribeReason: "Other",
+            },
+          );
+          autoReplyText = "Please type your reason below so we can improve.";
+        } else {
+          // Standard Reason -> Unsubscribe Immediately & Add to List
+          const currentContact = await Contact.findOne({
+            phoneNumber: userPhone,
+          });
+          await Contact.findOneAndUpdate(
+            { phoneNumber: userPhone },
+            {
+              unsubscribeReason: messageBody,
               isSubscribed: false,
               unsubscribeDate: new Date(),
-              contactList: unsubListId, // Add to Unsubscriber List
-              previousContactList: contactCheck.contactList, // Backup current list
+              contactList: unsubListId,
+              previousContactList: currentContact
+                ? currentContact.contactList
+                : null,
             },
           );
           autoReplyText =
-            "You’ve been unsubscribed. Thank you for your feedback.";
-          isHandledByWebhook = true;
+            "You've been unsubscribed. Thank you for your feedback.";
           console.log(
-            `✅ Contact ${userPhone} unsubscribed with custom reason: ${messageBody}`,
+            `✅ Contact ${userPhone} unsubscribed & added to 'Unsubscriber List' with reason: ${messageBody}`,
           );
-        } else if (
-          messageBodyLower.includes("stop") ||
-          messageBodyLower.includes("إيقاف")
-        ) {
-          // A) STOP RECEIVED: Request Feedback (Do NOT unsubscribe yet)
-          const {
-            sendTextMessage,
-            sendListMessage,
-          } = require("../integrations/whatsappAPI");
+        }
+      } else {
+        // Re-subscribe logic if they say something else but were unsubscribed
+        let contact = contactCheck;
+        if (!contact) {
+          contact = await Contact.findOne({ phoneNumber: userPhone });
+        }
 
-          await sendTextMessage(
-            userPhone,
-            "We've received your request to unsubscribe. Before you go, could you tell us why?",
-            credentials.accessToken,
-            recipientId,
-          );
+        if (contact && !contact.isSubscribed) {
+          contact.isSubscribed = true;
 
-          const sections = [
-            {
-              title: "Select a reason",
-              rows: unsubscribeReasons.map((r) => ({
-                id: `reason_${r.replace(/\s/g, "_").toLowerCase()}`,
-                title: r,
-              })),
-            },
-          ];
-
-          await sendListMessage(
-            userPhone,
-            "Please select a reason:",
-            "Reason",
-            sections,
-            credentials.accessToken,
-            recipientId,
-          );
-
-          autoReplyText = null;
-          isHandledByWebhook = true; // Prevent AI
-          console.log(`🛑 Contact ${userPhone} requested STOP. Survey sent.`);
-        } else if (
-          unsubscribeReasons.some((r) => r.toLowerCase() === messageBodyLower)
-        ) {
-          // Helper function to handle Adding to Unsubscriber List
-          const addToUnsubscriberList = async (phone) => {
-            const ContactList = require("../models/ContactList");
-            let unsubList = await ContactList.findOne({
-              name: "Unsubscriber List",
-            });
-            if (!unsubList) {
-              unsubList = await ContactList.create({
-                name: "Unsubscriber List",
-              });
-            }
-            return unsubList._id;
-          };
-
-          // B) REASON SELECTED
-          const unsubListId = await addToUnsubscriberList(userPhone);
-
-          if (messageBody === "Other") {
-            // Handle "Other" -> Ask for details
-            await Contact.findOneAndUpdate(
-              { phoneNumber: userPhone },
-              {
-                unsubscribeReason: "Other",
-                // We do NOT unsubscribe yet, we wait for the text explanation
-                // But user asked for "after complete flow", so effectively we wait.
-                // Actually, for "Other", we haven't completed flow.
-              },
-            );
-            autoReplyText = "Please type your reason below so we can improve.";
-          } else {
-            // Standard Reason -> Unsubscribe Immediately & Add to List
-            // We need to fetch current contact to backup list
-            const currentContact = await Contact.findOne({
-              phoneNumber: userPhone,
-            });
-            await Contact.findOneAndUpdate(
-              { phoneNumber: userPhone },
-              {
-                unsubscribeReason: messageBody,
-                isSubscribed: false,
-                unsubscribeDate: new Date(),
-                contactList: unsubListId, // Add to the specific Unsubscriber List
-                previousContactList: currentContact
-                  ? currentContact.contactList
-                  : null, // Backup
-              },
-            );
-            autoReplyText =
-              "You’ve been unsubscribed. Thank you for your feedback.";
+          // Restore segment if available
+          if (contact.previousContactList) {
+            contact.contactList = contact.previousContactList;
+            contact.previousContactList = null; // Clear backup
             console.log(
-              `✅ Contact ${userPhone} unsubscribed & added to 'Unsubscriber List' with reason: ${messageBody}`,
+              `🔄 Contact ${userPhone} restored to previous segment.`,
             );
           }
-        } else {
-          // Re-subscribe logic if they say something else but were unsubscribed
-          let contact = contactCheck; // Re-use fetched contact from line 315 if available
-          if (!contact) {
-            contact = await Contact.findOne({ phoneNumber: userPhone });
-          }
+          // Clear unsubscribe info
+          contact.unsubscribeReason = null;
+          contact.unsubscribeDate = null;
 
-          if (contact && !contact.isSubscribed) {
-            contact.isSubscribed = true;
+          await contact.save();
+          autoReplyText =
+            "Hello and welcome back to Capital Avenue! How can we help you";
+          console.log(`✅ Contact ${userPhone} has been re-subscribed.`);
+        }
 
-            // Restore segment if available
-            if (contact.previousContactList) {
-              contact.contactList = contact.previousContactList;
-              contact.previousContactList = null; // Clear backup
-              console.log(
-                `🔄 Contact ${userPhone} restored to previous segment.`,
-              );
-            } else {
-              // Remove from Unsubscriber List if no backup?
-              // Or keep logic simple: just ensure they are NOT in Unsub list if they have another home.
-              // For now, if no backup, we might just leave them or set to null?
-              // The user asked "go back to his segment", implies restoration.
-            }
-            // Clear unsubscribe info
-            contact.unsubscribeReason = null;
-            contact.unsubscribeDate = null;
-
-            await contact.save();
+        // 3. Handle normal keyword logic
+        if (!autoReplyText && isCampaignReply) {
+          if (messageBodyLower.includes("yes, i am interested")) {
             autoReplyText =
-              "Hello and welcome back to Capital Avenue! How can we help you";
-            console.log(`✅ Contact ${userPhone} has been re-subscribed.`);
-          }
+              "Your interest has been noted. One of our Sales Consultant will contact you shortly to assist you, Thank you for your response.";
 
-          // 3. Handle normal keyword logic
-          if (!autoReplyText && isCampaignReply) {
-            if (messageBodyLower.includes("yes, i am interested")) {
-              autoReplyText =
-                "Your interest has been noted. One of our Sales Consultant will contact you shortly to assist you, Thank you for your response.";
+            // --- FIX: Close Enquiry Immediately ---
+            const finalName =
+              contactCheck?.name || lastMessage.contactName || "NA";
+            await Enquiry.create({
+              phoneNumber: userPhone,
+              recipientId,
+              name: finalName,
+              status: "handover", // Stop Bot
+              conversationState: "END", // Stop Stuck Scheduler
+              handoverReason: "Campaign Interested",
+              entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              endedAt: new Date(), // Mark as ended
+              completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
+            });
+            console.log(
+              `✅ Campaign Interest Logged & Handover Triggered for ${userPhone}`,
+            );
+          } else if (messageBodyLower.includes("نعم، مهتم")) {
+            autoReplyText =
+              "لقد تم تسجيل اهتمامكم. سيتصل بكم أحد مستشاري المبيعات لدينا قريباً لمساعدتكم، شكراً لردكم.";
 
-              // --- FIX: Close Enquiry Immediately ---
-              const finalName =
-                contactCheck?.name || lastMessage.contactName || "NA";
-              await Enquiry.create({
-                phoneNumber: userPhone,
-                recipientId,
-                name: finalName,
-                status: "handover", // Stop Bot
-                conversationState: "END", // Stop Stuck Scheduler
-                handoverReason: "Campaign Interested",
-                entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                endedAt: new Date(), // Mark as ended
-                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
-              });
-              console.log(
-                `✅ Campaign Interest Logged & Handover Triggered for ${userPhone}`,
-              );
-            } else if (messageBodyLower.includes("نعم، مهتم")) {
-              autoReplyText =
-                "لقد تم تسجيل اهتمامكم. سيتصل بكم أحد مستشاري المبيعات لدينا قريباً لمساعدتكم، شكراً لردكم.";
+            // --- FIX: Close Enquiry Immediately (Arabic) ---
+            const finalName =
+              contactCheck?.name || lastMessage.contactName || "NA";
+            await Enquiry.create({
+              phoneNumber: userPhone,
+              recipientId,
+              name: finalName,
+              status: "handover",
+              conversationState: "END",
+              handoverReason: "Campaign Interested (Arabic)",
+              entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              endedAt: new Date(),
+              language: "ar",
+              completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
+            });
+            console.log(
+              `✅ Campaign Interest Logged (AR) & Handover Triggered for ${userPhone}`,
+            );
+          } else if (messageBodyLower.includes("not interested")) {
+            autoReplyText =
+              "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
 
-              // --- FIX: Close Enquiry Immediately (Arabic) ---
-              const finalName =
-                contactCheck?.name || lastMessage.contactName || "NA";
-              await Enquiry.create({
-                phoneNumber: userPhone,
-                recipientId,
-                name: finalName,
-                status: "handover",
-                conversationState: "END",
-                handoverReason: "Campaign Interested (Arabic)",
-                entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                endedAt: new Date(),
-                language: "ar",
-                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
-              });
-              console.log(
-                `✅ Campaign Interest Logged (AR) & Handover Triggered for ${userPhone}`,
-              );
-            } else if (messageBodyLower.includes("not interested")) {
-              autoReplyText =
-                "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
-
-              // --- FIX: Close Enquiry Immediately (Not Interested) ---
-              // valid to just close it so bot doesn't wake up
-              await Enquiry.create({
-                phoneNumber: userPhone,
-                recipientId,
-                status: "closed",
-                conversationState: "END",
-                handoverReason: "Campaign Not Interested",
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                endedAt: new Date(),
-                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
-              });
-            }
+            // --- FIX: Close Enquiry Immediately (Not Interested) ---
+            await Enquiry.create({
+              phoneNumber: userPhone,
+              recipientId,
+              status: "closed",
+              conversationState: "END",
+              handoverReason: "Campaign Not Interested",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              endedAt: new Date(),
+              completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
+            });
           }
         }
       }

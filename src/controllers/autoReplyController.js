@@ -17,11 +17,6 @@ const getAutoReplyConfig = async (req, res) => {
           phoneNumberId,
           greetingEnabled: false,
           greetingText: "",
-          awayMessageEnabled: false,
-          awayMessageText: "",
-          officeHoursEnabled: false,
-          officeHours: [],
-          timezone: "UTC",
         },
       });
     }
@@ -41,11 +36,6 @@ const updateAutoReplyConfig = async (req, res) => {
       phoneNumberId,
       greetingEnabled,
       greetingText,
-      awayMessageEnabled,
-      awayMessageText,
-      officeHoursEnabled,
-      officeHours,
-      timezone,
     } = req.body;
 
     if (!phoneNumberId) {
@@ -54,17 +44,11 @@ const updateAutoReplyConfig = async (req, res) => {
         .json({ success: false, error: "Phone Number ID is required." });
     }
 
-    // Upsert (Update if exists, Insert if not)
     const config = await AutoReplyConfig.findOneAndUpdate(
       { phoneNumberId },
       {
         greetingEnabled,
         greetingText,
-        awayMessageEnabled,
-        awayMessageText,
-        officeHoursEnabled,
-        officeHours,
-        timezone,
       },
       { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
     );
