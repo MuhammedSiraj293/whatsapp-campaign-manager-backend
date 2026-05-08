@@ -65,6 +65,7 @@ const createCampaign = async (req, res) => {
       batchSize, // <-- New Field
       batchDelay, // <-- New Field
       messageDelay, // <-- New Field
+      headerMediaType, // <-- New Field for Video/Document headers
     } = req.body;
 
     // Parse buttons if they came as a string
@@ -130,6 +131,7 @@ const createCampaign = async (req, res) => {
       // Save both (one will be null)
       headerImageUrl: finalHeaderImageUrl,
       headerMediaId: finalHeaderMediaId,
+      headerMediaType: headerMediaType || "IMAGE",
 
       expectedVariables: parseInt(expectedVariables, 10) || 0,
       spreadsheetId,

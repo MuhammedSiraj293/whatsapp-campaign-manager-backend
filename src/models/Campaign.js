@@ -22,6 +22,7 @@ const CampaignSchema = new mongoose.Schema(
     // --- NEW FIELD ---
     // Stores the Media ID from Meta (e.g., "1234567890")
     headerMediaId: { type: String, trim: true },
+    headerMediaType: { type: String, default: "IMAGE" },
     bodyVariables: [{ type: String, trim: true }],
     expectedVariables: { type: Number, default: 0 },
     status: {

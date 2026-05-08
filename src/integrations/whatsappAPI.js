@@ -155,16 +155,20 @@ const sendTemplateMessage = async (
   const components = [];
 
   // Logic: If we have a Media ID, use it. Otherwise, check for a Link.
-  if (options.headerMediaId) {
-    components.push({
-      type: "header",
-      parameters: [{ type: "image", image: { id: options.headerMediaId } }],
-    });
-  } else if (options.headerImageUrl) {
-    components.push({
-      type: "header",
-      parameters: [{ type: "image", image: { link: options.headerImageUrl } }],
-    });
+  if (options.headerMediaId || options.headerImageUrl) {
+    const headerFormat = options.headerMediaType ? options.headerMediaType.toLowerCase() : "image";
+    
+    if (options.headerMediaId) {
+      components.push({
+        type: "header",
+        parameters: [{ type: headerFormat, [headerFormat]: { id: options.headerMediaId } }],
+      });
+    } else if (options.headerImageUrl) {
+      components.push({
+        type: "header",
+        parameters: [{ type: headerFormat, [headerFormat]: { link: options.headerImageUrl } }],
+      });
+    }
   }
 
   if (

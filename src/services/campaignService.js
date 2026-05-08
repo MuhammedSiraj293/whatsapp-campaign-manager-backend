@@ -210,6 +210,7 @@ const processCampaignBackground = async (campaignId, options = {}) => {
               headerImageUrl: campaign.headerMediaId
                 ? undefined
                 : campaign.headerImageUrl,
+              headerMediaType: campaign.headerMediaType,
               bodyVariables: finalBodyVariables,
               buttons: campaign.buttons,
             },
