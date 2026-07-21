@@ -214,8 +214,9 @@ const executeCampaign = async (req, res) => {
     // Log that manual send started
     await Log.create({
       level: "info",
-      message: `Manual send triggered for campaign "${campaign.name}" with batchSize=${batchSize}, batchDelay=${batchDelay}ms, messageDelay=${messageDelay}ms.`,
+      message: `Manual send triggered for campaign "${campaign.name}" by user ${req.user.name} (${req.user.email}) with batchSize=${batchSize}, batchDelay=${batchDelay}ms, messageDelay=${messageDelay}ms.`,
       campaign: campaign._id,
+      performedBy: req.user._id,
     });
 
     // Start sending asynchronously (fire and forget)
@@ -232,6 +233,7 @@ const executeCampaign = async (req, res) => {
           level: "error",
           message: `Campaign "${campaign.name}" failed. Reason: ${error.message}`,
           campaign: campaign._id,
+          performedBy: req.user._id,
         });
       },
     );

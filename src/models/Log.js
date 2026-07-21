@@ -17,6 +17,11 @@ const LogSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Campaign',
   },
+  performedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
 }, {
   timestamps: true, // Automatically adds createdAt
 });

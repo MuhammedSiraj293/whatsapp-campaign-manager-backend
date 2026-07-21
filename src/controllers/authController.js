@@ -100,6 +100,12 @@ const changePassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
 
+    await Log.create({
+      level: 'info',
+      message: `User '${user.name}' (${user.email}) changed their own password.`,
+      performedBy: user._id,
+    });
+
     res.status(200).json({ success: true, message: 'Password updated successfully.' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

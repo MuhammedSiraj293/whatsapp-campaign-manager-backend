@@ -1,6 +1,5 @@
-// backend/src/controllers/userController.js
-
 const User = require('../models/User');
+const Log = require('../models/Log');
 
 // @desc    Create a new user (by an admin)
 // @route   POST /api/users
@@ -19,6 +18,12 @@ const createUser = async (req, res) => {
             email,
             password,
             role,
+        });
+
+        await Log.create({
+            level: 'success',
+            message: `User created: ${user.name} (${user.email}, Role: ${user.role}) by admin ${req.user.name} (${req.user.email}).`,
+            performedBy: req.user._id,
         });
 
         res.status(201).json({ success: true, data: {
@@ -61,6 +66,14 @@ const updateUser = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Admins cannot change their own admin role.' });
         }
 
+        let changeDesc = [];
+        if (name && name !== user.name) changeDesc.push(`Name to '${name}'`);
+        if (email && email !== user.email) changeDesc.push(`Email to '${email}'`);
+        if (role && role !== user.role) changeDesc.push(`Role to '${role}'`);
+        if (assignedWabas !== undefined) changeDesc.push(`WABA assignments`);
+        if (assignedContactLists !== undefined) changeDesc.push(`Contact list assignments`);
+        if (password) changeDesc.push(`Password reset`);
+
         if (name) user.name = name;
         if (email) user.email = email;
         if (role) user.role = role;
@@ -72,6 +85,14 @@ const updateUser = async (req, res) => {
         }
 
         await user.save();
+
+        if (changeDesc.length > 0) {
+            await Log.create({
+                level: 'info',
+                message: `User '${user.name}' updated (${changeDesc.join(', ')}) by admin ${req.user.name} (${req.user.email}).`,
+                performedBy: req.user._id,
+            });
+        }
 
         const updatedUser = await User.findById(user._id)
             .populate('assignedWabas', 'accountName')
@@ -95,6 +116,13 @@ const deleteUser = async (req, res) => {
                 return res.status(400).json({ success: false, error: 'Admins cannot delete themselves.' });
             }
             await user.deleteOne();
+
+            await Log.create({
+                level: 'error',
+                message: `User '${user.name}' (${user.email}) deleted by admin ${req.user.name} (${req.user.email}).`,
+                performedBy: req.user._id,
+            });
+
             res.status(200).json({ success: true, message: 'User removed' });
         } else {
             res.status(404).json({ success: false, error: 'User not found' });

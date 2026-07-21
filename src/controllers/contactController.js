@@ -6,6 +6,7 @@ const Analytics = require("../models/Analytics");
 const Reply = require("../models/Reply");
 const mongoose = require("mongoose");
 const { getIO } = require("../socketManager"); // <-- 1. IMPORT getIO
+const Log = require("../models/Log");
 const {
   getContactListFilter,
   verifyContactListAccess,
@@ -37,6 +38,13 @@ const createContactList = async (req, res) => {
       .json({ success: false, error: "Please provide a list name." });
   try {
     const contactList = await ContactList.create({ name, createdBy: req.user._id });
+
+    await Log.create({
+      level: 'success',
+      message: `Contact List '${contactList.name}' created by user ${req.user.name} (${req.user.email}).`,
+      performedBy: req.user._id,
+    });
+
     res.status(201).json({ success: true, data: contactList });
   } catch (error) {
     res
@@ -210,6 +218,13 @@ const deleteContactList = async (req, res) => {
     }
 
     await list.deleteOne(); // This triggers the 'pre' hook in the model
+
+    await Log.create({
+      level: 'error',
+      message: `Contact List '${list.name}' deleted by user ${req.user.name} (${req.user.email}).`,
+      performedBy: req.user._id,
+    });
+
     getIO().emit("campaignsUpdated"); // <-- 2. EMIT EVENT
     res.status(200).json({ success: true, data: {} });
   } catch (error) {

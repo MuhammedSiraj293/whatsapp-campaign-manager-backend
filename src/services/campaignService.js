@@ -248,17 +248,6 @@ const processCampaignBackground = async (campaignId, options = {}) => {
               console.error("Error saving reply:", replyErr.message);
             }
 
-            // Log success
-            try {
-              await Log.create({
-                level: "info",
-                message: `Sent to ${contact.phoneNumber} (wamid: ${wamid}).`,
-                campaign: campaign._id,
-              });
-            } catch (logErr) {
-              console.error("Log save error:", logErr.message);
-            }
-
             // Analytics
             await Analytics.create({
               wamid,
@@ -299,15 +288,6 @@ const processCampaignBackground = async (campaignId, options = {}) => {
             console.error("Analytics save error:", analyticsErr.message);
           }
 
-          try {
-            await Log.create({
-              level: "error",
-              message: `Failed to send to ${contact.phoneNumber}: ${error.message}`,
-              campaign: campaign._id,
-            });
-          } catch (logErr) {
-            console.error("Log save error:", logErr.message);
-          }
           failureCount++;
         }
 
