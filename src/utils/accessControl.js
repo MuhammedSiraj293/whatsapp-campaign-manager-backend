@@ -179,6 +179,52 @@ const getAssignedPhoneNumberObjectIds = async (user) => {
   return phoneNumbers.map((p) => p._id);
 };
 
+/**
+ * Throws a 403 error if a non-admin user tries to edit/delete a Contact List
+ * that they did not create.
+ */
+const verifyContactListMutationAccess = async (user, listId) => {
+  if (!user) throw new Error("Unauthorized");
+  if (user.role === "admin") return;
+
+  const list = await ContactList.findById(listId);
+  if (!list) {
+    const err = new Error("Contact list not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const isCreator = list.createdBy && list.createdBy.toString() === user._id.toString();
+  if (!isCreator) {
+    const err = new Error("You are not authorized to edit or delete contact lists created by others.");
+    err.statusCode = 403;
+    throw err;
+  }
+};
+
+/**
+ * Throws a 403 error if a non-admin user tries to edit/delete a Contact
+ * belonging to a Contact List they did not create.
+ */
+const verifyContactMutationAccess = async (user, contact) => {
+  if (!user) throw new Error("Unauthorized");
+  if (user.role === "admin") return;
+
+  if (contact.contactList) {
+    const list = await ContactList.findById(contact.contactList._id || contact.contactList);
+    if (list) {
+      const isCreator = list.createdBy && list.createdBy.toString() === user._id.toString();
+      if (!isCreator) {
+        const err = new Error("You can only edit or delete contacts in contact lists created by yourself.");
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+  } else {
+    await verifyContactAccess(user, contact);
+  }
+};
+
 module.exports = {
   getAssignedWabaIds,
   getAssignedPhoneNumberIds,
@@ -189,4 +235,6 @@ module.exports = {
   verifyContactListAccess,
   verifyContactAccess,
   getAssignedPhoneNumberObjectIds,
+  verifyContactListMutationAccess,
+  verifyContactMutationAccess,
 };

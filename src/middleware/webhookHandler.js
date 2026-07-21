@@ -97,18 +97,26 @@ const updateContactStats = async (phoneNumber, type, status = null) => {
  * Returns true  → message was handled; skip AI/bot
  * Returns false → not applicable; continue normal pipeline
  * --------------------------------------------------------- */
-const CAPITAL_AVENUE_DOMAIN = "thecapitalavenue.com/properties/";
+const CAPITAL_AVENUE_DOMAIN = "thecapitalavenue.com";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Extract a human-readable property name from a CA URL slug.
- * e.g. ".../tara-park-modon-reem-island-abu-dhabi" → "Tara Park Modon Reem Island Abu Dhabi"
  */
-const extractPropertyName = (url) => {
+const extractPropertyName = (urlString) => {
   try {
-    const parts = url.split("/properties/");
-    if (parts.length < 2) return null;
-    const slug = parts[1].split("?")[0].replace(/\/$/, ""); // strip query & trailing slash
+    const url = new URL(urlString);
+    let pathname = url.pathname.replace(/\/$/, ""); // strip trailing slash
+    const parts = pathname.split("/").filter(Boolean);
+    if (parts.length === 0) return null;
+
+    let slug = parts[parts.length - 1];
+    // If the last part is a unit reference code (e.g., contains 'capitalave' or digit-dash patterns),
+    // then the actual property name is in the parent path segment.
+    if (parts.length > 1 && (slug.toLowerCase().includes("capitalave") || /\d+-\d+/.test(slug))) {
+      slug = parts[parts.length - 2];
+    }
+
     return slug
       .split("-")
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -618,22 +626,40 @@ const processBufferedMessages = async (
             autoReplyText =
               "Your interest has been noted. One of our Sales Consultant will contact you shortly to assist you, Thank you for your response.";
 
-            // --- FIX: Close Enquiry Immediately ---
+            // --- FIX: Close/Update Enquiry Immediately ---
             const finalName =
               contactCheck?.name || lastMessage.contactName || "NA";
-            await Enquiry.create({
+            
+            let activeEnquiry = await Enquiry.findOne({
               phoneNumber: userPhone,
-              recipientId,
-              name: finalName,
-              status: "handover", // Stop Bot
-              conversationState: "END", // Stop Stuck Scheduler
-              handoverReason: "Campaign Interested",
-              entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              endedAt: new Date(), // Mark as ended
-              completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
-            });
+              status: { $in: ["pending", "active"] },
+            }).sort({ createdAt: -1 });
+
+            if (activeEnquiry) {
+              activeEnquiry.status = "handover";
+              activeEnquiry.conversationState = "END";
+              activeEnquiry.handoverReason = "Campaign Interested";
+              activeEnquiry.endedAt = new Date();
+              activeEnquiry.completionFollowUpSent = true;
+              if (finalName && finalName !== "Unknown" && finalName !== "NA") {
+                activeEnquiry.name = finalName;
+              }
+              await activeEnquiry.save();
+            } else {
+              await Enquiry.create({
+                phoneNumber: userPhone,
+                recipientId,
+                name: finalName,
+                status: "handover", // Stop Bot
+                conversationState: "END", // Stop Stuck Scheduler
+                handoverReason: "Campaign Interested",
+                entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                endedAt: new Date(), // Mark as ended
+                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
+              });
+            }
             console.log(
               `✅ Campaign Interest Logged & Handover Triggered for ${userPhone}`,
             );
@@ -641,23 +667,42 @@ const processBufferedMessages = async (
             autoReplyText =
               "لقد تم تسجيل اهتمامكم. سيتصل بكم أحد مستشاري المبيعات لدينا قريباً لمساعدتكم، شكراً لردكم.";
 
-            // --- FIX: Close Enquiry Immediately (Arabic) ---
+            // --- FIX: Close/Update Enquiry Immediately (Arabic) ---
             const finalName =
               contactCheck?.name || lastMessage.contactName || "NA";
-            await Enquiry.create({
+
+            let activeEnquiry = await Enquiry.findOne({
               phoneNumber: userPhone,
-              recipientId,
-              name: finalName,
-              status: "handover",
-              conversationState: "END",
-              handoverReason: "Campaign Interested (Arabic)",
-              entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              endedAt: new Date(),
-              language: "ar",
-              completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
-            });
+              status: { $in: ["pending", "active"] },
+            }).sort({ createdAt: -1 });
+
+            if (activeEnquiry) {
+              activeEnquiry.status = "handover";
+              activeEnquiry.conversationState = "END";
+              activeEnquiry.handoverReason = "Campaign Interested (Arabic)";
+              activeEnquiry.endedAt = new Date();
+              activeEnquiry.language = "ar";
+              activeEnquiry.completionFollowUpSent = true;
+              if (finalName && finalName !== "Unknown" && finalName !== "NA") {
+                activeEnquiry.name = finalName;
+              }
+              await activeEnquiry.save();
+            } else {
+              await Enquiry.create({
+                phoneNumber: userPhone,
+                recipientId,
+                name: finalName,
+                status: "handover",
+                conversationState: "END",
+                handoverReason: "Campaign Interested (Arabic)",
+                entrySource: `Campaign: ${campaignToCredit ? campaignToCredit.name : "Unknown"}`,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                endedAt: new Date(),
+                language: "ar",
+                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
+              });
+            }
             console.log(
               `✅ Campaign Interest Logged (AR) & Handover Triggered for ${userPhone}`,
             );
@@ -665,18 +710,32 @@ const processBufferedMessages = async (
             autoReplyText =
               "We respect your choice. If at any point you'd like to revisit, our team will be ready to help you.";
 
-            // --- FIX: Close Enquiry Immediately (Not Interested) ---
-            await Enquiry.create({
+            // --- FIX: Close/Update Enquiry Immediately (Not Interested) ---
+            let activeEnquiry = await Enquiry.findOne({
               phoneNumber: userPhone,
-              recipientId,
-              status: "closed",
-              conversationState: "END",
-              handoverReason: "Campaign Not Interested",
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              endedAt: new Date(),
-              completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
-            });
+              status: { $in: ["pending", "active"] },
+            }).sort({ createdAt: -1 });
+
+            if (activeEnquiry) {
+              activeEnquiry.status = "closed";
+              activeEnquiry.conversationState = "END";
+              activeEnquiry.handoverReason = "Campaign Not Interested";
+              activeEnquiry.endedAt = new Date();
+              activeEnquiry.completionFollowUpSent = true;
+              await activeEnquiry.save();
+            } else {
+              await Enquiry.create({
+                phoneNumber: userPhone,
+                recipientId,
+                status: "closed",
+                conversationState: "END",
+                handoverReason: "Campaign Not Interested",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                endedAt: new Date(),
+                completionFollowUpSent: true, // <--- FIX: DO NOT ASK FOR REVIEW
+              });
+            }
           }
         }
       }

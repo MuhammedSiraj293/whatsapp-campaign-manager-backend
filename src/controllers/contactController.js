@@ -10,7 +10,9 @@ const {
   getContactListFilter,
   verifyContactListAccess,
   verifyContactAccess,
-  getAssignedContactListIds
+  getAssignedContactListIds,
+  verifyContactListMutationAccess,
+  verifyContactMutationAccess
 } = require("../utils/accessControl");
 
 // Helper function to extract named variables from a row
@@ -102,6 +104,7 @@ const getAllContactLists = async (req, res) => {
         $project: {
           name: 1,
           createdAt: 1,
+          createdBy: 1,
           contactCount: { $size: "$contacts" },
         },
       },
@@ -178,7 +181,7 @@ const updateContact = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Contact not found" });
     }
-    await verifyContactAccess(req.user, contact);
+    await verifyContactMutationAccess(req.user, contact);
 
     // Update fields
     Object.assign(contact, req.body);
@@ -197,7 +200,7 @@ const updateContact = async (req, res) => {
 const deleteContactList = async (req, res) => {
   try {
     const { listId } = req.params;
-    await verifyContactListAccess(req.user, listId);
+    await verifyContactListMutationAccess(req.user, listId);
 
     const list = await ContactList.findById(listId);
     if (!list) {
@@ -227,7 +230,7 @@ const deleteContact = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Contact not found" });
     }
-    await verifyContactAccess(req.user, contact);
+    await verifyContactMutationAccess(req.user, contact);
 
     await contact.deleteOne();
     res.status(200).json({ success: true, data: {} });
@@ -250,9 +253,10 @@ const bulkDeleteContacts = async (req, res) => {
     }
 
     if (req.user.role !== 'admin') {
-      const allowedLists = await getAssignedContactListIds(req.user);
-      // Delete only contacts within manager's allowed contact lists
-      await Contact.deleteMany({ _id: { $in: contactIds }, contactList: { $in: allowedLists } });
+      const listsCreatedByManager = await ContactList.find({ createdBy: req.user._id }).select("_id");
+      const listIds = listsCreatedByManager.map(l => l._id);
+      // Delete only contacts within lists created by manager
+      await Contact.deleteMany({ _id: { $in: contactIds }, contactList: { $in: listIds } });
     } else {
       await Contact.deleteMany({ _id: { $in: contactIds } });
     }
