@@ -4,6 +4,7 @@ const Reply = require("../models/Reply");
 const Contact = require("../models/Contact");
 const ContactList = require("../models/ContactList"); // Added for Unsubscriber List logic
 const PhoneNumber = require("../models/PhoneNumber");
+const Log = require("../models/Log");
 const {
   sendTextMessage,
   sendMediaMessage,
@@ -525,6 +526,12 @@ const toggleSubscription = async (req, res) => {
         });
       }
 
+      await Log.create({
+        level: 'info',
+        message: `Contact ${phoneNumber} unsubscribed manually (Reason: ${unsubscribeReason || "Manual Unsubscribe"}) by user ${req.user.name} (${req.user.email}).`,
+        performedBy: req.user._id,
+      });
+
       res
         .status(200)
         .json({ success: true, message: "Unsubscribed successfully" });
@@ -549,6 +556,12 @@ const toggleSubscription = async (req, res) => {
           contactList: unsubList._id,
         });
       }
+
+      await Log.create({
+        level: 'success',
+        message: `Contact ${phoneNumber} re-subscribed manually by user ${req.user.name} (${req.user.email}).`,
+        performedBy: req.user._id,
+      });
 
       res
         .status(200)

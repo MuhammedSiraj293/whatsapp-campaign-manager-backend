@@ -195,6 +195,12 @@ const updateContact = async (req, res) => {
     Object.assign(contact, req.body);
     await contact.save();
 
+    await Log.create({
+      level: 'info',
+      message: `Contact ${contact.name || "Unknown"} (${contact.phoneNumber}) updated by user ${req.user.name} (${req.user.email}).`,
+      performedBy: req.user._id,
+    });
+
     res.status(200).json({ success: true, data: contact });
   } catch (error) {
     if (error.statusCode) {
@@ -248,6 +254,13 @@ const deleteContact = async (req, res) => {
     await verifyContactMutationAccess(req.user, contact);
 
     await contact.deleteOne();
+
+    await Log.create({
+      level: 'error',
+      message: `Contact ${contact.name || "Unknown"} (${contact.phoneNumber}) deleted by user ${req.user.name} (${req.user.email}).`,
+      performedBy: req.user._id,
+    });
+
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
     if (error.statusCode) {
@@ -275,6 +288,12 @@ const bulkDeleteContacts = async (req, res) => {
     } else {
       await Contact.deleteMany({ _id: { $in: contactIds } });
     }
+    
+    await Log.create({
+      level: 'error',
+      message: `Bulk deleted ${contactIds.length} contact(s) by user ${req.user.name} (${req.user.email}).`,
+      performedBy: req.user._id,
+    });
     
     getIO().emit("campaignsUpdated");
     res.status(200).json({

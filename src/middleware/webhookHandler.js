@@ -10,6 +10,7 @@ const Enquiry = require("../models/Enquiry");
 const ContactList = require("../models/ContactList");
 const AutoReplyConfig = require("../models/AutoReplyConfig");
 const PropertyInquirySession = require("../models/PropertyInquirySession");
+const Log = require("../models/Log");
 
 const { sendTextMessage, getMediaUrl } = require("../integrations/whatsappAPI");
 const axios = require("axios");
@@ -495,6 +496,13 @@ const processBufferedMessages = async (
             previousContactList: contactCheck.contactList, // Backup current list
           },
         );
+
+        await Log.create({
+          level: "info",
+          message: `Contact ${userPhone} unsubscribed automatically (Reason: Custom - ${messageBody}) via webhook.`,
+          performedBy: null,
+        });
+
         autoReplyText =
           "You've been unsubscribed. Thank you for your feedback.";
         isHandledByWebhook = true;
@@ -586,6 +594,13 @@ const processBufferedMessages = async (
                 : null,
             },
           );
+
+          await Log.create({
+            level: "info",
+            message: `Contact ${userPhone} unsubscribed automatically (Reason: ${messageBody}) via webhook.`,
+            performedBy: null,
+          });
+
           autoReplyText =
             "You've been unsubscribed. Thank you for your feedback.";
           console.log(
