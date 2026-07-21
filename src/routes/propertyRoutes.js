@@ -7,8 +7,12 @@ const {
   deleteProperty,
   deleteProperties,
 } = require("../controllers/propertyController");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 // Base route: /api/properties
+router.use(protect);
+router.use(authorize("admin"));
+
 router.get("/", getProperties);
 router.post("/", createProperty);
 router.put("/:id", updateProperty);

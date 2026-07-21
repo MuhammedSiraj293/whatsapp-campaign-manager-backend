@@ -1,7 +1,7 @@
 // backend/src/routes/authRoutes.js
     
 const express = require('express');
-const { register, login } = require('../controllers/authController');
+const { register, login, changePassword } = require('../controllers/authController');
 const { setupTwoFactorAuth, verifyTwoFactorAuth } = require('../controllers/twoFactorController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -12,7 +12,8 @@ router.post('/register', register);
 router.post('/login', login);
 router.post('/2fa/verify', verifyTwoFactorAuth);
 
-// Protected route - only a logged-in user can set up 2FA
+// Protected routes
 router.post('/2fa/setup', protect, setupTwoFactorAuth);
+router.put('/change-password', protect, changePassword);
     
 module.exports = router;

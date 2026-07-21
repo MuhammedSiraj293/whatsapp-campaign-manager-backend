@@ -9,7 +9,8 @@ const { getIO } = require("../socketManager"); // <-- 1. IMPORT getIO
 const {
   getContactListFilter,
   verifyContactListAccess,
-  verifyContactAccess
+  verifyContactAccess,
+  getAssignedContactListIds
 } = require("../utils/accessControl");
 
 // Helper function to extract named variables from a row

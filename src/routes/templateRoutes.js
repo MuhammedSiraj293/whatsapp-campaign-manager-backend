@@ -15,10 +15,10 @@ router.use(protect);
 router.route("/:wabaId").get(getTemplates);
 router
   .route("/:wabaId/analytics")
-  .get(authorize("admin", "manager"), getTemplateAnalytics);
+  .get(authorize("admin"), getTemplateAnalytics);
 
-router.route("/").post(authorize("admin", "manager"), createTemplate);
+router.route("/").post(authorize("admin"), createTemplate);
 
-router.route("/:templateId").put(authorize("admin", "manager"), editTemplate);
+router.route("/:templateId").put(authorize("admin"), editTemplate);
 
 module.exports = router;
