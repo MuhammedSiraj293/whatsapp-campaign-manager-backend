@@ -172,6 +172,12 @@ const createCampaign = async (req, res) => {
 
     const campaign = await Campaign.create(campaignData);
 
+    await Log.create({
+      level: 'success',
+      message: `Campaign '${campaign.name}' created as ${campaign.status} by user ${req.user.name} (${req.user.email}).`,
+      performedBy: req.user._id,
+    });
+
     getIO().emit("campaignsUpdated");
 
     res.status(201).json({ success: true, data: campaign });
@@ -408,6 +414,13 @@ const deleteCampaign = async (req, res) => {
     }
 
     await campaign.deleteOne();
+
+    await Log.create({
+      level: 'info',
+      message: `Campaign '${campaign.name}' deleted by user ${req.user.name} (${req.user.email}).`,
+      performedBy: req.user._id,
+    });
+
     getIO().emit("campaignsUpdated");
     res.status(200).json({ success: true, data: {} });
   } catch (error) {

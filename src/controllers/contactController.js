@@ -226,7 +226,7 @@ const deleteContactList = async (req, res) => {
     await list.deleteOne(); // This triggers the 'pre' hook in the model
 
     await Log.create({
-      level: 'error',
+      level: 'info',
       message: `Contact List '${list.name}' deleted by user ${req.user.name} (${req.user.email}).`,
       performedBy: req.user._id,
     });
@@ -256,7 +256,7 @@ const deleteContact = async (req, res) => {
     await contact.deleteOne();
 
     await Log.create({
-      level: 'error',
+      level: 'info',
       message: `Contact ${contact.name || "Unknown"} (${contact.phoneNumber}) deleted by user ${req.user.name} (${req.user.email}).`,
       performedBy: req.user._id,
     });
@@ -290,7 +290,7 @@ const bulkDeleteContacts = async (req, res) => {
     }
     
     await Log.create({
-      level: 'error',
+      level: 'info',
       message: `Bulk deleted ${contactIds.length} contact(s) by user ${req.user.name} (${req.user.email}).`,
       performedBy: req.user._id,
     });

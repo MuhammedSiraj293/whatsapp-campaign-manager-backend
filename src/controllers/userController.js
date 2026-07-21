@@ -118,7 +118,7 @@ const deleteUser = async (req, res) => {
             await user.deleteOne();
 
             await Log.create({
-                level: 'error',
+                level: 'info',
                 message: `User '${user.name}' (${user.email}) deleted by admin ${req.user.name} (${req.user.email}).`,
                 performedBy: req.user._id,
             });
