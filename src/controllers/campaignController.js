@@ -14,11 +14,19 @@ const {
 const { getIO } = require("../socketManager");
 const axios = require("axios");
 const { uploadMedia } = require("../integrations/whatsappAPI");
-// const wabaConfig = require('../config/wabaConfig');
+const {
+  getAssignedWabaIds,
+  verifyWabaAccess,
+  verifyPhoneNumberAccess,
+  getAssignedPhoneNumberObjectIds
+} = require("../utils/accessControl");
 
 const getCampaigns = async (req, res) => {
   try {
-    const campaigns = await Campaign.find()
+    const allowedPhoneObjectIds = await getAssignedPhoneNumberObjectIds(req.user);
+    const query = allowedPhoneObjectIds ? { phoneNumber: { $in: allowedPhoneObjectIds } } : {};
+
+    const campaigns = await Campaign.find(query)
       .sort({ createdAt: -1 })
       .populate("contactList", "name") // Populate contact list name
       .populate("exclusionList", "name") // Populate exclusion list name
@@ -37,11 +45,22 @@ const getRecipientCount = async (req, res) => {
     if (!campaign || !campaign.contactList) {
       return res.status(200).json({ success: true, count: 0 });
     }
+
+    if (req.user.role !== 'admin') {
+      const phone = await PhoneNumber.findById(campaign.phoneNumber);
+      if (phone) {
+        await verifyPhoneNumberAccess(req.user, phone.phoneNumberId);
+      }
+    }
+
     const count = await Contact.countDocuments({
       contactList: campaign.contactList,
     });
     res.status(200).json({ success: true, count });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -67,6 +86,13 @@ const createCampaign = async (req, res) => {
       messageDelay, // <-- New Field
       headerMediaType, // <-- New Field for Video/Document headers
     } = req.body;
+
+    if (req.user.role !== 'admin' && phoneNumber) {
+      const phoneDoc = await PhoneNumber.findById(phoneNumber);
+      if (phoneDoc) {
+        await verifyPhoneNumberAccess(req.user, phoneDoc.phoneNumberId);
+      }
+    }
 
     // Parse buttons if they came as a string
     let buttons = [];
@@ -170,6 +196,13 @@ const executeCampaign = async (req, res) => {
         .json({ success: false, error: "Campaign not found" });
     }
 
+    if (req.user.role !== 'admin') {
+      const phone = await PhoneNumber.findById(campaign.phoneNumber);
+      if (phone) {
+        await verifyPhoneNumberAccess(req.user, phone.phoneNumberId);
+      }
+    }
+
     // Prevent re-sending already processed campaigns
     if (["sending", "sent"].includes(campaign.status)) {
       return res.status(400).json({
@@ -227,6 +260,7 @@ const executeCampaign = async (req, res) => {
 const getCampaignsByWaba = async (req, res) => {
   try {
     const { wabaId } = req.params;
+    verifyWabaAccess(req.user, wabaId);
     const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId }).select(
       "_id",
     );
@@ -308,13 +342,16 @@ const getMessageTemplates = async (req, res) => {
     const { wabaId } = req.params;
     let wabaAccounts;
     if (wabaId) {
+      verifyWabaAccess(req.user, wabaId);
       wabaAccounts = await WabaAccount.find({ _id: wabaId });
       if (wabaAccounts.length === 0)
         return res
           .status(404)
           .json({ success: false, error: "WABA account not found." });
     } else {
-      wabaAccounts = await WabaAccount.find();
+      const allowedWabaIds = getAssignedWabaIds(req.user);
+      const query = allowedWabaIds ? { _id: { $in: allowedWabaIds } } : {};
+      wabaAccounts = await WabaAccount.find(query);
       if (!wabaAccounts || wabaAccounts.length === 0)
         return res
           .status(404)
@@ -361,6 +398,13 @@ const deleteCampaign = async (req, res) => {
         .json({ success: false, error: "Campaign not found" });
     }
 
+    if (req.user.role !== 'admin') {
+      const phone = await PhoneNumber.findById(campaign.phoneNumber);
+      if (phone) {
+        await verifyPhoneNumberAccess(req.user, phone.phoneNumberId);
+      }
+    }
+
     await campaign.deleteOne();
     getIO().emit("campaignsUpdated");
     res.status(200).json({ success: true, data: {} });
@@ -376,6 +420,13 @@ const pauseCampaignHandler = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, error: "Campaign not found" });
+
+    if (req.user.role !== 'admin') {
+      const phone = await PhoneNumber.findById(campaign.phoneNumber);
+      if (phone) {
+        await verifyPhoneNumberAccess(req.user, phone.phoneNumberId);
+      }
+    }
     if (campaign.status !== "sending") {
       return res
         .status(400)
@@ -400,6 +451,13 @@ const resumeCampaignHandler = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, error: "Campaign not found" });
+
+    if (req.user.role !== 'admin') {
+      const phone = await PhoneNumber.findById(campaign.phoneNumber);
+      if (phone) {
+        await verifyPhoneNumberAccess(req.user, phone.phoneNumberId);
+      }
+    }
 
     // Allow resuming if it's paused OR if it's stuck in "sending" but process is dead
     if (campaign.status !== "paused" && campaign.status !== "sending") {

@@ -1,11 +1,16 @@
-// backend/src/controllers/analyticsController.js
-
 const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const Reply = require("../models/Reply");
 const Analytics = require("../models/Analytics");
+const PhoneNumber = require("../models/PhoneNumber");
 const { Parser } = require("json2csv");
 const mongoose = require("mongoose"); // <--- Added import
+const {
+  getAssignedContactListIds,
+  getAssignedPhoneNumberIds,
+  getAssignedPhoneNumberObjectIds,
+  verifyPhoneNumberAccess
+} = require("../utils/accessControl");
 
 // @desc    Get key analytics stats
 const getStats = async (req, res) => {
@@ -15,6 +20,16 @@ const getStats = async (req, res) => {
     const campaignQuery = { status: "sent" };
     const contactQuery = {};
     const replyQuery = { direction: "incoming" };
+
+    const allowedPhoneIds = await getAssignedPhoneNumberIds(req.user);
+    const allowedPhoneObjectIds = await getAssignedPhoneNumberObjectIds(req.user);
+    const allowedLists = await getAssignedContactListIds(req.user);
+
+    if (req.user.role !== 'admin') {
+      campaignQuery.phoneNumber = { $in: allowedPhoneObjectIds || [] };
+      contactQuery.contactList = { $in: allowedLists || [] };
+      replyQuery.recipientId = { $in: allowedPhoneIds || [] };
+    }
 
     if (startDate && endDate) {
       const start = new Date(startDate);
@@ -54,6 +69,13 @@ const getCampaignAnalytics = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, error: "Campaign not found." });
+    }
+
+    if (req.user.role !== 'admin') {
+      const phone = await PhoneNumber.findById(campaign.phoneNumber);
+      if (phone) {
+        await verifyPhoneNumberAccess(req.user, phone.phoneNumberId);
+      }
     }
 
     // --- THIS IS THE KEY CHANGE ---
@@ -128,6 +150,9 @@ const getCampaignAnalytics = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching campaign analytics:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -137,6 +162,17 @@ const getCampaignAnalytics = async (req, res) => {
 const exportCampaignAnalytics = async (req, res) => {
   try {
     const { campaignId } = req.params;
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign) {
+      return res.status(404).json({ success: false, error: "Campaign not found." });
+    }
+    if (req.user.role !== 'admin') {
+      const phone = await PhoneNumber.findById(campaign.phoneNumber);
+      if (phone) {
+        await verifyPhoneNumberAccess(req.user, phone.phoneNumberId);
+      }
+    }
+
     const analyticsData = await Analytics.find({
       campaign: campaignId,
     }).populate("contact", "phoneNumber name");
@@ -163,6 +199,9 @@ const exportCampaignAnalytics = async (req, res) => {
     res.attachment(`campaign_${campaignId}_analytics.csv`);
     res.send(csv);
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error exporting campaign analytics:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -176,6 +215,8 @@ const exportCampaignAnalytics = async (req, res) => {
 const getTemplateAnalytics = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
+
+    const allowedPhoneIds = await getAssignedPhoneNumberObjectIds(req.user);
 
     const basePipeline = [
       // 1. Join with the 'campaigns' collection to get template names
@@ -261,6 +302,9 @@ const getTemplateAnalytics = async (req, res) => {
 
     res.status(200).json({ success: true, data: stats });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching template analytics:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -274,7 +318,11 @@ const getAnalyticsForTemplate = async (req, res) => {
     const { templateName } = req.params;
     const { startDate, endDate } = req.query;
 
+    const allowedPhoneIds = await getAssignedPhoneNumberObjectIds(req.user);
     const campaignQuery = { templateName: templateName };
+    if (allowedPhoneIds) {
+      campaignQuery.phoneNumber = { $in: allowedPhoneIds };
+    }
 
     if (startDate && endDate) {
       const start = new Date(startDate);
@@ -463,6 +511,9 @@ const getAnalyticsForTemplate = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching single template analytics:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -477,6 +528,16 @@ const getAnalyticsForTemplate = async (req, res) => {
 const getCampaignAnalyticsDetails = async (req, res) => {
   try {
     const { campaignId } = req.params;
+    const campaign = await Campaign.findById(campaignId);
+    if (!campaign) {
+      return res.status(404).json({ success: false, error: "Campaign not found" });
+    }
+    if (req.user.role !== 'admin') {
+      const phone = await PhoneNumber.findById(campaign.phoneNumber);
+      if (phone) {
+        await verifyPhoneNumberAccess(req.user, phone.phoneNumberId);
+      }
+    }
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
@@ -630,6 +691,9 @@ const getCampaignAnalyticsDetails = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching campaign analytics details:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }

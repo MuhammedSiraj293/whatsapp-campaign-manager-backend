@@ -9,6 +9,11 @@ const ContactListSchema = new mongoose.Schema({
     unique: true,
     trim: true,
   },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
 }, { timestamps: true });
 
 // --- THIS IS THE NEW LOGIC ---

@@ -1,6 +1,31 @@
 // backend/src/controllers/dashboardController.js
 
 const Contact = require("../models/Contact");
+const { getAssignedContactListIds, verifyContactListAccess } = require("../utils/accessControl");
+
+// Helper to construct query with manager restrictions
+const buildDashboardQuery = async (req, queryParams) => {
+  const { listId, status } = queryParams;
+  const query = {};
+
+  if (req.user.role !== 'admin') {
+    const allowedLists = await getAssignedContactListIds(req.user);
+    if (listId) {
+      await verifyContactListAccess(req.user, listId);
+      query.contactList = listId;
+    } else {
+      query.contactList = { $in: allowedLists };
+    }
+  } else {
+    if (listId) query.contactList = listId;
+  }
+
+  if (status && status !== "all") {
+    query.computedStatus = { $regex: status, $options: "i" };
+  }
+
+  return query;
+};
 
 // --- DASHBOARD SUMMARY ENDPOINT (For KPI Cards) ---
 const getDashboardSummary = async (req, res) => {
@@ -16,8 +41,8 @@ const getDashboardSummary = async (req, res) => {
       endDate,
     } = req.query;
 
-    // Build same query as dashboard for consistency
-    const query = {};
+    // Build base restricted query
+    const query = await buildDashboardQuery(req, { listId, status });
 
     if (search) {
       query.$or = [
@@ -26,10 +51,6 @@ const getDashboardSummary = async (req, res) => {
       ];
     }
 
-    if (listId) query.contactList = listId;
-    if (status && status !== "all") {
-      query.computedStatus = { $regex: status, $options: "i" };
-    }
     if (minReplies) query["stats.replied"] = { $gte: parseInt(minReplies) };
     if (minScore) query.engagementScore = { $gte: parseInt(minScore) };
     if (lastActiveDays) {
@@ -111,6 +132,9 @@ const getDashboardSummary = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching dashboard summary:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -127,14 +151,9 @@ const getEngagementTrends = async (req, res) => {
     const days = parseInt(period.replace("d", "")) || 30;
     startDateValue.setDate(startDateValue.getDate() - days);
 
-    const query = {
-      lastActive: { $gte: startDateValue, $lte: endDateValue },
-    };
-
-    if (listId) query.contactList = listId;
-    if (status && status !== "all") {
-      query.computedStatus = { $regex: status, $options: "i" };
-    }
+    // Build base restricted query
+    const query = await buildDashboardQuery(req, { listId, status });
+    query.lastActive = { $gte: startDateValue, $lte: endDateValue };
 
     // Aggregate by day
     const trends = await Contact.aggregate([
@@ -147,36 +166,36 @@ const getEngagementTrends = async (req, res) => {
               date: "$lastActive",
             },
           },
-          avgScore: { $avg: "$engagementScore" },
-          hotCount: {
-            $sum: {
-              $cond: [
-                { $regexMatch: { input: "$computedStatus", regex: /hot/i } },
-                1,
-                0,
-              ],
-            },
-          },
-          warmCount: {
-            $sum: {
-              $cond: [
-                { $regexMatch: { input: "$computedStatus", regex: /warm/i } },
-                1,
-                0,
-              ],
-            },
-          },
-          coldCount: {
-            $sum: {
-              $cond: [
-                { $regexMatch: { input: "$computedStatus", regex: /cold/i } },
-                1,
-                0,
-              ],
-            },
-          },
-          totalContacts: { $sum: 1 },
         },
+        avgScore: { $avg: "$engagementScore" },
+        hotCount: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: "$computedStatus", regex: /hot/i } },
+              1,
+              0,
+            ],
+          },
+        },
+        warmCount: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: "$computedStatus", regex: /warm/i } },
+              1,
+              0,
+            ],
+          },
+        },
+        coldCount: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: "$computedStatus", regex: /cold/i } },
+              1,
+              0,
+            ],
+          },
+        },
+        totalContacts: { $sum: 1 },
       },
       { $sort: { _id: 1 } },
     ]);
@@ -196,6 +215,9 @@ const getEngagementTrends = async (req, res) => {
       data: formattedResults,
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching engagement trends:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -206,11 +228,7 @@ const getTopPerformers = async (req, res) => {
   try {
     const { limit = 10, listId, status } = req.query;
 
-    const query = {};
-    if (listId) query.contactList = listId;
-    if (status && status !== "all") {
-      query.computedStatus = { $regex: status, $options: "i" };
-    }
+    const query = await buildDashboardQuery(req, { listId, status });
 
     const topContacts = await Contact.find(query)
       .sort({ engagementScore: -1 })
@@ -233,6 +251,9 @@ const getTopPerformers = async (req, res) => {
       data: formattedResults,
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching top performers:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }

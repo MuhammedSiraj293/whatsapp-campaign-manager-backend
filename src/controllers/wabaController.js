@@ -3,12 +3,20 @@
 const WabaAccount = require("../models/WabaAccount");
 const PhoneNumber = require("../models/PhoneNumber");
 const axios = require("axios");
+const { getAssignedWabaIds } = require("../utils/accessControl");
 
 // @desc    Get all WABA accounts and their phone numbers
 const getAllWabaAccounts = async (req, res) => {
   try {
-    const accounts = await WabaAccount.find();
-    const phoneNumbers = await PhoneNumber.find();
+    const wabaIds = getAssignedWabaIds(req.user);
+    
+    // Build query: if wabaIds is null, it's admin (fetch all). Otherwise, fetch only assigned ones.
+    const query = wabaIds ? { _id: { $in: wabaIds } } : {};
+    const accounts = await WabaAccount.find(query);
+
+    // Fetch phone numbers. If not admin, restrict phone numbers to those belonging to allowed WABAs.
+    const phoneQuery = wabaIds ? { wabaAccount: { $in: wabaIds } } : {};
+    const phoneNumbers = await PhoneNumber.find(phoneQuery);
 
     const accountsWithPhones = accounts.map((account) => {
       return {

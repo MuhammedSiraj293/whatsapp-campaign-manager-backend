@@ -6,6 +6,11 @@ const Analytics = require("../models/Analytics");
 const Reply = require("../models/Reply");
 const mongoose = require("mongoose");
 const { getIO } = require("../socketManager"); // <-- 1. IMPORT getIO
+const {
+  getContactListFilter,
+  verifyContactListAccess,
+  verifyContactAccess
+} = require("../utils/accessControl");
 
 // Helper function to extract named variables from a row
 const extractVariables = (row) => {
@@ -28,7 +33,7 @@ const createContactList = async (req, res) => {
       .status(400)
       .json({ success: false, error: "Please provide a list name." });
   try {
-    const contactList = await ContactList.create({ name });
+    const contactList = await ContactList.create({ name, createdBy: req.user._id });
     res.status(201).json({ success: true, data: contactList });
   } catch (error) {
     res
@@ -71,6 +76,11 @@ const getAllContactLists = async (req, res) => {
 
     // 2. Build Aggregation Pipeline
     const pipeline = [];
+
+    const baseFilter = getContactListFilter(req.user);
+    if (Object.keys(baseFilter).length > 0) {
+      pipeline.push({ $match: baseFilter });
+    }
 
     // Filter by IDs if search was performed
     if (listIdsToInclude) {
@@ -143,11 +153,16 @@ const bulkAddContacts = async (req, res) => {
 const getContactsInList = async (req, res) => {
   try {
     const { listId } = req.params;
+    await verifyContactListAccess(req.user, listId);
+    
     const contacts = await Contact.find({ contactList: listId }).sort({
       createdAt: -1,
     });
     res.status(200).json({ success: true, data: contacts });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -156,17 +171,23 @@ const getContactsInList = async (req, res) => {
 const updateContact = async (req, res) => {
   try {
     const { contactId } = req.params;
-    const contact = await Contact.findByIdAndUpdate(contactId, req.body, {
-      returnDocument: 'after',
-      runValidators: true,
-    });
+    const contact = await Contact.findById(contactId);
     if (!contact) {
       return res
         .status(404)
         .json({ success: false, error: "Contact not found" });
     }
+    await verifyContactAccess(req.user, contact);
+
+    // Update fields
+    Object.assign(contact, req.body);
+    await contact.save();
+
     res.status(200).json({ success: true, data: contact });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -174,7 +195,10 @@ const updateContact = async (req, res) => {
 // --- NEW DELETE FUNCTION ---
 const deleteContactList = async (req, res) => {
   try {
-    const list = await ContactList.findById(req.params.listId);
+    const { listId } = req.params;
+    await verifyContactListAccess(req.user, listId);
+
+    const list = await ContactList.findById(listId);
     if (!list) {
       return res
         .status(404)
@@ -185,6 +209,9 @@ const deleteContactList = async (req, res) => {
     getIO().emit("campaignsUpdated"); // <-- 2. EMIT EVENT
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -199,9 +226,14 @@ const deleteContact = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Contact not found" });
     }
+    await verifyContactAccess(req.user, contact);
+
     await contact.deleteOne();
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -216,7 +248,14 @@ const bulkDeleteContacts = async (req, res) => {
         .json({ success: false, error: "No contact IDs provided." });
     }
 
-    await Contact.deleteMany({ _id: { $in: contactIds } });
+    if (req.user.role !== 'admin') {
+      const allowedLists = await getAssignedContactListIds(req.user);
+      // Delete only contacts within manager's allowed contact lists
+      await Contact.deleteMany({ _id: { $in: contactIds }, contactList: { $in: allowedLists } });
+    } else {
+      await Contact.deleteMany({ _id: { $in: contactIds } });
+    }
+    
     getIO().emit("campaignsUpdated");
     res.status(200).json({
       success: true,
@@ -239,6 +278,7 @@ const getContactStats = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Contact not found" });
     }
+    await verifyContactAccess(req.user, contact);
 
     const [campaignsSent, campaignsFailed, repliesCount] = await Promise.all([
       // Count sent/delivered/read
@@ -270,6 +310,9 @@ const getContactStats = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching contact stats:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -278,17 +321,20 @@ const getContactStats = async (req, res) => {
 // --- NEW FUNCTION FOR ANALYTICS DASHBOARD ---
 const getContactAnalytics = async (req, res) => {
   try {
-    const totalContacts = await Contact.countDocuments({});
-    const subscribed = await Contact.countDocuments({ isSubscribed: true });
-    const unsubscribed = await Contact.countDocuments({ isSubscribed: false });
+    const allowedLists = await getAssignedContactListIds(req.user);
+    const baseQuery = req.user.role !== 'admin' ? { contactList: { $in: allowedLists } } : {};
+
+    const totalContacts = await Contact.countDocuments(baseQuery);
+    const subscribed = await Contact.countDocuments({ ...baseQuery, isSubscribed: true });
+    const unsubscribed = await Contact.countDocuments({ ...baseQuery, isSubscribed: false });
 
     // Calculate duplicates: Total Entries - Unique Phone Numbers
-    const uniquePhoneNumbers = await Contact.distinct("phoneNumber");
+    const uniquePhoneNumbers = await Contact.distinct("phoneNumber", baseQuery);
     const duplicates = totalContacts - uniquePhoneNumbers.length;
 
     // Aggregate Unsubscribe Reasons
     const reasonsAggregation = await Contact.aggregate([
-      { $match: { isSubscribed: false } },
+      { $match: { ...baseQuery, isSubscribed: false } },
       {
         $group: {
           _id: { $toLower: "$unsubscribeReason" }, // Group by lowercase reason to merge "STOP" and "stop"
@@ -347,9 +393,19 @@ const getContactAnalyticsDashboard = async (req, res) => {
       ];
     }
 
-    // 2. List Filter
-    if (listId) {
-      query.contactList = listId;
+    // 2. List Filter (apply manager restriction)
+    if (req.user.role !== 'admin') {
+      const allowedLists = await getAssignedContactListIds(req.user);
+      if (listId) {
+        await verifyContactListAccess(req.user, listId);
+        query.contactList = listId;
+      } else {
+        query.contactList = { $in: allowedLists };
+      }
+    } else {
+      if (listId) {
+        query.contactList = listId;
+      }
     }
 
     // 3. Status Filter (Use denormalized computedStatus)
@@ -368,7 +424,6 @@ const getContactAnalyticsDashboard = async (req, res) => {
     }
 
     // 6. Last Active Filter
-    // "Within X Days" means lastActive >= Date.now() - X days
     if (lastActiveDays) {
       const dateLimit = new Date();
       dateLimit.setDate(dateLimit.getDate() - parseInt(lastActiveDays));
@@ -376,7 +431,6 @@ const getContactAnalyticsDashboard = async (req, res) => {
     }
 
     // 7. Sorting Field Mapping
-    // Map frontend sort keys to backend schema paths
     let sortField = sortBy;
     if (sortBy === "sent") sortField = "stats.sent";
     if (sortBy === "replies") sortField = "stats.replied";
@@ -388,12 +442,11 @@ const getContactAnalyticsDashboard = async (req, res) => {
         .sort({ [sortField]: sortOrder === "asc" ? 1 : -1 })
         .skip(skip)
         .limit(parseInt(limit))
-        .lean(), // Use lean for performance
+        .lean(),
       Contact.countDocuments(query),
     ]);
 
     // 9. Format response to match expected frontend structure
-    // Frontend expects flat fields like totalSent, replied, etc.
     const formattedContacts = contacts.map((c) => ({
       ...c,
       totalSent: c.stats?.sent || 0,
@@ -401,8 +454,6 @@ const getContactAnalyticsDashboard = async (req, res) => {
       read: c.stats?.read || 0,
       failed: c.stats?.failed || 0,
       replied: c.stats?.replied || 0,
-      // Recalculate rates on the fly for display if needed, or trust stored ones if we added them.
-      // We didn't add rate fields to schema, so calc here is cheap O(1).
       readRate: c.stats?.sent > 0 ? (c.stats.read / c.stats.sent) * 100 : 0,
       replyRate: c.stats?.sent > 0 ? (c.stats.replied / c.stats.sent) * 100 : 0,
     }));
@@ -417,6 +468,9 @@ const getContactAnalyticsDashboard = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching contact analytics dashboard:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -428,12 +482,15 @@ const getUnsubscribedContacts = async (req, res) => {
     const { reason } = req.query;
     let query = { isSubscribed: false };
 
+    if (req.user.role !== 'admin') {
+      const allowedLists = await getAssignedContactListIds(req.user);
+      query.contactList = { $in: allowedLists };
+    }
+
     if (reason) {
       if (reason === "No reason provided") {
-        // Match null or empty string
         query.unsubscribeReason = { $in: [null, ""] };
       } else {
-        // Case-insensitive match
         query.unsubscribeReason = { $regex: new RegExp(`^${reason}$`, "i") };
       }
     }
@@ -460,6 +517,7 @@ const getContactDetails = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Contact not found" });
     }
+    await verifyContactAccess(req.user, contact);
 
     // 1. Get Analytics (Campaign History)
     const analytics = await Analytics.find({ contact: contactId })
@@ -506,6 +564,9 @@ const getContactDetails = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     console.error("Error fetching contact details:", error);
     res.status(500).json({ success: false, error: "Server Error" });
   }

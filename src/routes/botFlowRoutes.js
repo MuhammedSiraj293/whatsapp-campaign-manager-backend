@@ -17,9 +17,9 @@ const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// All routes in this file are for admins only
+// All routes in this file are for admins and managers
 router.use(protect);
-router.use(authorize("admin"));
+router.use(authorize("admin", "manager"));
 
 // --- Routes for managing the Flow itself ---
 

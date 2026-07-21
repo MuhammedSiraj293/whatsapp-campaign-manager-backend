@@ -30,6 +30,14 @@ const UserSchema = new mongoose.Schema({
     enum: ['admin', 'manager', 'viewer'],
     default: 'viewer', // New users will now default to 'viewer'
   },
+  assignedWabas: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WabaAccount',
+  }],
+  assignedContactLists: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ContactList',
+  }],
    // --- NEW FIELDS FOR 2FA ---
   isTwoFactorEnabled: {
     type: Boolean,

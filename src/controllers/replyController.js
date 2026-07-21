@@ -11,6 +11,7 @@ const {
   sendReactionMessage,
 } = require("../integrations/whatsappAPI");
 const { getIO } = require("../socketManager");
+const { verifyPhoneNumberAccess } = require("../utils/accessControl");
 
 // --- NEW HELPER ---
 // Finds the correct WABA credentials for a given phone number ID
@@ -33,6 +34,7 @@ const getCredentialsFromRecipientId = async (recipientId) => {
 const getConversations = async (req, res) => {
   try {
     const { recipientId } = req.params;
+    await verifyPhoneNumberAccess(req.user, recipientId);
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const search = req.query.search || ""; // Extract search term
@@ -129,6 +131,7 @@ const getConversations = async (req, res) => {
 const getMessagesByNumber = async (req, res) => {
   try {
     const { phoneNumber, recipientId } = req.params;
+    await verifyPhoneNumberAccess(req.user, recipientId);
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
@@ -214,6 +217,7 @@ const sendReply = async (req, res) => {
   const io = getIO();
   try {
     const { phoneNumber, recipientId } = req.params;
+    await verifyPhoneNumberAccess(req.user, recipientId);
     const { message, context } = req.body; // Extract context (quoted message)
 
     const { accessToken, phoneNumberId } =
@@ -263,6 +267,7 @@ const sendReaction = async (req, res) => {
   const io = getIO();
   try {
     const { phoneNumber, recipientId } = req.params;
+    await verifyPhoneNumberAccess(req.user, recipientId);
     const { messageId, emoji } = req.body;
 
     const { accessToken, phoneNumberId } =
@@ -317,6 +322,7 @@ const sendMediaReply = async (req, res) => {
   const io = getIO();
   try {
     const { phoneNumber, recipientId } = req.params;
+    await verifyPhoneNumberAccess(req.user, recipientId);
     if (!req.file) {
       return res
         .status(400)
@@ -366,6 +372,7 @@ const sendMediaReply = async (req, res) => {
 const markAsRead = async (req, res) => {
   try {
     const { phoneNumber, recipientId } = req.params;
+    await verifyPhoneNumberAccess(req.user, recipientId);
     await Reply.updateMany(
       {
         from: phoneNumber,
@@ -390,6 +397,7 @@ const markAsRead = async (req, res) => {
 const deleteConversation = async (req, res) => {
   try {
     const { phoneNumber, recipientId } = req.params;
+    await verifyPhoneNumberAccess(req.user, recipientId);
     await Reply.deleteMany({
       $or: [
         { from: phoneNumber, recipientId: recipientId },
@@ -446,7 +454,11 @@ const deleteConversation = async (req, res) => {
 const deleteMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
-    await Reply.findOneAndDelete({ _id: messageId }); // Assuming _id is passed, or messageId field?
+    const msg = await Reply.findById(messageId);
+    if (msg) {
+      await verifyPhoneNumberAccess(req.user, msg.recipientId);
+    }
+    await Reply.findOneAndDelete({ _id: messageId });
     // The frontend usually has _id. Let's support both or just _id.
     // If the route is /messages/:messageId, let's assume it's the Mongo _id.
 
@@ -463,6 +475,11 @@ const deleteMessage = async (req, res) => {
 const toggleSubscription = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
+    const contact = await Contact.findOne({ phoneNumber });
+    if (contact) {
+      const { verifyContactAccess } = require("../utils/accessControl");
+      await verifyContactAccess(req.user, contact);
+    }
     const { status, unsubscribeReason } = req.body; // true = Resubscribe, false = Unsubscribe
 
     console.log(`Manual subscription toggle for ${phoneNumber}: ${status}`);

@@ -1,7 +1,11 @@
-// backend/src/controllers/enquiryController.js
 const Enquiry = require("../models/Enquiry");
 const PhoneNumber = require("../models/PhoneNumber");
 const { Parser } = require("json2csv");
+const {
+  getAssignedPhoneNumberIds,
+  verifyPhoneNumberAccess,
+  verifyWabaAccess,
+} = require("../utils/accessControl");
 
 const buildEnquiryQuery = async (req) => {
   const {
@@ -16,13 +20,22 @@ const buildEnquiryQuery = async (req) => {
   } = req.query;
 
   const query = {};
+  const allowedPhoneIds = await getAssignedPhoneNumberIds(req.user);
 
   if (phoneNumberFilter) {
+    if (req.user.role !== "admin") {
+      await verifyPhoneNumberAccess(req.user, phoneNumberFilter);
+    }
     query.recipientId = phoneNumberFilter;
   } else if (wabaId) {
+    if (req.user.role !== "admin") {
+      verifyWabaAccess(req.user, wabaId);
+    }
     const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId });
     const recipientIds = phoneNumbers.map((p) => p.phoneNumberId);
     query.recipientId = { $in: recipientIds };
+  } else if (req.user.role !== "admin") {
+    query.recipientId = { $in: allowedPhoneIds };
   }
 
   if (search) {
@@ -107,12 +120,16 @@ const updateEnquiryStatus = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Enquiry not found" });
     }
+    await verifyPhoneNumberAccess(req.user, enquiry.recipientId);
 
     enquiry.status = status || enquiry.status;
     await enquiry.save();
 
     res.status(200).json({ success: true, data: enquiry });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -128,10 +145,14 @@ const deleteEnquiry = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Enquiry not found" });
     }
+    await verifyPhoneNumberAccess(req.user, enquiry.recipientId);
 
     await enquiry.deleteOne();
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -146,7 +167,12 @@ const bulkDeleteEnquiries = async (req, res) => {
       return res.status(400).json({ success: false, error: "No IDs provided" });
     }
 
-    await Enquiry.deleteMany({ _id: { $in: ids } });
+    if (req.user.role !== "admin") {
+      const allowedPhoneIds = await getAssignedPhoneNumberIds(req.user);
+      await Enquiry.deleteMany({ _id: { $in: ids }, recipientId: { $in: allowedPhoneIds } });
+    } else {
+      await Enquiry.deleteMany({ _id: { $in: ids } });
+    }
 
     res
       .status(200)
@@ -165,7 +191,12 @@ const exportEnquiries = async (req, res) => {
     let query = await buildEnquiryQuery(req);
 
     if (ids && Array.isArray(ids) && ids.length > 0) {
-      query = { _id: { $in: ids } };
+      if (req.user.role !== "admin") {
+        const allowedPhoneIds = await getAssignedPhoneNumberIds(req.user);
+        query = { _id: { $in: ids }, recipientId: { $in: allowedPhoneIds } };
+      } else {
+        query = { _id: { $in: ids } };
+      }
     }
 
     const enquiries = await Enquiry.find(query).sort({ createdAt: -1 });

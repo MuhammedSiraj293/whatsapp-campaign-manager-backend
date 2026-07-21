@@ -2,6 +2,7 @@
 
 const BotFlow = require("../models/BotFlow");
 const BotNode = require("../models/BotNode");
+const { verifyWabaAccess } = require("../utils/accessControl");
 
 // --- Flow Management ---
 
@@ -9,9 +10,15 @@ const BotNode = require("../models/BotNode");
 // @route   GET /api/bot-flows/waba/:wabaId
 const getFlowsByWaba = async (req, res) => {
   try {
-    const flows = await BotFlow.find({ wabaAccount: req.params.wabaId });
+    const { wabaId } = req.params;
+    verifyWabaAccess(req.user, wabaId);
+
+    const flows = await BotFlow.find({ wabaAccount: wabaId });
     res.status(200).json({ success: true, data: flows });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -21,6 +28,7 @@ const getFlowsByWaba = async (req, res) => {
 const createFlow = async (req, res) => {
   try {
     const { name, wabaAccount } = req.body;
+    verifyWabaAccess(req.user, wabaAccount);
 
     // Create the flow
     const newFlow = await BotFlow.create({
@@ -43,6 +51,9 @@ const createFlow = async (req, res) => {
 
     res.status(201).json({ success: true, data: newFlow });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(400).json({ success: false, error: error.message });
   }
 };
@@ -56,6 +67,7 @@ const deleteFlow = async (req, res) => {
     if (!flow) {
       return res.status(404).json({ success: false, error: "Flow not found" });
     }
+    verifyWabaAccess(req.user, flow.wabaAccount);
 
     // Delete all nodes associated with this flow
     await BotNode.deleteMany({ botFlow: flowId });
@@ -64,6 +76,9 @@ const deleteFlow = async (req, res) => {
 
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -76,8 +91,13 @@ const getFlowById = async (req, res) => {
     if (!flow) {
       return res.status(404).json({ success: false, error: "Flow not found" });
     }
+    verifyWabaAccess(req.user, flow.wabaAccount);
+
     res.status(200).json({ success: true, data: flow });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -86,15 +106,21 @@ const getFlowById = async (req, res) => {
 // @route   PUT /api/bot-flows/:flowId
 const updateFlow = async (req, res) => {
   try {
-    const flow = await BotFlow.findByIdAndUpdate(req.params.flowId, req.body, {
-      returnDocument: 'after',
-      runValidators: true,
-    });
+    const { flowId } = req.params;
+    const flow = await BotFlow.findById(flowId);
     if (!flow) {
       return res.status(404).json({ success: false, error: "Flow not found" });
     }
+    verifyWabaAccess(req.user, flow.wabaAccount);
+
+    Object.assign(flow, req.body);
+    await flow.save();
+
     res.status(200).json({ success: true, data: flow });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(400).json({ success: false, error: error.message });
   }
 };
@@ -105,9 +131,19 @@ const updateFlow = async (req, res) => {
 // @route   GET /api/bot-flows/:flowId/nodes
 const getFlowNodes = async (req, res) => {
   try {
-    const nodes = await BotNode.find({ botFlow: req.params.flowId });
+    const { flowId } = req.params;
+    const flow = await BotFlow.findById(flowId);
+    if (!flow) {
+      return res.status(404).json({ success: false, error: "Flow not found" });
+    }
+    verifyWabaAccess(req.user, flow.wabaAccount);
+
+    const nodes = await BotNode.find({ botFlow: flowId });
     res.status(200).json({ success: true, data: nodes });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
@@ -117,14 +153,22 @@ const getFlowNodes = async (req, res) => {
 const addNode = async (req, res) => {
   try {
     const { flowId } = req.params;
-    const nodeData = req.body;
+    const flow = await BotFlow.findById(flowId);
+    if (!flow) {
+      return res.status(404).json({ success: false, error: "Flow not found" });
+    }
+    verifyWabaAccess(req.user, flow.wabaAccount);
 
+    const nodeData = req.body;
     const newNode = await BotNode.create({
       ...nodeData,
       botFlow: flowId,
     });
     res.status(201).json({ success: true, data: newNode });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(400).json({ success: false, error: error.message });
   }
 };
@@ -134,15 +178,20 @@ const addNode = async (req, res) => {
 const updateNode = async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const node = await BotNode.findByIdAndUpdate(nodeId, req.body, {
-      returnDocument: 'after',
-      runValidators: true,
-    });
-    if (!node) {
-      return res.status(404).json({ success: false, error: "Node not found" });
+    const node = await BotNode.findById(nodeId).populate("botFlow");
+    if (!node || !node.botFlow) {
+      return res.status(404).json({ success: false, error: "Node or associated flow not found" });
     }
+    verifyWabaAccess(req.user, node.botFlow.wabaAccount);
+
+    Object.assign(node, req.body);
+    await node.save();
+
     res.status(200).json({ success: true, data: node });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(400).json({ success: false, error: error.message });
   }
 };
@@ -152,13 +201,18 @@ const updateNode = async (req, res) => {
 const deleteNode = async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const node = await BotNode.findById(nodeId);
-    if (!node) {
-      return res.status(404).json({ success: false, error: "Node not found" });
+    const node = await BotNode.findById(nodeId).populate("botFlow");
+    if (!node || !node.botFlow) {
+      return res.status(404).json({ success: false, error: "Node or associated flow not found" });
     }
+    verifyWabaAccess(req.user, node.botFlow.wabaAccount);
+
     await node.deleteOne();
     res.status(200).json({ success: true, data: {} });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
