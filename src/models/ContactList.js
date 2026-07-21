@@ -18,11 +18,10 @@ const ContactListSchema = new mongoose.Schema({
 
 // --- THIS IS THE NEW LOGIC ---
 // This function runs automatically BEFORE a ContactList document is deleted
-ContactListSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
+ContactListSchema.pre('deleteOne', { document: true, query: false }, async function() {
   console.log(`Contacts being removed for list: ${this._id}`);
   // Find and delete all Contact documents that reference this contactList
   await Contact.deleteMany({ contactList: this._id });
-  next();
 });
 
 
