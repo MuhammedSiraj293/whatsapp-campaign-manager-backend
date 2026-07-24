@@ -232,6 +232,15 @@ const getTemplateAnalytics = async (req, res) => {
       { $unwind: "$campaignData" },
     ];
 
+    // Filter by allowed phone numbers if not admin
+    if (allowedPhoneIds) {
+      basePipeline.push({
+        $match: {
+          "campaignData.phoneNumber": { $in: allowedPhoneIds },
+        },
+      });
+    }
+
     // If dates are provided, filter the records
     if (startDate && endDate) {
       const start = new Date(startDate);
