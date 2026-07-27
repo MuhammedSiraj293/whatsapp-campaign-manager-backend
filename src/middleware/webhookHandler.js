@@ -1508,6 +1508,32 @@ const processWebhook = async (req, res) => {
         }
       }
 
+      // Auto-Upsert Contact Name from WhatsApp Profile (Push Name)
+      try {
+        if (contactName && contactName !== "NA") {
+          let contact = await Contact.findOne({ phoneNumber: message.from });
+          if (!contact) {
+            let enquiriesList = await ContactList.findOne({ name: "Enquiries" });
+            if (!enquiriesList) {
+              enquiriesList = await ContactList.create({ name: "Enquiries" });
+            }
+            contact = await Contact.create({
+              phoneNumber: message.from,
+              name: contactName,
+              isSubscribed: true,
+              contactList: enquiriesList._id,
+            });
+            console.log(`👤 Created contact from WhatsApp profile name: ${message.from} -> ${contactName}`);
+          } else if (!contact.name || contact.name === "Unknown" || contact.name === "Guest" || contact.name.startsWith("+")) {
+            contact.name = contactName;
+            await contact.save();
+            console.log(`👤 Updated contact name from WhatsApp profile name: ${message.from} -> ${contactName}`);
+          }
+        }
+      } catch (contactErr) {
+        console.error("❌ Error updating contact from WhatsApp profile name:", contactErr);
+      }
+
       /* ---------------------------------------------------------
        * B & C) DEBOUNCED PROCESSING
        * --------------------------------------------------------- */
