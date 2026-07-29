@@ -7,6 +7,9 @@ const fs = require("fs");
 
 const API_VERSION = "v20.0";
 
+// Memory cache for template structures to prevent redundant API fetches
+const templateCache = {};
+
 /**
  * Sends a simple text message.
  * @param {string} to - The recipient's phone number.
@@ -155,48 +158,53 @@ const sendTemplateMessage = async (
   const components = [];
 
   // Logic: Handle carousel template format or default media header
-  if (templateName === "reem_hills_apartments") {
-    components.push({
-      type: "carousel",
-      cards: [
-        {
-          card_index: 0,
-          components: [
-            {
-              type: "header",
-              parameters: [{ type: "image", image: { link: "https://res.cloudinary.com/dvgvchgzi/image/upload/v1785323981/whatsapp_templates/gptrei8dz6huhkq0cc42.jpg" } }]
-            }
-          ]
-        },
-        {
-          card_index: 1,
-          components: [
-            {
-              type: "header",
-              parameters: [{ type: "image", image: { link: "https://res.cloudinary.com/dvgvchgzi/image/upload/v1785323984/whatsapp_templates/rgdk9bf1xqbzlei7ztfg.jpg" } }]
-            }
-          ]
-        },
-        {
-          card_index: 2,
-          components: [
-            {
-              type: "header",
-              parameters: [{ type: "image", image: { link: "https://res.cloudinary.com/dvgvchgzi/image/upload/v1785323986/whatsapp_templates/t6k0vk1q1bm2y1cgstao.jpg" } }]
-            }
-          ]
-        },
-        {
-          card_index: 3,
-          components: [
-            {
-              type: "header",
-              parameters: [{ type: "image", image: { link: "https://res.cloudinary.com/dvgvchgzi/image/upload/v1785323988/whatsapp_templates/pmfgsmxyzoay66ryxvof.jpg" } }]
-            }
-          ]
+  let carouselComponent = null;
+  if (templateCache[templateName]) {
+    carouselComponent = templateCache[templateName];
+  } else {
+    try {
+      const WabaAccount = require("../models/WabaAccount");
+      const waba = await WabaAccount.findOne({ accessToken });
+      if (waba) {
+        const tRes = await axios.get(
+          `https://graph.facebook.com/${API_VERSION}/${waba.businessAccountId}/message_templates`,
+          {
+            params: { name: templateName },
+            headers: { Authorization: `Bearer ${accessToken}` }
+          }
+        );
+        const templateDef = tRes.data?.data?.find((t) => t.name === templateName);
+        if (templateDef) {
+          const carouselComp = templateDef.components?.find((c) => c.type === "CAROUSEL");
+          if (carouselComp) {
+            const cards = carouselComp.cards.map((card, idx) => {
+              const header = card.components?.find((cc) => cc.type === "HEADER");
+              const imgUrl = header?.example?.header_handle?.[0] || "";
+              return {
+                card_index: idx,
+                components: [
+                  {
+                    type: "header",
+                    parameters: [{ type: "image", image: { link: imgUrl } }]
+                  }
+                ]
+              };
+            });
+            carouselComponent = {
+              type: "carousel",
+              cards: cards
+            };
+            templateCache[templateName] = carouselComponent;
+          }
         }
-      ]
-    });
+      }
+    } catch (err) {
+      console.error("Error fetching template structure for carousel:", err.message);
+    }
+  }
+
+  if (carouselComponent) {
+    components.push(carouselComponent);
   } else if (options.headerMediaId || options.headerImageUrl) {
     const headerFormat = options.headerMediaType ? options.headerMediaType.toLowerCase() : "image";
     
