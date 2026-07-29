@@ -2,6 +2,9 @@
 
 const axios = require("axios");
 const WabaAccount = require("../models/WabaAccount");
+const { uploadToCloudinary } = require("../integrations/cloudinary");
+const { Readable } = require("stream");
+const MediaMap = require("../models/MediaMap");
 
 // @desc    Proxy to fetch a media file from Meta
 // @route   GET /api/media/:mediaId
@@ -133,7 +136,26 @@ const uploadTemplateMedia = async (req, res) => {
 
     const handle = uploadResponse.data.h;
 
-    console.log(`✅ Media Uploaded. Handle: ${handle}`);
+    console.log(`✅ Media Uploaded to Meta. Handle: ${handle}`);
+
+    // 3. Upload to Cloudinary to get a public URL for campaign sending
+    let cloudinaryUrl = "";
+    try {
+      const bufferStream = new Readable();
+      bufferStream.push(buffer);
+      bufferStream.push(null);
+
+      const filename = `template_card_${Date.now()}`;
+      const cloudResult = await uploadToCloudinary(bufferStream, filename, "whatsapp_templates");
+      cloudinaryUrl = cloudResult.secure_url;
+      console.log(`✅ Media Uploaded to Cloudinary: ${cloudinaryUrl}`);
+
+      // Save mapping in MongoDB
+      await MediaMap.create({ handle: handle, url: cloudinaryUrl });
+      console.log(`✅ Stored handle mapping in database`);
+    } catch (cloudErr) {
+      console.error("⚠️ Failed to upload template media to Cloudinary:", cloudErr.message);
+    }
 
     res.status(200).json({ success: true, handle: handle });
   } catch (error) {

@@ -177,36 +177,55 @@ const sendTemplateMessage = async (
         if (templateDef) {
           const carouselComp = templateDef.components?.find((c) => c.type === "CAROUSEL");
           if (carouselComp) {
-            const cards = carouselComp.cards.map((card, idx) => {
-              const cardComponents = [];
-              const header = card.components?.find((cc) => cc.type === "HEADER");
-              const imgUrl = header?.example?.header_handle?.[0] || "";
-              cardComponents.push({
-                type: "header",
-                parameters: [{ type: "image", image: { link: imgUrl } }]
-              });
+            const cards = await Promise.all(
+              carouselComp.cards.map(async (card, idx) => {
+                const cardComponents = [];
+                const header = card.components?.find((cc) => cc.type === "HEADER");
+                let imgUrl = header?.example?.header_handle?.[0] || "";
 
-              // Extract and supply button parameters if dynamic URL button is present
-              const buttonsComp = card.components?.find((cc) => cc.type === "BUTTONS");
-              if (buttonsComp) {
-                buttonsComp.buttons.forEach((btn, btnIdx) => {
-                  if (btn.type === "URL" && btn.url && btn.url.includes("{{1}}")) {
-                    const suffix = btn.example?.[0] || "";
-                    cardComponents.push({
-                      type: "button",
-                      sub_type: "url",
-                      index: String(btnIdx),
-                      parameters: [{ type: "text", text: suffix }]
-                    });
+                // If imgUrl is a Meta handle (starts with 4::), look up the original Cloudinary URL
+                if (imgUrl.startsWith("4::")) {
+                  try {
+                    const MediaMap = require("../models/MediaMap");
+                    const map = await MediaMap.findOne({ handle: imgUrl });
+                    if (map) {
+                      const originalHandle = imgUrl;
+                      imgUrl = map.url;
+                      console.log(`Resolved handle ${originalHandle} to Cloudinary URL: ${imgUrl}`);
+                    }
+                  } catch (mapErr) {
+                    console.error("Error looking up MediaMap handle:", mapErr.message);
                   }
-                });
-              }
+                }
 
-              return {
-                card_index: idx,
-                components: cardComponents
-              };
-            });
+                cardComponents.push({
+                  type: "header",
+                  parameters: [{ type: "image", image: { link: imgUrl } }]
+                });
+
+                // Extract and supply button parameters if dynamic URL button is present
+                const buttonsComp = card.components?.find((cc) => cc.type === "BUTTONS");
+                if (buttonsComp) {
+                  buttonsComp.buttons.forEach((btn, btnIdx) => {
+                    if (btn.type === "URL" && btn.url && btn.url.includes("{{1}}")) {
+                      const suffix = btn.example?.[0] || "";
+                      cardComponents.push({
+                        type: "button",
+                        sub_type: "url",
+                        index: String(btnIdx),
+                        parameters: [{ type: "text", text: suffix }]
+                      });
+                    }
+                  });
+                }
+
+                return {
+                  card_index: idx,
+                  components: cardComponents
+                };
+              })
+            );
+
             carouselComponent = {
               type: "carousel",
               cards: cards
