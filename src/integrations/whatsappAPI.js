@@ -154,8 +154,50 @@ const sendTemplateMessage = async (
 
   const components = [];
 
-  // Logic: If we have a Media ID, use it. Otherwise, check for a Link.
-  if (options.headerMediaId || options.headerImageUrl) {
+  // Logic: Handle carousel template format or default media header
+  if (templateName === "reem_hills_apartments") {
+    components.push({
+      type: "carousel",
+      cards: [
+        {
+          card_index: 0,
+          components: [
+            {
+              type: "header",
+              parameters: [{ type: "image", image: { link: "https://res.cloudinary.com/dvgvchgzi/image/upload/v1785323981/whatsapp_templates/gptrei8dz6huhkq0cc42.jpg" } }]
+            }
+          ]
+        },
+        {
+          card_index: 1,
+          components: [
+            {
+              type: "header",
+              parameters: [{ type: "image", image: { link: "https://res.cloudinary.com/dvgvchgzi/image/upload/v1785323984/whatsapp_templates/rgdk9bf1xqbzlei7ztfg.jpg" } }]
+            }
+          ]
+        },
+        {
+          card_index: 2,
+          components: [
+            {
+              type: "header",
+              parameters: [{ type: "image", image: { link: "https://res.cloudinary.com/dvgvchgzi/image/upload/v1785323986/whatsapp_templates/t6k0vk1q1bm2y1cgstao.jpg" } }]
+            }
+          ]
+        },
+        {
+          card_index: 3,
+          components: [
+            {
+              type: "header",
+              parameters: [{ type: "image", image: { link: "https://res.cloudinary.com/dvgvchgzi/image/upload/v1785323988/whatsapp_templates/pmfgsmxyzoay66ryxvof.jpg" } }]
+            }
+          ]
+        }
+      ]
+    });
+  } else if (options.headerMediaId || options.headerImageUrl) {
     const headerFormat = options.headerMediaType ? options.headerMediaType.toLowerCase() : "image";
     
     if (options.headerMediaId) {
