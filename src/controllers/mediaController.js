@@ -84,7 +84,7 @@ const uploadTemplateMedia = async (req, res) => {
 
     const accessToken = waba.accessToken;
     const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
-    const appId = process.env.FACEBOOK_APP_ID;
+    const appId = process.env.FACEBOOK_APP_ID || "737751852166551";
 
     let buffer;
     let size;

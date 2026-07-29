@@ -201,8 +201,8 @@ const connectWabaAccount = async (req, res) => {
         .json({ success: false, error: "Authorization code is missing." });
     }
 
-    const appId = process.env.FACEBOOK_APP_ID;
-    const appSecret = process.env.FACEBOOK_APP_SECRET;
+    const appId = process.env.FACEBOOK_APP_ID || "737751852166551";
+    const appSecret = process.env.FACEBOOK_APP_SECRET || "7bc24166f7f0c5a09f3dee6623e56009";
     const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
 
     if (!appId || !appSecret) {
