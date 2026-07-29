@@ -183,19 +183,17 @@ const sendTemplateMessage = async (
                 const header = card.components?.find((cc) => cc.type === "HEADER");
                 let imgUrl = header?.example?.header_handle?.[0] || "";
 
-                // If imgUrl is a Meta handle (starts with 4::), look up the original Cloudinary URL
-                if (imgUrl.startsWith("4::")) {
-                  try {
-                    const MediaMap = require("../models/MediaMap");
-                    const map = await MediaMap.findOne({ handle: imgUrl });
-                    if (map) {
-                      const originalHandle = imgUrl;
-                      imgUrl = map.url;
-                      console.log(`Resolved handle ${originalHandle} to Cloudinary URL: ${imgUrl}`);
-                    }
-                  } catch (mapErr) {
-                    console.error("Error looking up MediaMap handle:", mapErr.message);
+                // Look up the original Cloudinary URL using templateName and cardIndex
+                try {
+                  const MediaMap = require("../models/MediaMap");
+                  const map = await MediaMap.findOne({ templateName, cardIndex: idx });
+                  if (map) {
+                    const originalUrl = imgUrl;
+                    imgUrl = map.url;
+                    console.log(`Resolved card #${idx} for template "${templateName}" to Cloudinary URL: ${imgUrl} (original: ${originalUrl})`);
                   }
+                } catch (mapErr) {
+                  console.error("Error looking up MediaMap by template name + card index:", mapErr.message);
                 }
 
                 cardComponents.push({

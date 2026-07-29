@@ -65,7 +65,7 @@ const getMediaFile = async (req, res) => {
 // @access  Private
 const uploadTemplateMedia = async (req, res) => {
   try {
-    const { wabaId, url: imageUrl } = req.body;
+    const { wabaId, url: imageUrl, templateName, cardIndex } = req.body;
     const file = req.file;
 
     if (!wabaId) {
@@ -150,9 +150,18 @@ const uploadTemplateMedia = async (req, res) => {
       cloudinaryUrl = cloudResult.secure_url;
       console.log(`✅ Media Uploaded to Cloudinary: ${cloudinaryUrl}`);
 
-      // Save mapping in MongoDB
-      await MediaMap.create({ handle: handle, url: cloudinaryUrl });
-      console.log(`✅ Stored handle mapping in database`);
+      // Save mapping in MongoDB (use templateName and cardIndex as compound unique key)
+      if (templateName && cardIndex !== undefined) {
+        const indexNum = parseInt(cardIndex, 10);
+        await MediaMap.findOneAndUpdate(
+          { templateName, cardIndex: indexNum },
+          { url: cloudinaryUrl, handle: handle },
+          { upsert: true, new: true }
+        );
+        console.log(`✅ Stored handle mapping for template "${templateName}" Card #${indexNum}`);
+      } else {
+        await MediaMap.create({ handle: handle, url: cloudinaryUrl, templateName: "unknown", cardIndex: 0 });
+      }
     } catch (cloudErr) {
       console.error("⚠️ Failed to upload template media to Cloudinary:", cloudErr.message);
     }
