@@ -1,5 +1,6 @@
 const axios = require("axios");
 const WabaAccount = require("../models/WabaAccount");
+const { clearTemplateCache } = require("../integrations/whatsappAPI");
 
 // @desc    Get filtered templates for a WABA with Analytics
 // @route   GET /api/templates/:wabaId
@@ -335,6 +336,9 @@ const editTemplate = async (req, res) => {
     const response = await axios.post(url, payload, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+
+    // Clear local cache so the newly edited template structure will be fetched from Meta on the next send
+    clearTemplateCache();
 
     res.status(200).json({ success: true, data: response.data });
   } catch (error) {

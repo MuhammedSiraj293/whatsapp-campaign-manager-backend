@@ -178,16 +178,33 @@ const sendTemplateMessage = async (
           const carouselComp = templateDef.components?.find((c) => c.type === "CAROUSEL");
           if (carouselComp) {
             const cards = carouselComp.cards.map((card, idx) => {
+              const cardComponents = [];
               const header = card.components?.find((cc) => cc.type === "HEADER");
               const imgUrl = header?.example?.header_handle?.[0] || "";
+              cardComponents.push({
+                type: "header",
+                parameters: [{ type: "image", image: { link: imgUrl } }]
+              });
+
+              // Extract and supply button parameters if dynamic URL button is present
+              const buttonsComp = card.components?.find((cc) => cc.type === "BUTTONS");
+              if (buttonsComp) {
+                buttonsComp.buttons.forEach((btn, btnIdx) => {
+                  if (btn.type === "URL" && btn.url && btn.url.includes("{{1}}")) {
+                    const suffix = btn.example?.[0] || "";
+                    cardComponents.push({
+                      type: "button",
+                      sub_type: "url",
+                      index: String(btnIdx),
+                      parameters: [{ type: "text", text: suffix }]
+                    });
+                  }
+                });
+              }
+
               return {
                 card_index: idx,
-                components: [
-                  {
-                    type: "header",
-                    parameters: [{ type: "image", image: { link: imgUrl } }]
-                  }
-                ]
+                components: cardComponents
               };
             });
             carouselComponent = {
@@ -466,6 +483,18 @@ const sendListMessage = async (
   }
 };
 
+const clearTemplateCache = (templateName) => {
+  if (templateName) {
+    delete templateCache[templateName];
+    console.log(`Cleared template cache for: ${templateName}`);
+  } else {
+    for (const key in templateCache) {
+      delete templateCache[key];
+    }
+    console.log("Cleared all template caches");
+  }
+};
+
 module.exports = {
   sendTextMessage,
   sendTemplateMessage,
@@ -475,4 +504,5 @@ module.exports = {
   sendListMessage, // <-- NEW
   uploadMedia,
   sendReactionMessage, // <-- NEW
+  clearTemplateCache,
 };
