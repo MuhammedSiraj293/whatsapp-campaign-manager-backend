@@ -62,13 +62,19 @@ const getMediaFile = async (req, res) => {
 // @access  Private
 const uploadTemplateMedia = async (req, res) => {
   try {
-    const { wabaId } = req.body;
+    const { wabaId, url: imageUrl } = req.body;
     const file = req.file;
 
-    if (!wabaId || !file) {
+    if (!wabaId) {
       return res
         .status(400)
-        .json({ success: false, error: "Missing wabaId or file" });
+        .json({ success: false, error: "Missing wabaId" });
+    }
+
+    if (!file && !imageUrl) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing file or url" });
     }
 
     const waba = await WabaAccount.findOne({ businessAccountId: wabaId });
@@ -80,19 +86,34 @@ const uploadTemplateMedia = async (req, res) => {
     const apiVersion = process.env.FACEBOOK_API_VERSION || "v20.0";
     const appId = process.env.FACEBOOK_APP_ID;
 
+    let buffer;
+    let size;
+    let mimeType;
+
+    if (imageUrl) {
+      console.log(`Downloading template media from URL: ${imageUrl}`);
+      const downloadRes = await axios.get(imageUrl, { responseType: "arraybuffer" });
+      buffer = Buffer.from(downloadRes.data, "binary");
+      size = buffer.length;
+      mimeType = downloadRes.headers["content-type"] || "image/jpeg";
+    } else {
+      buffer = file.buffer;
+      size = file.size;
+      mimeType = file.mimetype;
+    }
+
     // 1. Start Resumable Upload Session
-    // POST https://graph.facebook.com/v20.0/app/uploads
     const sessionUrl = `https://graph.facebook.com/${apiVersion}/${appId}/uploads`;
 
     console.log(
-      `Starting upload session: ${sessionUrl} (${file.size} bytes, ${file.mimetype})`
+      `Starting upload session: ${sessionUrl} (${size} bytes, ${mimeType})`
     );
 
     const sessionResponse = await axios.post(sessionUrl, null, {
       params: {
-        file_length: file.size,
-        file_type: file.mimetype,
-        access_token: accessToken, // Use System User Token (WABA token usually works for this if it has permissions)
+        file_length: size,
+        file_type: mimeType,
+        access_token: accessToken,
       },
     });
 
@@ -100,15 +121,13 @@ const uploadTemplateMedia = async (req, res) => {
     console.log(`Upload Session ID: ${uploadSessionId}`);
 
     // 2. Upload Binary Data
-    // POST https://graph.facebook.com/v20.0/{uploadSessionId}
     const uploadUrl = `https://graph.facebook.com/${apiVersion}/${uploadSessionId}`;
 
-    // Authorization header format is differnet for this endpoint: OAuth <Access Token>
-    const uploadResponse = await axios.post(uploadUrl, file.buffer, {
+    const uploadResponse = await axios.post(uploadUrl, buffer, {
       headers: {
         Authorization: `OAuth ${accessToken}`,
         file_offset: 0,
-        "Content-Type": "application/octet-stream", // file.mimetype? No, documentation says octet-stream often used or match
+        "Content-Type": "application/octet-stream",
       },
     });
 
