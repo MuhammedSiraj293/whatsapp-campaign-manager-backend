@@ -183,17 +183,38 @@ const sendTemplateMessage = async (
                 const header = card.components?.find((cc) => cc.type === "HEADER");
                 let imgUrl = header?.example?.header_handle?.[0] || "";
 
-                // Look up the original Cloudinary URL using templateName and cardIndex
+                // Look up or dynamically cache the original Cloudinary URL using templateName and cardIndex
                 try {
                   const MediaMap = require("../models/MediaMap");
-                  const map = await MediaMap.findOne({ templateName, cardIndex: idx });
+                  let map = await MediaMap.findOne({ templateName, cardIndex: idx });
                   if (map) {
                     const originalUrl = imgUrl;
                     imgUrl = map.url;
                     console.log(`Resolved card #${idx} for template "${templateName}" to Cloudinary URL: ${imgUrl} (original: ${originalUrl})`);
+                  } else if (imgUrl && (imgUrl.includes("scontent") || imgUrl.includes("fbcdn"))) {
+                    console.log(`Dynamically caching card #${idx} for template "${templateName}" to Cloudinary...`);
+                    const downloadRes = await axios.get(imgUrl, { responseType: "arraybuffer" });
+                    const buffer = Buffer.from(downloadRes.data, "binary");
+
+                    const { uploadToCloudinary } = require("./cloudinary");
+                    const { Readable } = require("stream");
+                    const bufferStream = new Readable();
+                    bufferStream.push(buffer);
+                    bufferStream.push(null);
+
+                    const filename = `template_card_auto_${Date.now()}`;
+                    const cloudResult = await uploadToCloudinary(bufferStream, filename, "whatsapp_templates");
+                    
+                    map = await MediaMap.findOneAndUpdate(
+                      { templateName, cardIndex: idx },
+                      { url: cloudResult.secure_url, handle: imgUrl },
+                      { upsert: true, new: true }
+                    );
+                    imgUrl = map.url;
+                    console.log(`✅ Auto-cached template card to Cloudinary: ${imgUrl}`);
                   }
                 } catch (mapErr) {
-                  console.error("Error looking up MediaMap by template name + card index:", mapErr.message);
+                  console.error("Error looking up or caching MediaMap:", mapErr.message);
                 }
 
                 cardComponents.push({
