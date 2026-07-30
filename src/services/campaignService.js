@@ -160,6 +160,13 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       `Final contacts to process after deduplication/exclusion: ${totalContactsToProcess}`,
     );
 
+    try {
+      const { clearTemplateCache } = require("../integrations/whatsappAPI");
+      clearTemplateCache(campaign.templateName);
+    } catch (cacheErr) {
+      console.error("Failed to clear template cache at campaign start:", cacheErr.message);
+    }
+
     // BATCH LOOP
     let offset = 0;
     let successCount = 0;
