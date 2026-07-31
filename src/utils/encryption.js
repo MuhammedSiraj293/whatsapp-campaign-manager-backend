@@ -17,6 +17,12 @@ const IV_LENGTH = 16;
  */
 function encrypt(text) {
   if (!text) return "";
+  
+  // If text already has a colon and length 2 split, it is already encrypted. Return as-is.
+  if (text.includes(":") && text.split(":").length === 2) {
+    return text;
+  }
+  
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
   let encrypted = cipher.update(text, "utf8", "hex");
