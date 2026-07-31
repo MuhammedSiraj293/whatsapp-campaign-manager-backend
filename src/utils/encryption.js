@@ -1,8 +1,11 @@
 // backend/src/utils/encryption.js
 const crypto = require("crypto");
 
-// Derive a 32-byte key from the environment variable (or use fallback)
-const SECRET = process.env.ENCRYPTION_KEY || "whatsapp-marketing-secret-fallback-key-2026";
+if (!process.env.ENCRYPTION_KEY) {
+  throw new Error("CRITICAL SECURITY ERROR: ENCRYPTION_KEY environment variable is not defined!");
+}
+
+const SECRET = process.env.ENCRYPTION_KEY;
 const KEY = crypto.createHash("sha256").update(SECRET).digest();
 const ALGORITHM = "aes-256-cbc";
 const IV_LENGTH = 16;
