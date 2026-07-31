@@ -1,6 +1,7 @@
 // backend/src/models/WabaAccount.js
 
 const mongoose = require("mongoose");
+const { encrypt, decrypt } = require("../utils/encryption");
 
 const WabaAccountSchema = new mongoose.Schema(
   {
@@ -10,10 +11,12 @@ const WabaAccountSchema = new mongoose.Schema(
       required: [true, "Please provide an account name"],
       trim: true,
     },
-    // The permanent access token for this WABA
+    // The permanent access token for this WABA (stored encrypted)
     accessToken: {
       type: String,
       required: [true, "Please provide the Access Token"],
+      get: decrypt,
+      set: encrypt,
     },
     // The Business Account ID
     businessAccountId: {
@@ -29,6 +32,8 @@ const WabaAccountSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true },
   }
 );
 

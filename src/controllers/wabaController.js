@@ -19,8 +19,10 @@ const getAllWabaAccounts = async (req, res) => {
     const phoneNumbers = await PhoneNumber.find(phoneQuery);
 
     const accountsWithPhones = accounts.map((account) => {
+      const accountObj = account.toObject();
+      delete accountObj.accessToken; // Strip sensitive access token from client response
       return {
-        ...account.toObject(),
+        ...accountObj,
         phoneNumbers: phoneNumbers.filter(
           (pn) => pn.wabaAccount.toString() === account._id.toString(),
         ),
@@ -53,7 +55,10 @@ const addWabaAccount = async (req, res) => {
       masterSpreadsheetId, // <-- ADDED
     });
 
-    res.status(201).json({ success: true, data: newAccount });
+    const accountObj = newAccount.toObject();
+    delete accountObj.accessToken;
+
+    res.status(201).json({ success: true, data: accountObj });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -71,7 +76,10 @@ const updateWabaAccount = async (req, res) => {
     if (masterSpreadsheetId !== undefined)
       updateData.masterSpreadsheetId = masterSpreadsheetId;
     if (accountName !== undefined) updateData.accountName = accountName;
-    if (accessToken !== undefined) updateData.accessToken = accessToken;
+    if (accessToken !== undefined) {
+      const { encrypt } = require("../utils/encryption");
+      updateData.accessToken = encrypt(accessToken);
+    }
     if (businessAccountId !== undefined)
       updateData.businessAccountId = businessAccountId;
 
@@ -87,7 +95,10 @@ const updateWabaAccount = async (req, res) => {
         .json({ success: false, error: "Account not found" });
     }
 
-    res.status(200).json({ success: true, data: account });
+    const accountObj = account.toObject();
+    delete accountObj.accessToken;
+
+    res.status(200).json({ success: true, data: accountObj });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });
   }
@@ -329,11 +340,14 @@ const connectWabaAccount = async (req, res) => {
       },
     );
 
+    const accountObj = account.toObject();
+    delete accountObj.accessToken;
+
     res.status(200).json({
       success: true,
       message: "Connected successfully",
       data: {
-        waba: account,
+        waba: accountObj,
         phones: phones,
       },
     });
