@@ -77,6 +77,27 @@ const getConversations = async (req, res) => {
           },
         },
       },
+    ];
+
+    // Filter by Unread if requested
+    if (unread) {
+      if (activeId) {
+        // If there's an active chat, keep it visible even if read
+        pipeline.push({
+          $match: {
+            $or: [{ unreadCount: { $gt: 0 } }, { _id: activeId }],
+          },
+        });
+      } else {
+        pipeline.push({ $match: { unreadCount: { $gt: 0 } } });
+      }
+    }
+
+    // Apply pagination FIRST before lookups
+    pipeline.push(
+      { $sort: { lastMessageTimestamp: -1 } },
+      { $skip: skip },
+      { $limit: limit },
       {
         $lookup: {
           from: "contacts",
@@ -155,27 +176,7 @@ const getConversations = async (req, res) => {
             }
           }
         },
-      },
-    ];
-
-    // Filter by Unread if requested
-    if (unread) {
-      if (activeId) {
-        // If there's an active chat, keep it visible even if read
-        pipeline.push({
-          $match: {
-            $or: [{ unreadCount: { $gt: 0 } }, { _id: activeId }],
-          },
-        });
-      } else {
-        pipeline.push({ $match: { unreadCount: { $gt: 0 } } });
       }
-    }
-
-    pipeline.push(
-      { $sort: { lastMessageTimestamp: -1 } },
-      { $skip: skip },
-      { $limit: limit },
     );
 
     const conversations = await Reply.aggregate(pipeline);
