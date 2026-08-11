@@ -8,7 +8,11 @@ const PropertyInquirySessionSchema = new mongoose.Schema(
     // Customer's phone number
     phoneNumber: {
       type: String,
-      required: true,
+    },
+    // Business-scoped User ID (BSUID)
+    bsuid: {
+      type: String,
+      trim: true,
     },
     // Business phone number ID they messaged
     recipientId: {
@@ -34,8 +38,9 @@ const PropertyInquirySessionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One active session per (phone, recipientId) pair
+// One active session per (phone/bsuid, recipientId) pair
 PropertyInquirySessionSchema.index({ phoneNumber: 1, recipientId: 1 });
+PropertyInquirySessionSchema.index({ bsuid: 1, recipientId: 1 });
 
 module.exports = mongoose.model(
   "PropertyInquirySession",

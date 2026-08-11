@@ -5,7 +5,16 @@ const ContactSchema = new mongoose.Schema(
   {
     phoneNumber: {
       type: String,
-      required: true,
+      trim: true,
+    },
+    bsuid: {
+      type: String,
+      sparse: true,
+      unique: true,
+      trim: true,
+    },
+    username: {
+      type: String,
       trim: true,
     },
     name: {
@@ -70,7 +79,14 @@ const ContactSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-ContactSchema.index({ phoneNumber: 1, contactList: 1 }, { unique: true });
+ContactSchema.index(
+  { phoneNumber: 1, contactList: 1 },
+  { unique: true, partialFilterExpression: { phoneNumber: { $exists: true } } }
+);
+ContactSchema.index(
+  { bsuid: 1, contactList: 1 },
+  { unique: true, partialFilterExpression: { bsuid: { $exists: true } } }
+);
 ContactSchema.index({ "stats.sent": 1 });
 ContactSchema.index({ engagementScore: -1 });
 ContactSchema.index({ lastActive: -1 });

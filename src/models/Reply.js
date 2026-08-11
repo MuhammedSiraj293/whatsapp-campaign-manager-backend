@@ -16,6 +16,10 @@ const ReplySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    bsuid: {
+      type: String,
+      trim: true,
+    },
     body: {
       type: String,
       trim: true,

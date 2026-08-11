@@ -23,8 +23,9 @@ const { handleBotConversation } = require("../services/botService");
 
 // --- NEW: Helper to update contact stats ---
 // --- NEW: Helper to update contact stats (Thread-Safe) ---
-const updateContactStats = async (phoneNumber, type, status = null) => {
+const updateContactStats = async (identifier, type, status = null, isBsuid = false) => {
   try {
+    const query = isBsuid ? { bsuid: identifier } : { phoneNumber: identifier };
     const updateOps = {};
     const incOps = {};
 
@@ -46,7 +47,7 @@ const updateContactStats = async (phoneNumber, type, status = null) => {
     // 2. Perform Atomic Update for Counters
     // We assume contact exists. If not, we ignore.
     const contact = await Contact.findOneAndUpdate(
-      { phoneNumber },
+      query,
       updateOps,
       { returnDocument: 'after' }, // Return updated document to calculate score
     );
@@ -86,7 +87,7 @@ const updateContactStats = async (phoneNumber, type, status = null) => {
       },
     );
   } catch (error) {
-    console.error(`Error updating contact stats for ${phoneNumber}:`, error);
+    console.error(`Error updating contact stats for ${identifier}:`, error);
   }
 };
 
@@ -314,6 +315,11 @@ const processBufferedMessages = async (
   // Clear buffer immediately to prevent double processing
   delete userMessageBuffer[userPhone];
 
+  const bsuid = messages[0]?.bsuid;
+  const username = messages[0]?.username;
+  const isBsuidFallback = bsuid && bsuid === userPhone;
+  const baseQuery = (bsuid && !isBsuidFallback) ? { $or: [{ bsuid }, { phoneNumber: userPhone }] } : (isBsuidFallback ? { bsuid } : { phoneNumber: userPhone });
+
   console.log(
     `🔥 Processing ${messages.length} buffered messages for ${userPhone}...`,
   );
@@ -410,14 +416,16 @@ const processBufferedMessages = async (
       if (incomingMessageCount <= messages.length + 2) {
         console.log(`✨ NEW LEAD for campaign "${campaignToCredit.name}"`);
 
-        const contact = await Contact.findOne({ phoneNumber: userPhone });
+        const contact = await Contact.findOne(baseQuery);
         const Enquiry = require("../models/Enquiry");
 
-        let existingEnquiry = await Enquiry.findOne({ phoneNumber: userPhone }).sort({ createdAt: -1 });
+        let existingEnquiry = await Enquiry.findOne(baseQuery).sort({ createdAt: -1 });
         
         if (!existingEnquiry) {
            await Enquiry.create({
-             phoneNumber: userPhone,
+             phoneNumber: isBsuidFallback ? undefined : userPhone,
+             bsuid,
+             username,
              name: contact ? contact.name : "Unknown",
              projectName: campaignToCredit.templateName,
              status: "pending",
@@ -611,7 +619,7 @@ const processBufferedMessages = async (
         // Re-subscribe logic if they say something else but were unsubscribed
         let contact = contactCheck;
         if (!contact) {
-          contact = await Contact.findOne({ phoneNumber: userPhone });
+          contact = await Contact.findOne(baseQuery);
         }
 
         if (contact && !contact.isSubscribed) {
@@ -806,9 +814,9 @@ const processBufferedMessages = async (
             }
           } else {
             existingEnquiry = await Enquiry.findOne({
-              phoneNumber: userPhone,
+              ...baseQuery,
               recipientId,
-            }).sort({ updatedAt: -1 });
+            }).sort({ createdAt: -1 });
 
             if (existingEnquiry) {
               const now = new Date();
@@ -1009,7 +1017,9 @@ const processBufferedMessages = async (
               // A) Upsert Enquiry
               if (!existingEnquiry || !existingEnquiry._id) {
                 existingEnquiry = await Enquiry.create({
-                  phoneNumber: userPhone,
+                  phoneNumber: isBsuidFallback ? undefined : userPhone,
+                  bsuid,
+                  username,
                   recipientId,
                   name: eName,
                   budget: eBudget,
@@ -1041,9 +1051,7 @@ const processBufferedMessages = async (
               }
 
               // B) Upsert Contact
-              let contact = await Contact.findOne({
-                phoneNumber: userPhone,
-              });
+              let contact = await Contact.findOne(baseQuery);
               if (!contact) {
                 let enquiresList = await ContactList.findOne({
                   name: "Enquiries",
@@ -1054,7 +1062,9 @@ const processBufferedMessages = async (
                   });
                 }
                 contact = await Contact.create({
-                  phoneNumber: userPhone,
+                  phoneNumber: isBsuidFallback ? undefined : userPhone,
+                  bsuid,
+                  username,
                   name: eName || existingEnquiry.name || "Unknown",
                   isSubscribed: true,
                   contactList: enquiresList._id,
@@ -1173,7 +1183,10 @@ const processWebhook = async (req, res) => {
 
   const value = body.entry?.[0]?.changes?.[0]?.value;
   const recipientId = value?.metadata?.phone_number_id;
-  const contactName = value?.contacts?.[0]?.profile?.name || "NA";
+  const contactNode = value?.contacts?.[0];
+  const contactName = contactNode?.profile?.name || "NA";
+  const username = contactNode?.profile?.username || null;
+  const bsuid = contactNode?.user_id || null;
 
   if (!recipientId) {
     console.log("⚠️ Missing metadata.phone_number_id — ignoring webhook.");
@@ -1187,8 +1200,16 @@ const processWebhook = async (req, res) => {
     if (value?.messages?.[0]) {
       const message = value.messages[0];
 
+      let isBsuidFallback = false;
+      if (!message.from && bsuid) {
+        message.from = bsuid;
+        isBsuidFallback = true;
+      }
+      message.bsuid = bsuid;
+      message.username = username;
+
       // --- NEW: Update Contact Stats (Incoming) ---
-      await updateContactStats(message.from, "incoming_message");
+      await updateContactStats(message.from, "incoming_message", null, isBsuidFallback);
 
       let messageBody = "";
       let campaignToCredit = null;

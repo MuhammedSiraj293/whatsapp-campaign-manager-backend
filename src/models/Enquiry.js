@@ -7,8 +7,16 @@ const EnquirySchema = new mongoose.Schema(
     // Customer's phone number
     phoneNumber: {
       type: String,
-      required: true,
-      // ❌ remove unique:true (breaks restarting)
+    },
+    // Business-scoped User ID (BSUID)
+    bsuid: {
+      type: String,
+      trim: true,
+    },
+    // WhatsApp Username
+    username: {
+      type: String,
+      trim: true,
     },
 
     // The business phone number (recipientId) they contacted
@@ -120,6 +128,7 @@ const EnquirySchema = new mongoose.Schema(
 
 // Allow multiple enquiries for same phone number over time
 EnquirySchema.index({ phoneNumber: 1, recipientId: 1 });
+EnquirySchema.index({ bsuid: 1, recipientId: 1 });
 
 // Index for efficient follow-up queries
 EnquirySchema.index({
