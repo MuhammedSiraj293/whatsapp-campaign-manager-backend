@@ -80,8 +80,19 @@ const getConversations = async (req, res) => {
       {
         $lookup: {
           from: "contacts",
-          localField: "_id",
-          foreignField: "phoneNumber",
+          let: { fromId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    { $eq: ["$phoneNumber", "$$fromId"] },
+                    { $eq: ["$bsuid", "$$fromId"] },
+                  ]
+                }
+              }
+            }
+          ],
           as: "contactInfo",
         },
       },
@@ -92,6 +103,7 @@ const getConversations = async (req, res) => {
           lastMessageTimestamp: 1,
           unreadCount: 1,
           name: { $arrayElemAt: ["$contactInfo.name", 0] },
+          username: { $arrayElemAt: ["$contactInfo.username", 0] },
           isSubscribed: { $arrayElemAt: ["$contactInfo.isSubscribed", 0] }, // Include subscription status
         },
       },
