@@ -80,21 +80,58 @@ const getConversations = async (req, res) => {
       {
         $lookup: {
           from: "contacts",
-          let: { fromId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $or: [
-                    { $eq: ["$phoneNumber", "$$fromId"] },
-                    { $eq: ["$bsuid", "$$fromId"] },
-                  ]
-                }
-              }
-            }
-          ],
-          as: "contactInfo",
+          localField: "_id",
+          foreignField: "phoneNumber",
+          as: "contactByPhone",
         },
+      },
+      {
+        $unwind: {
+          path: "$contactByPhone",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "contacts",
+          localField: "_id",
+          foreignField: "bsuid",
+          as: "contactByBsuid",
+        },
+      },
+      {
+        $unwind: {
+          path: "$contactByBsuid",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "enquiries",
+          localField: "_id",
+          foreignField: "phoneNumber",
+          as: "enquiryByPhone",
+        },
+      },
+      {
+        $unwind: {
+          path: "$enquiryByPhone",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "enquiries",
+          localField: "_id",
+          foreignField: "bsuid",
+          as: "enquiryByBsuid",
+        },
+      },
+      {
+        $unwind: {
+          path: "$enquiryByBsuid",
+          preserveNullAndEmptyArrays: true
+        }
       },
       {
         $project: {
@@ -102,9 +139,15 @@ const getConversations = async (req, res) => {
           lastMessage: 1,
           lastMessageTimestamp: 1,
           unreadCount: 1,
-          name: { $arrayElemAt: ["$contactInfo.name", 0] },
-          username: { $arrayElemAt: ["$contactInfo.username", 0] },
-          isSubscribed: { $arrayElemAt: ["$contactInfo.isSubscribed", 0] }, // Include subscription status
+          name: {
+            $ifNull: ["$contactByPhone.name", "$contactByBsuid.name", "$enquiryByPhone.name", "$enquiryByBsuid.name"]
+          },
+          username: {
+            $ifNull: ["$contactByPhone.username", "$contactByBsuid.username", "$enquiryByPhone.username", "$enquiryByBsuid.username"]
+          },
+          isSubscribed: {
+            $ifNull: ["$contactByPhone.isSubscribed", "$contactByBsuid.isSubscribed"]
+          }
         },
       },
     ];
