@@ -86,24 +86,12 @@ const getConversations = async (req, res) => {
         },
       },
       {
-        $unwind: {
-          path: "$contactByPhone",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
         $lookup: {
           from: "contacts",
           localField: "_id",
           foreignField: "bsuid",
           as: "contactByBsuid",
         },
-      },
-      {
-        $unwind: {
-          path: "$contactByBsuid",
-          preserveNullAndEmptyArrays: true
-        }
       },
       {
         $lookup: {
@@ -114,12 +102,6 @@ const getConversations = async (req, res) => {
         },
       },
       {
-        $unwind: {
-          path: "$enquiryByPhone",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
         $lookup: {
           from: "enquiries",
           localField: "_id",
@@ -128,25 +110,49 @@ const getConversations = async (req, res) => {
         },
       },
       {
-        $unwind: {
-          path: "$enquiryByBsuid",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
         $project: {
           _id: 1,
           lastMessage: 1,
           lastMessageTimestamp: 1,
           unreadCount: 1,
           name: {
-            $ifNull: ["$contactByPhone.name", "$contactByBsuid.name", "$enquiryByPhone.name", "$enquiryByBsuid.name"]
+            $let: {
+              vars: {
+                cPhone: { $arrayElemAt: ["$contactByPhone", 0] },
+                cBsuid: { $arrayElemAt: ["$contactByBsuid", 0] },
+                ePhone: { $arrayElemAt: ["$enquiryByPhone", 0] },
+                eBsuid: { $arrayElemAt: ["$enquiryByBsuid", 0] }
+              },
+              in: {
+                $ifNull: ["$$cPhone.name", "$$cBsuid.name", "$$ePhone.name", "$$eBsuid.name"]
+              }
+            }
           },
           username: {
-            $ifNull: ["$contactByPhone.username", "$contactByBsuid.username", "$enquiryByPhone.username", "$enquiryByBsuid.username"]
+            $let: {
+              vars: {
+                cPhone: { $arrayElemAt: ["$contactByPhone", 0] },
+                cBsuid: { $arrayElemAt: ["$contactByBsuid", 0] },
+                ePhone: { $arrayElemAt: ["$enquiryByPhone", 0] },
+                eBsuid: { $arrayElemAt: ["$enquiryByBsuid", 0] }
+              },
+              in: {
+                $ifNull: ["$$cPhone.username", "$$cBsuid.username", "$$ePhone.username", "$$eBsuid.username"]
+              }
+            }
           },
           isSubscribed: {
-            $ifNull: ["$contactByPhone.isSubscribed", "$contactByBsuid.isSubscribed"]
+            $let: {
+              vars: {
+                cPhone: { $arrayElemAt: ["$contactByPhone", 0] },
+                cBsuid: { $arrayElemAt: ["$contactByBsuid", 0] },
+                ePhone: { $arrayElemAt: ["$enquiryByPhone", 0] },
+                eBsuid: { $arrayElemAt: ["$enquiryByBsuid", 0] }
+              },
+              in: {
+                $ifNull: ["$$cPhone.isSubscribed", "$$cBsuid.isSubscribed", "$$ePhone.isSubscribed", "$$eBsuid.isSubscribed"]
+              }
+            }
           }
         },
       },
