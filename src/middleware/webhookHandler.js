@@ -645,7 +645,12 @@ const processBufferedMessages = async (
 
         // 3. Handle normal keyword logic
         if (!autoReplyText && isCampaignReply) {
-          if (messageBodyLower.includes("yes, i am interested")) {
+          if (
+            messageBodyLower.includes("yes, i am interested") ||
+            messageBodyLower.includes("learn more") ||
+            messageBodyLower.includes("view offer") ||
+            messageBodyLower.includes("نعم، مهتم")
+          ) {
             autoReplyText =
               "Your interest has been noted. One of our Sales Consultant will contact you shortly to assist you, Thank you for your response.";
 
