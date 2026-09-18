@@ -235,6 +235,13 @@ const sendTemplateMessage = async (
                         index: String(btnIdx),
                         parameters: [{ type: "text", text: suffix }]
                       });
+                    } else if (btn.type === "QUICK_REPLY") {
+                      cardComponents.push({
+                        type: "button",
+                        sub_type: "quick_reply",
+                        index: String(btnIdx),
+                        parameters: [{ type: "payload", payload: `${btn.text} (Card ${idx + 1})` }]
+                      });
                     }
                   });
                 }
