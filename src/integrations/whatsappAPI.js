@@ -163,8 +163,9 @@ const sendTemplateMessage = async (
     carouselComponent = templateCache[templateName];
   } else {
     try {
-      const WabaAccount = require("../models/WabaAccount");
-      const waba = await WabaAccount.findOne({ accessToken });
+      const PhoneNumber = require("../models/PhoneNumber");
+      const phone = await PhoneNumber.findOne({ phoneNumberId }).populate("wabaAccount");
+      const waba = phone ? phone.wabaAccount : null;
       if (waba) {
         const tRes = await axios.get(
           `https://graph.facebook.com/${API_VERSION}/${waba.businessAccountId}/message_templates`,
