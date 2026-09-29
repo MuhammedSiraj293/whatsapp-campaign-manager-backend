@@ -395,7 +395,10 @@ const processBufferedMessages = async (
 
     const isStopMessage =
       stopKeywords.some((k) => messageBodyLower.includes(k)) ||
-      unsubscribeReasons.some((r) => messageBodyLower === r);
+      unsubscribeReasons.some((r) => {
+        const reasonId = `reason_${r.replace(/\s/g, "_").toLowerCase()}`;
+        return messageBodyLower === r || messageBodyLower === reasonId;
+      });
 
     if (isStopMessage) {
       console.log(
@@ -557,8 +560,16 @@ const processBufferedMessages = async (
         isHandledByWebhook = true; // Prevent AI
         console.log(`🛑 Contact ${userPhone} requested STOP. Survey sent.`);
       } else if (
-        unsubscribeReasons.some((r) => r.toLowerCase() === messageBodyLower)
+        unsubscribeReasons.some((r) => {
+          const reasonId = `reason_${r.replace(/\s/g, "_").toLowerCase()}`;
+          return r.toLowerCase() === messageBodyLower || reasonId === messageBodyLower;
+        })
       ) {
+        const matchedReason = unsubscribeReasons.find((r) => {
+          const reasonId = `reason_${r.replace(/\s/g, "_").toLowerCase()}`;
+          return r.toLowerCase() === messageBodyLower || reasonId === messageBodyLower;
+        });
+
         // Helper function to handle Adding to Unsubscriber List
         const addToUnsubscriberList = async (phone) => {
           const ContactList = require("../models/ContactList");
@@ -576,7 +587,7 @@ const processBufferedMessages = async (
         // B) REASON SELECTED
         const unsubListId = await addToUnsubscriberList(userPhone);
 
-        if (messageBody === "Other") {
+        if (matchedReason === "Other") {
           // Handle "Other" -> Ask for details
           await Contact.findOneAndUpdate(
             { phoneNumber: userPhone },
@@ -593,7 +604,7 @@ const processBufferedMessages = async (
           await Contact.findOneAndUpdate(
             { phoneNumber: userPhone },
             {
-              unsubscribeReason: messageBody,
+              unsubscribeReason: matchedReason,
               isSubscribed: false,
               unsubscribeDate: new Date(),
               contactList: unsubListId,
