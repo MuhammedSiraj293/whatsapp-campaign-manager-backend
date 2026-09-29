@@ -332,6 +332,52 @@ const getCampaignsByWaba = async (req, res) => {
       },
     ]);
 
+    const campaignIds = campaigns.map((c) => c._id);
+    const Analytics = require("../models/Analytics");
+    const Reply = require("../models/Reply");
+
+    const analyticsStats = await Analytics.aggregate([
+      { $match: { campaign: { $in: campaignIds } } },
+      {
+        $group: {
+          _id: "$campaign",
+          sent: {
+            $sum: {
+              $cond: [{ $in: ["$status", ["sent", "delivered", "read"]] }, 1, 0],
+            },
+          },
+          read: { $sum: { $cond: [{ $eq: ["$status", "read"] }, 1, 0] } },
+          failed: { $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] } },
+        },
+      },
+    ]);
+
+    const replyStats = await Reply.aggregate([
+      { $match: { campaign: { $in: campaignIds }, direction: "incoming" } },
+      {
+        $group: {
+          _id: "$campaign",
+          replies: { $sum: 1 },
+        },
+      },
+    ]);
+
+    campaigns.forEach((camp) => {
+      const stat = analyticsStats.find(
+        (s) => s._id.toString() === camp._id.toString(),
+      ) || { sent: 0, read: 0, failed: 0 };
+      const rep = replyStats.find(
+        (r) => r._id.toString() === camp._id.toString(),
+      ) || { replies: 0 };
+
+      camp.stats = {
+        sent: stat.sent,
+        read: stat.read,
+        failed: stat.failed,
+        replied: rep.replies,
+      };
+    });
+
     res
       .status(200)
       .json({ success: true, count: campaigns.length, data: campaigns });
