@@ -118,15 +118,16 @@ const getCampaignAnalytics = async (req, res) => {
       });
     }
 
-    const sentRate = ((sent / totalSent) * 100).toFixed(1) + "%"; // <-- ADDED
-    const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + "%";
-    const readRate = ((read / totalSent) * 100).toFixed(1) + "%";
+    const actualAttempted = Math.max(1, totalSent - skipped);
+    const sentRate = ((sent / actualAttempted) * 100).toFixed(1) + "%"; // <-- ADDED
+    const deliveryRate = ((delivered / actualAttempted) * 100).toFixed(1) + "%";
+    const readRate = ((read / actualAttempted) * 100).toFixed(1) + "%";
     const replyRate =
-      ((campaign.replyCount / totalSent) * 100).toFixed(1) + "%";
-    const failedRate = ((failed / totalSent) * 100).toFixed(1) + "%";
+      ((campaign.replyCount / actualAttempted) * 100).toFixed(1) + "%";
+    const failedRate = ((failed / actualAttempted) * 100).toFixed(1) + "%";
     const skippedRate = ((skipped / totalSent) * 100).toFixed(1) + "%";
     const totalDeliveryRate =
-      ((totalDelivered / totalSent) * 100).toFixed(1) + "%";
+      ((totalDelivered / actualAttempted) * 100).toFixed(1) + "%";
 
     res.status(200).json({
       success: true,
@@ -430,6 +431,7 @@ const getAnalyticsForTemplate = async (req, res) => {
       const safeDiv = (num, den) =>
         den > 0 ? ((num / den) * 100).toFixed(1) + "%" : "0%";
 
+      const actualAttempted = Math.max(1, segSentTotal - segSkipped);
       segmentsData.push({
         name: segName,
         totalSent: segSentTotal, // Match frontend "Total Sent"
@@ -439,12 +441,12 @@ const getAnalyticsForTemplate = async (req, res) => {
         failed: segFailed,
         skipped: segSkipped,
         replies: segReplies,
-        sentRate: safeDiv(segSent, segSentTotal),
-        deliveredRate: safeDiv(segDelivered, segSentTotal),
-        readRate: safeDiv(segRead, segSentTotal),
-        failedRate: safeDiv(segFailed, segSentTotal),
+        sentRate: safeDiv(segSent, actualAttempted),
+        deliveredRate: safeDiv(segDelivered, actualAttempted),
+        readRate: safeDiv(segRead, actualAttempted),
+        failedRate: safeDiv(segFailed, actualAttempted),
         skippedRate: safeDiv(segSkipped, segSentTotal),
-        replyRate: safeDiv(segReplies, segSentTotal),
+        replyRate: safeDiv(segReplies, actualAttempted),
       });
     }
 
@@ -488,13 +490,14 @@ const getAnalyticsForTemplate = async (req, res) => {
     );
 
     // 4. Calculate global rates
-    const sentRate = ((sent / totalSent) * 100).toFixed(1) + "%";
-    const deliveryRate = ((delivered / totalSent) * 100).toFixed(1) + "%";
-    const readRate = ((read / totalSent) * 100).toFixed(1) + "%";
-    const replyRate = ((totalReplies / totalSent) * 100).toFixed(1) + "%";
+    const actualAttempted = Math.max(1, totalSent - skipped);
+    const sentRate = ((sent / actualAttempted) * 100).toFixed(1) + "%";
+    const deliveryRate = ((delivered / actualAttempted) * 100).toFixed(1) + "%";
+    const readRate = ((read / actualAttempted) * 100).toFixed(1) + "%";
+    const replyRate = ((totalReplies / actualAttempted) * 100).toFixed(1) + "%";
     const totalDeliveryRate =
-      ((totalDelivered / totalSent) * 100).toFixed(1) + "%";
-    const failedRate = ((failed / totalSent) * 100).toFixed(1) + "%"; // Add failed rate
+      ((totalDelivered / actualAttempted) * 100).toFixed(1) + "%";
+    const failedRate = ((failed / actualAttempted) * 100).toFixed(1) + "%"; // Add failed rate
     const skippedRate = ((skipped / totalSent) * 100).toFixed(1) + "%";
 
     res.status(200).json({
