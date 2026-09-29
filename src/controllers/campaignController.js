@@ -268,16 +268,32 @@ const executeCampaign = async (req, res) => {
 const getCampaignsByWaba = async (req, res) => {
   try {
     const { wabaId } = req.params;
+    
+    // Pagination parameters
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 12; // default 12 for 3-column grid
+    const skip = (page - 1) * limit;
+
     verifyWabaAccess(req.user, wabaId);
     const phoneNumbers = await PhoneNumber.find({ wabaAccount: wabaId }).select(
       "_id",
     );
     const phoneNumberIds = phoneNumbers.map((p) => p._id);
 
+    // Get total count for pagination
+    const totalCampaigns = await Campaign.countDocuments({
+      phoneNumber: { $in: phoneNumberIds },
+    });
+
     const campaigns = await Campaign.aggregate([
       // 1. Find campaigns for the selected phone numbers
       { $match: { phoneNumber: { $in: phoneNumberIds } } },
       { $sort: { createdAt: -1 } },
+      
+      // Pagination stages
+      { $skip: skip },
+      { $limit: limit },
+
       // 2. Join with the 'contactlists' collection
       {
         $lookup: {
@@ -377,10 +393,16 @@ const getCampaignsByWaba = async (req, res) => {
         replied: rep.replies,
       };
     });
-
     res
       .status(200)
-      .json({ success: true, count: campaigns.length, data: campaigns });
+      .json({ 
+        success: true, 
+        count: campaigns.length, 
+        totalCount: totalCampaigns,
+        totalPages: Math.ceil(totalCampaigns / limit),
+        currentPage: page,
+        data: campaigns 
+      });
   } catch (error) {
     res.status(500).json({ success: false, error: "Server Error" });
   }
