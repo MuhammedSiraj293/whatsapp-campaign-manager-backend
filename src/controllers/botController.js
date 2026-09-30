@@ -86,7 +86,7 @@ const parseQueryAndRespond = async (req, res) => {
     // MATCH 3: Contact list with most leads
     if (hasAny(msg, ["list", "contatact", "db"]) && hasAny(msg, ["lead", "leaad", "most", "best", "engaged", "repli"])) {
       const bestLists = await Contact.aggregate([
-        { $match: { "stats.replied": { $gt: 0 } } }, // overall stats
+        { $match: { "stats.replied": { $gt: 0 }, lastActive: { $gte: startDate } } },
         {
           $group: {
             _id: "$contactList",
@@ -117,13 +117,15 @@ const parseQueryAndRespond = async (req, res) => {
     }
 
     // MATCH 4: Campaign Specific Status (e.g. "what is the status of test campaign")
-    if (msg.includes("status of") || msg.includes("stats for")) {
+    if (hasAny(msg, ["status of", "stats for", "performance of", "perfomace of", "perdomance of"])) {
       let campaignName = "";
-      if (msg.includes("status of")) {
-        campaignName = msg.split("status of")[1].trim().replace(/\?$/, "");
-      } else {
-        campaignName = msg.split("stats for")[1].trim().replace(/\?$/, "");
-      }
+      if (msg.includes("status of")) campaignName = msg.split("status of")[1];
+      else if (msg.includes("stats for")) campaignName = msg.split("stats for")[1];
+      else if (msg.includes("performance of")) campaignName = msg.split("performance of")[1];
+      else if (msg.includes("perfomace of")) campaignName = msg.split("perfomace of")[1];
+      else if (msg.includes("perdomance of")) campaignName = msg.split("perdomance of")[1];
+      
+      campaignName = campaignName ? campaignName.trim().replace(/\?$/, "") : "";
 
       if (campaignName) {
         // Find campaign by name (case insensitive)
@@ -227,7 +229,7 @@ const parseQueryAndRespond = async (req, res) => {
       const Reply = require("../models/Reply");
 
       const analyticsStats = await Analytics.aggregate([
-        { $match: { timestamp: { $gte: startDate }, status: { $in: ["sent", "delivered", "read"] } } },
+        { $match: { createdAt: { $gte: startDate }, status: { $in: ["sent", "delivered", "read"] } } },
         {
           $group: {
             _id: null,
@@ -237,7 +239,7 @@ const parseQueryAndRespond = async (req, res) => {
       ]);
       
       const replyStats = await Reply.aggregate([
-        { $match: { timestamp: { $gte: startDate }, direction: "incoming" } },
+        { $match: { createdAt: { $gte: startDate }, direction: "incoming" } },
         {
           $group: {
             _id: null,
