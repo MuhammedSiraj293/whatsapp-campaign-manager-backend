@@ -18,6 +18,14 @@ const parseQueryAndRespond = async (req, res) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    // MATCH 0: Greetings & Help
+    if (msg === "hi" || msg === "hello" || msg === "hey" || hasAny(msg, ["how can you help", "what can you do", "help me"])) {
+      return res.status(200).json({ 
+        success: true, 
+        reply: "Hello! 👋 I am your local data assistant. I live securely on your server to help you analyze your CRM data.\n\nYou can ask me things like:\n- *'What is our response rate in the last 7 days?'*\n- *'Which list got the most leads?'*\n- *'How many people unsubscribed?'*\n- *'What is the status of [Campaign Name]?'*\n\nHow can I help you today?" 
+      });
+    }
+
     // MATCH 1: Template Performance
     if (hasAny(msg, ["temp", "msg", "message"]) && hasAny(msg, ["lead", "leaad", "best", "more", "most", "top", "perform"])) {
       const bestTemplates = await Campaign.aggregate([
@@ -213,22 +221,35 @@ const parseQueryAndRespond = async (req, res) => {
       });
     }
 
-    // MATCH 10: Total Leads & Response Rate
-    if (hasAny(msg, ["how many leads", "total leads", "response rate", "respose rate", "replies", "reply rate"])) {
-      const stats = await Campaign.aggregate([
-        { $match: { createdAt: { $gte: startDate } } },
+    // MATCH 10: Total Leads, Response Rate, & Performance
+    if (hasAny(msg, ["how many leads", "total leads", "response rate", "respose rate", "replies", "reply rate", "performance", "perfomace", "overall stats"])) {
+      const Analytics = require("../models/Analytics");
+      const Reply = require("../models/Reply");
+
+      const analyticsStats = await Analytics.aggregate([
+        { $match: { timestamp: { $gte: startDate }, status: { $in: ["sent", "delivered", "read"] } } },
         {
           $group: {
             _id: null,
-            totalDelivered: { $sum: "$deliveredCount" },
-            totalReplies: { $sum: "$replyCount" }
+            totalDelivered: { $sum: 1 }
           }
         }
       ]);
       
-      if (stats.length > 0 && stats[0].totalDelivered > 0) {
-        const totalReplies = stats[0].totalReplies || 0;
-        const totalD = stats[0].totalDelivered;
+      const replyStats = await Reply.aggregate([
+        { $match: { timestamp: { $gte: startDate }, direction: "incoming" } },
+        {
+          $group: {
+            _id: null,
+            totalReplies: { $sum: 1 }
+          }
+        }
+      ]);
+      
+      const totalD = analyticsStats.length > 0 ? analyticsStats[0].totalDelivered : 0;
+      const totalReplies = replyStats.length > 0 ? replyStats[0].totalReplies : 0;
+
+      if (totalD > 0) {
         const rate = ((totalReplies / totalD) * 100).toFixed(2);
 
         // Calculate UNIQUE Leads (People who engaged in this timeframe)
