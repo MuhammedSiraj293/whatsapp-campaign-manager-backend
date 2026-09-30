@@ -18,6 +18,30 @@ const parseQueryAndRespond = async (req, res) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    // Extract Account if specified (e.g. "from account thecap")
+    const accountMatch = msg.match(/(?:from|for) account (.+?)(?:\s+in|\s+last|\?|$)/);
+    let targetAccount = null;
+    let recipientIds = [];
+    let campaignIds = [];
+
+    if (accountMatch) {
+      const accountQueryName = accountMatch[1].trim();
+      const WabaAccount = require("../models/WabaAccount");
+      const PhoneNumber = require("../models/PhoneNumber");
+      
+      targetAccount = await WabaAccount.findOne({ accountName: { $regex: new RegExp(accountQueryName, "i") } });
+      
+      if (targetAccount) {
+        const phoneNumbers = await PhoneNumber.find({ wabaAccount: targetAccount._id });
+        recipientIds = phoneNumbers.map(pn => pn.phoneNumberId);
+        
+        const accountCampaigns = await Campaign.find({ phoneNumber: { $in: phoneNumbers.map(pn => pn._id) } });
+        campaignIds = accountCampaigns.map(c => c._id);
+      } else {
+        return res.status(200).json({ success: true, reply: `I couldn't find an account named "${accountQueryName}". Please check the spelling.` });
+      }
+    }
+
     // MATCH 0: Greetings & Help
     if (msg === "hi" || msg === "hello" || msg === "hey" || hasAny(msg, ["how can you help", "what can you do", "help me"])) {
       return res.status(200).json({ 
@@ -228,8 +252,11 @@ const parseQueryAndRespond = async (req, res) => {
       const Analytics = require("../models/Analytics");
       const Reply = require("../models/Reply");
 
+      const analyticsQuery = { createdAt: { $gte: startDate }, status: { $in: ["sent", "delivered", "read"] } };
+      if (targetAccount) analyticsQuery.campaign = { $in: campaignIds };
+
       const analyticsStats = await Analytics.aggregate([
-        { $match: { createdAt: { $gte: startDate }, status: { $in: ["sent", "delivered", "read"] } } },
+        { $match: analyticsQuery },
         {
           $group: {
             _id: null,
@@ -238,8 +265,11 @@ const parseQueryAndRespond = async (req, res) => {
         }
       ]);
       
+      const replyQuery = { createdAt: { $gte: startDate }, direction: "incoming" };
+      if (targetAccount) replyQuery.recipientId = { $in: recipientIds };
+
       const replyStats = await Reply.aggregate([
-        { $match: { createdAt: { $gte: startDate }, direction: "incoming" } },
+        { $match: replyQuery },
         {
           $group: {
             _id: null,
@@ -256,13 +286,17 @@ const parseQueryAndRespond = async (req, res) => {
 
         // Calculate QUALIFIED Leads (People who actually generated an Enquiry)
         const Enquiry = require("../models/Enquiry");
-        const qualifiedLeads = await Enquiry.countDocuments({
-          createdAt: { $gte: startDate }
-        });
+        const enquiryQuery = { createdAt: { $gte: startDate } };
+        if (targetAccount) enquiryQuery.recipientId = { $in: recipientIds };
+
+        const qualifiedLeads = await Enquiry.countDocuments(enquiryQuery);
         
+        let replyStr = `In the last ${days} days, you received **${totalReplies} total replies** from ${totalD} delivered messages (Overall response rate: **${rate}%**).\n\nMore importantly, this resulted in **${qualifiedLeads} Qualified Leads (Enquiries)**.`;
+        if (targetAccount) replyStr = `For the account **${targetAccount.accountName}**:\n` + replyStr;
+
         return res.status(200).json({ 
           success: true, 
-          reply: `In the last ${days} days, you received **${totalReplies} total replies** from ${totalD} delivered messages (Overall response rate: **${rate}%**).\n\nMore importantly, this resulted in **${qualifiedLeads} Qualified Leads (Enquiries)**.` 
+          reply: replyStr 
         });
       } else {
         return res.status(200).json({ 
