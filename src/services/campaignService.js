@@ -74,6 +74,13 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       isSubscribed: true,
     };
 
+    if (campaign.targetStatuses && campaign.targetStatuses.length > 0) {
+      baseQuery.computedStatus = { $in: campaign.targetStatuses };
+    } else {
+      // Always exclude Dead contacts if no specific filter is given
+      baseQuery.computedStatus = { $ne: "Dead" };
+    }
+
     const totalContactsBeforeFilters = await Contact.countDocuments(baseQuery);
     console.log(
       `Starting background campaign "${campaign.name}". Total contacts before filters: ${totalContactsBeforeFilters}`,

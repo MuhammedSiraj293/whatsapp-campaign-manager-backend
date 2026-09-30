@@ -69,14 +69,10 @@ const updateContactStats = async (identifier, type, status = null, isBsuid = fal
       score = readRate * 0.4 + replyRate * 0.6;
     }
 
-    const daysSinceActive = lastActive
-      ? (new Date() - new Date(lastActive)) / (1000 * 60 * 60 * 24)
-      : 999;
-
-    let computedStatus = "Cold";
+    let computedStatus = "New";
     if (!isSubscribed || failed > 3) computedStatus = "Dead";
-    else if (score > 60 || daysSinceActive < 3) computedStatus = "Hot";
-    else if (score > 20 || daysSinceActive < 14) computedStatus = "Warm";
+    else if (read > 0 || replied > 0) computedStatus = "Engaged";
+    else if (sent > 0) computedStatus = "Unresponsive";
 
     // 4. Atomic Update for Computed Fields (No critical race condition here)
     await Contact.updateOne(

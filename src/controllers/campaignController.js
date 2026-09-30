@@ -85,6 +85,7 @@ const createCampaign = async (req, res) => {
       batchDelay, // <-- New Field
       messageDelay, // <-- New Field
       headerMediaType, // <-- New Field for Video/Document headers
+      targetStatuses, // <-- Engagement filter
     } = req.body;
 
     if (req.user.role !== 'admin' && phoneNumber) {
@@ -158,6 +159,8 @@ const createCampaign = async (req, res) => {
       headerImageUrl: finalHeaderImageUrl,
       headerMediaId: finalHeaderMediaId,
       headerMediaType: headerMediaType || "IMAGE",
+
+      targetStatuses: targetStatuses ? JSON.parse(targetStatuses) : [], // Store the filter
 
       expectedVariables: parseInt(expectedVariables, 10) || 0,
       spreadsheetId,

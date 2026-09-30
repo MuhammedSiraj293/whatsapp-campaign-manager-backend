@@ -36,6 +36,7 @@ const CampaignSchema = new mongoose.Schema(
     spreadsheetId: { type: String, trim: true },
     buttons: [ButtonSchema],
     exclusionList: { type: mongoose.Schema.Types.ObjectId, ref: "ContactList" },
+    targetStatuses: [{ type: String }], // e.g. ["Engaged", "Unresponsive", "New"]
 
     // --- THIS IS THE NEW FIELD ---
     // This links the campaign to the specific phone number it should be sent from.

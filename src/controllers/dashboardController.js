@@ -120,9 +120,9 @@ const getDashboardSummary = async (req, res) => {
       data: {
         totalContacts,
         avgEngagementScore: scoreStats[0]?.avgScore || 0,
-        hotLeadsCount: statusMap.hot || 0,
-        warmLeadsCount: statusMap.warm || 0,
-        coldLeadsCount: statusMap.cold || 0,
+        newLeadsCount: statusMap.new || 0,
+        unresponsiveLeadsCount: statusMap.unresponsive || 0,
+        engagedLeadsCount: statusMap.engaged || 0,
         deadLeadsCount: statusMap.dead || 0,
         responseRate,
         totalMessagesSent: totalSent,
@@ -168,28 +168,28 @@ const getEngagementTrends = async (req, res) => {
           },
         },
         avgScore: { $avg: "$engagementScore" },
-        hotCount: {
+        engagedCount: {
           $sum: {
             $cond: [
-              { $regexMatch: { input: "$computedStatus", regex: /hot/i } },
+              { $regexMatch: { input: "$computedStatus", regex: /engaged/i } },
               1,
               0,
             ],
           },
         },
-        warmCount: {
+        unresponsiveCount: {
           $sum: {
             $cond: [
-              { $regexMatch: { input: "$computedStatus", regex: /warm/i } },
+              { $regexMatch: { input: "$computedStatus", regex: /unresponsive/i } },
               1,
               0,
             ],
           },
         },
-        coldCount: {
+        newCount: {
           $sum: {
             $cond: [
-              { $regexMatch: { input: "$computedStatus", regex: /cold/i } },
+              { $regexMatch: { input: "$computedStatus", regex: /new/i } },
               1,
               0,
             ],
@@ -204,9 +204,9 @@ const getEngagementTrends = async (req, res) => {
     const formattedResults = trends.map((t) => ({
       date: t._id,
       avgScore: Math.round(t.avgScore || 0),
-      hotCount: t.hotCount,
-      warmCount: t.warmCount,
-      coldCount: t.coldCount,
+      engagedCount: t.engagedCount,
+      unresponsiveCount: t.unresponsiveCount,
+      newCount: t.newCount,
       total: t.totalContacts,
     }));
 

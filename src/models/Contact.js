@@ -73,7 +73,7 @@ const ContactSchema = new mongoose.Schema(
     },
     computedStatus: {
       type: String,
-      default: "Cold",
+      default: "New",
     },
   },
   { timestamps: true },
