@@ -213,6 +213,42 @@ const parseQueryAndRespond = async (req, res) => {
       });
     }
 
+    // MATCH 10: Total Leads & Response Rate
+    if (hasAny(msg, ["how many leads", "total leads", "response rate", "respose rate", "replies", "reply rate"])) {
+      const stats = await Campaign.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        {
+          $group: {
+            _id: null,
+            totalDelivered: { $sum: "$deliveredCount" },
+            totalReplies: { $sum: "$replyCount" }
+          }
+        }
+      ]);
+      
+      if (stats.length > 0 && stats[0].totalDelivered > 0) {
+        const totalReplies = stats[0].totalReplies || 0;
+        const totalD = stats[0].totalDelivered;
+        const rate = ((totalReplies / totalD) * 100).toFixed(2);
+
+        // Calculate UNIQUE Leads (People who engaged in this timeframe)
+        const uniqueLeads = await Contact.countDocuments({
+           computedStatus: "Engaged",
+           updatedAt: { $gte: startDate }
+        });
+        
+        return res.status(200).json({ 
+          success: true, 
+          reply: `In the last ${days} days, you received **${totalReplies} total replies** from ${totalD} delivered messages (Overall response rate: **${rate}%**).\n\nMore importantly, this came from **${uniqueLeads} Unique Leads** (individual people who messaged you).` 
+        });
+      } else {
+        return res.status(200).json({ 
+          success: true, 
+          reply: `You haven't delivered any campaign messages in the last ${days} days to calculate leads.` 
+        });
+      }
+    }
+
     // FALLBACK
     return res.status(200).json({ 
       success: true, 
