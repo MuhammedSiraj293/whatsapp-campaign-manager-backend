@@ -166,8 +166,7 @@ const getEngagementTrends = async (req, res) => {
               date: "$lastActive",
             },
           },
-        },
-        avgScore: { $avg: "$engagementScore" },
+          avgScore: { $avg: "$engagementScore" },
         engagedCount: {
           $sum: {
             $cond: [
@@ -196,6 +195,7 @@ const getEngagementTrends = async (req, res) => {
           },
         },
         totalContacts: { $sum: 1 },
+        }
       },
       { $sort: { _id: 1 } },
     ]);
