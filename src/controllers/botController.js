@@ -254,11 +254,19 @@ const parseQueryAndRespond = async (req, res) => {
       if (totalD > 0) {
         const rate = ((totalReplies / totalD) * 100).toFixed(2);
 
-        // Calculate UNIQUE Leads (People who engaged in this timeframe)
-        const uniqueLeads = await Contact.countDocuments({
-           computedStatus: "Engaged",
-           updatedAt: { $gte: startDate }
-        });
+        // Calculate UNIQUE Leads (Distinct phone numbers who replied in this timeframe)
+        const uniqueLeadsStats = await Reply.aggregate([
+          { $match: { createdAt: { $gte: startDate }, direction: "incoming" } },
+          {
+            $group: {
+              _id: "$from"
+            }
+          },
+          {
+            $count: "uniqueCount"
+          }
+        ]);
+        const uniqueLeads = uniqueLeadsStats.length > 0 ? uniqueLeadsStats[0].uniqueCount : 0;
         
         return res.status(200).json({ 
           success: true, 
