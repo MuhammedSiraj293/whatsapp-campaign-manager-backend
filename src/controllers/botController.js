@@ -254,23 +254,15 @@ const parseQueryAndRespond = async (req, res) => {
       if (totalD > 0) {
         const rate = ((totalReplies / totalD) * 100).toFixed(2);
 
-        // Calculate UNIQUE Leads (Distinct phone numbers who replied in this timeframe)
-        const uniqueLeadsStats = await Reply.aggregate([
-          { $match: { createdAt: { $gte: startDate }, direction: "incoming" } },
-          {
-            $group: {
-              _id: "$from"
-            }
-          },
-          {
-            $count: "uniqueCount"
-          }
-        ]);
-        const uniqueLeads = uniqueLeadsStats.length > 0 ? uniqueLeadsStats[0].uniqueCount : 0;
+        // Calculate QUALIFIED Leads (People who actually generated an Enquiry)
+        const Enquiry = require("../models/Enquiry");
+        const qualifiedLeads = await Enquiry.countDocuments({
+          createdAt: { $gte: startDate }
+        });
         
         return res.status(200).json({ 
           success: true, 
-          reply: `In the last ${days} days, you received **${totalReplies} total replies** from ${totalD} delivered messages (Overall response rate: **${rate}%**).\n\nMore importantly, this came from **${uniqueLeads} Unique Leads** (individual people who messaged you).` 
+          reply: `In the last ${days} days, you received **${totalReplies} total replies** from ${totalD} delivered messages (Overall response rate: **${rate}%**).\n\nMore importantly, this resulted in **${qualifiedLeads} Qualified Leads (Enquiries)**.` 
         });
       } else {
         return res.status(200).json({ 
