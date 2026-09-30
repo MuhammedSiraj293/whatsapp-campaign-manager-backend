@@ -555,6 +555,7 @@ const toggleSubscription = async (req, res) => {
         {
           $set: {
             isSubscribed: false,
+            computedStatus: "Dead", // Instantly mark as Dead
             unsubscribeReason: unsubscribeReason || "Manual Unsubscribe",
             unsubscribeDate: new Date(),
           },
@@ -583,6 +584,7 @@ const toggleSubscription = async (req, res) => {
           name: contactName,
           contactList: unsubList._id,
           isSubscribed: false,
+          computedStatus: "Dead", // Instantly mark as Dead
           unsubscribeReason: unsubscribeReason || "Manual Unsubscribe",
           unsubscribeDate: new Date(),
         });
@@ -603,7 +605,10 @@ const toggleSubscription = async (req, res) => {
       await Contact.updateMany(
         { phoneNumber: phoneNumber },
         {
-          $set: { isSubscribed: true },
+          $set: { 
+            isSubscribed: true,
+            computedStatus: "Engaged", // Mark engaged when manually resubscribed
+          },
           $unset: { unsubscribeReason: 1, unsubscribeDate: 1 },
         },
       );

@@ -498,6 +498,7 @@ const processBufferedMessages = async (
           {
             unsubscribeReason: messageBody, // Save the text as reason
             isSubscribed: false,
+            computedStatus: "Dead", // Instantly mark as Dead
             unsubscribeDate: new Date(),
             contactList: unsubListId, // Add to Unsubscriber List
             previousContactList: contactCheck.contactList, // Backup current list
@@ -602,6 +603,7 @@ const processBufferedMessages = async (
             {
               unsubscribeReason: matchedReason,
               isSubscribed: false,
+              computedStatus: "Dead", // Instantly mark as Dead
               unsubscribeDate: new Date(),
               contactList: unsubListId,
               previousContactList: currentContact
@@ -1636,6 +1638,21 @@ const processWebhook = async (req, res) => {
           err.details || "No details"
         })`;
         console.log("❌ WhatsApp Delivery Error:", failureReason);
+        
+        // 131026: Message undeliverable (Usually means they don't have WhatsApp)
+        // We must instantly kill this contact so we never message them again.
+        if (err.code === 131026 && status.recipient_id) {
+           await Contact.findOneAndUpdate(
+             { phoneNumber: status.recipient_id },
+             {
+               isSubscribed: false,
+               computedStatus: "Dead",
+               unsubscribeReason: "131026 - No WhatsApp Account",
+               unsubscribeDate: new Date(),
+             }
+           );
+           console.log(`💀 Contact ${status.recipient_id} marked as Dead due to 131026 error.`);
+        }
       }
 
       const updated = await Analytics.findOneAndUpdate(
