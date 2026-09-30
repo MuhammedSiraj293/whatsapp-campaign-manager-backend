@@ -124,6 +124,7 @@ app.use("/api/bot-flows", botFlowRoutes);
 app.use("/api/auto-reply", require("./routes/autoReplyRoutes"));
 app.use("/api/properties", require("./routes/propertyRoutes")); // <-- NEW ROUTE
 app.use("/api/templates", templateRoutes);
+app.use("/api/bot", require("./routes/botRoutes"));
 
 app.get("*splat", (req, res) => {
   res.sendFile(path.join(__dirname, "../../frontend/build", "index.html"));
