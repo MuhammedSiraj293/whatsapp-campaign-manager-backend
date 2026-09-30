@@ -29,7 +29,8 @@ const parseQueryAndRespond = async (req, res) => {
       const WabaAccount = require("../models/WabaAccount");
       const PhoneNumber = require("../models/PhoneNumber");
       
-      targetAccount = await WabaAccount.findOne({ accountName: { $regex: new RegExp(accountQueryName, "i") } });
+      const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      targetAccount = await WabaAccount.findOne({ accountName: { $regex: new RegExp(escapeRegExp(accountQueryName), "i") } });
       
       if (targetAccount) {
         const phoneNumbers = await PhoneNumber.find({ wabaAccount: targetAccount._id });
