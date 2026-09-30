@@ -142,10 +142,81 @@ const parseQueryAndRespond = async (req, res) => {
       });
     }
 
+    // MATCH 6: Unsubscribers
+    if (hasAny(msg, ["unsub", "unsubsibe", "opt out", "stop"])) {
+      const unsubCount = await Contact.countDocuments({ isSubscribed: false, updatedAt: { $gte: startDate } });
+      const totalUnsub = await Contact.countDocuments({ isSubscribed: false });
+      
+      return res.status(200).json({ 
+        success: true, 
+        reply: `You had **${unsubCount}** unsubscribes in the last ${days} days. In total, **${totalUnsub}** people have unsubscribed.` 
+      });
+    }
+
+    // MATCH 7: Global Delivery Rate
+    if (hasAny(msg, ["delivery rate", "deliver", "global delivery"])) {
+      const globalStats = await Contact.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalSent: { $sum: "$stats.sent" },
+            totalDelivered: { $sum: "$stats.delivered" }
+          }
+        }
+      ]);
+      
+      if (globalStats.length > 0 && globalStats[0].totalSent > 0) {
+        const rate = ((globalStats[0].totalDelivered / globalStats[0].totalSent) * 100).toFixed(1);
+        return res.status(200).json({ 
+          success: true, 
+          reply: `Your overall global delivery rate is **${rate}%**. Out of ${globalStats[0].totalSent} messages sent, ${globalStats[0].totalDelivered} were successfully delivered.` 
+        });
+      } else {
+        return res.status(200).json({ success: true, reply: "Not enough data to calculate the delivery rate yet." });
+      }
+    }
+
+    // MATCH 8: Global Account Statistics
+    if (hasAny(msg, ["total messages", "total sent", "total dead", "total engaged", "database", "total contact"])) {
+      const globalStats = await Contact.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalContacts: { $sum: 1 },
+            totalSent: { $sum: "$stats.sent" },
+            totalEngaged: { $sum: { $cond: [ { $regexMatch: { input: "$computedStatus", regex: /engaged/i } }, 1, 0 ] } },
+            totalDead: { $sum: { $cond: [ { $regexMatch: { input: "$computedStatus", regex: /dead/i } }, 1, 0 ] } },
+            totalUnresponsive: { $sum: { $cond: [ { $regexMatch: { input: "$computedStatus", regex: /unresponsive/i } }, 1, 0 ] } }
+          }
+        }
+      ]);
+
+      if (globalStats.length > 0) {
+        const s = globalStats[0];
+        return res.status(200).json({ 
+          success: true, 
+          reply: `Across your entire database, you have **${s.totalContacts}** contacts.\nThis includes:\n- **${s.totalEngaged}** Engaged\n- **${s.totalUnresponsive}** Unresponsive\n- **${s.totalDead}** Dead.\n\nYou have sent a total of **${s.totalSent}** messages globally.` 
+        });
+      }
+    }
+
+    // MATCH 9: Bot Flows / Auto Replies
+    if (hasAny(msg, ["auto-reply", "auto reply", "bot flow", "property flow", "drop-off", "drop off"])) {
+      const PropertyInquirySession = require("../models/PropertyInquirySession");
+      
+      const totalTriggered = await PropertyInquirySession.countDocuments({ updatedAt: { $gte: startDate } });
+      const totalCompleted = await PropertyInquirySession.countDocuments({ state: "completed", updatedAt: { $gte: startDate } });
+      
+      return res.status(200).json({ 
+        success: true, 
+        reply: `In the last ${days} days, **${totalTriggered} people** triggered the property auto-reply flow, but only **${totalCompleted} people** completed all the questions.` 
+      });
+    }
+
     // FALLBACK
     return res.status(200).json({ 
       success: true, 
-      reply: "I'm a simple local bot! I look for keywords to answer. Please include your timeframe in the same sentence (e.g., 'Which list generated the most leads in the last 7 days?'). I can tell you about:\n- Top performing templates\n- Contact list failures\n- Top contact lists for leads\n- Enquiry volumes." 
+      reply: "I'm a simple local bot! I look for keywords to answer. Please include your timeframe in the same sentence (e.g., 'Which list generated the most leads in the last 7 days?'). I can tell you about:\n- Top performing templates\n- Contact list failures\n- Top contact lists for leads\n- Enquiry volumes\n- Unsubscribe counts\n- Global delivery rates\n- Total database stats (engaged, dead)\n- Bot flow completion rates." 
     });
 
   } catch (error) {
