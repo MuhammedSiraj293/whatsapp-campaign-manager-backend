@@ -486,6 +486,9 @@ const deleteCampaign = async (req, res) => {
 
     await campaign.deleteOne();
 
+    const Analytics = require("../models/Analytics");
+    await Analytics.deleteMany({ campaign: campaign._id });
+
     await Log.create({
       level: 'info',
       message: `Campaign '${campaign.name}' deleted by user ${req.user.name} (${req.user.email}).`,

@@ -69,9 +69,11 @@ const updateContactStats = async (identifier, type, status = null, isBsuid = fal
       score = readRate * 0.4 + replyRate * 0.6;
     }
 
+    const daysSinceLastActive = lastActive ? (new Date() - new Date(lastActive)) / (1000 * 60 * 60 * 24) : Infinity;
+
     let computedStatus = "New";
-    if (!isSubscribed || failed > 3) computedStatus = "Dead";
-    else if (read > 0 || replied > 0) computedStatus = "Engaged";
+    if (!isSubscribed || failed >= 6 || (sent >= 10 && replied === 0)) computedStatus = "Dead";
+    else if (replied > 0 && daysSinceLastActive <= 30) computedStatus = "Engaged";
     else if (sent > 0) computedStatus = "Unresponsive";
 
     // 4. Atomic Update for Computed Fields (No critical race condition here)
