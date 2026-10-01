@@ -130,9 +130,8 @@ const processCampaignBackground = async (campaignId, options = {}) => {
     if (allNumbersToSkip.length > 0) {
       try {
         const skippedContacts = await Contact.find({
-          contactList: campaign.contactList,
+          ...baseQuery,
           phoneNumber: { $in: allNumbersToSkip },
-          isSubscribed: true,
         }).select("_id");
 
         if (skippedContacts.length > 0) {
