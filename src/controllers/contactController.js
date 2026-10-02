@@ -753,4 +753,5 @@ module.exports = {
   getContactAnalyticsDashboard,
   getContactDetails,
   migrateContactStats, // <-- EXPORT MIGRATION
+  getListStatusCounts,
 };
