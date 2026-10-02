@@ -15,6 +15,7 @@ const {
   getUnsubscribedContacts, // <-- NEW IMPORT
   getContactDetails, // <-- NEW IMPORT
   bulkDeleteContacts,
+  getListStatusCounts,
 } = require("../controllers/contactController");
 
 const {
@@ -68,6 +69,7 @@ router
 
 // --- 4. NEW ROUTE to get all contacts in a list ---
 router.get("/lists/:listId/contacts", protect, getContactsInList);
+router.get("/lists/:listId/status-counts", protect, getListStatusCounts);
 
 // --- 5. NEW ROUTE for a single contact ---
 // This route handles updating or deleting a specific contact by its ID

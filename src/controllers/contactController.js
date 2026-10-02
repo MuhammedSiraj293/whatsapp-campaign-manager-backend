@@ -126,6 +126,43 @@ const getAllContactLists = async (req, res) => {
   }
 };
 
+const getListStatusCounts = async (req, res) => {
+  try {
+    const listId = req.params.listId;
+    if (!listId) {
+      return res.status(400).json({ success: false, error: "List ID is required." });
+    }
+
+    const counts = await Contact.aggregate([
+      { $match: { contactList: new mongoose.Types.ObjectId(listId) } },
+      { $group: { _id: "$computedStatus", count: { $sum: 1 } } }
+    ]);
+
+    // Format the response to map DB statuses to our 4 UI groups
+    const result = {
+      engaged: 0,
+      warm: 0,
+      new: 0,
+      dead: 0
+    };
+
+    counts.forEach((c) => {
+      const status = c._id;
+      const count = c.count;
+      if (status === "Engaged" || status === "Hot") result.engaged += count;
+      else if (status === "Warm" || status === "Unresponsive") result.warm += count;
+      else if (status === "Dead") result.dead += count;
+      else result.new += count; // "New", "Cold", null, or anything else
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error fetching list status counts:", error);
+    res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
+
 // --- NEW FUNCTION FOR PASTED DATA ---
 const bulkAddContacts = async (req, res) => {
   const { listId } = req.params;
