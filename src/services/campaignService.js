@@ -187,6 +187,7 @@ const processCampaignBackground = async (campaignId, options = {}) => {
       );
 
       const contacts = await Contact.find(finalQuery)
+        .sort({ _id: 1 })
         .skip(offset)
         .limit(batchSize);
 
