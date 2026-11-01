@@ -182,10 +182,10 @@ The system supports three user roles defined in `backend/src/models/User.js`:
 | `JWT_SECRET` | Secret key for signing JSON Web Tokens | Alphanumeric string |
 | `JWT_EXPIRE` | Token validity duration | `30d` |
 | `WHATSAPP_ACCESS_TOKEN` | Default Meta system access token | `EAAc718...` |
-| `WHATSAPP_PHONE_NUMBER_ID`| Default Meta phone number ID | `780010391854784` |
-| `WHATSAPP_BUSINESS_ACCOUNT_ID` | Default WABA account ID | `613392251834731` |
-| `WHATSAPP_VERIFY_TOKEN` | Webhook verification challenge token | `capave8590` |
-| `CLOUDINARY_*` | Cloudinary credentials for media hosting | `dvgvchgzi`, API key & secret |
+| `WHATSAPP_PHONE_NUMBER_ID`| Default Meta phone number ID | `12345678909876` |
+| `WHATSAPP_BUSINESS_ACCOUNT_ID` | Default WABA account ID | `1234567892345` |
+| `WHATSAPP_VERIFY_TOKEN` | Webhook verification challenge token | `qefeqfeqf` |
+| `CLOUDINARY_*` | Cloudinary credentials for media hosting | `grggqgqeg`, API key & secret |
 | `SMTP_*` | Gmail SMTP credentials for 2FA emails | `smtp.gmail.com`, port `587`, App Password |
 | `REACT_APP_API_URL` | Frontend URL pointer to backend API | `http://localhost:5001` or production domain |
 
